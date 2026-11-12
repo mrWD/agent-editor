@@ -1,0 +1,14 @@
+[package]
+name = "ae-mock-agent"
+description = "A practice agent that speaks ACP over stdio. Spends no tokens; used by tests and for trying the editor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ae-mock-agent"
+path = "src/main.rs"
+
+[dependencies]
+serde_json.workspace = true

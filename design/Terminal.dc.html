@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inbox, terminal</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#E8E8E8}a:hover{color:#FFB000}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #0A0A0A; color: #E8E8E8; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; line-height: 1.5">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 24px; padding: 6px 16px; border-bottom: 1px solid #2E2E2E">
+<button type="button" style="height: 28px; padding: 0; border: 0; background: transparent; color: #E8E8E8; font: inherit; font-weight: 700; cursor: pointer">shop-api<span style="font-weight: 400; color: #9A9A9A">:main</span></button>
+<span><span style="font-weight: 700; color: {{accent}}">3</span> need you</span>
+<span style="color: #9A9A9A">3 running</span>
+<span style="flex-grow: 1"></span>
+<span style="color: #9A9A9A">spent today <span style="color: #E8E8E8">$4.82</span></span>
+<span style="color: #9A9A9A">keep awake <span style="color: #E8E8E8">on</span></span>
+</header>
+
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+
+<nav aria-label="Sections" style="flex: 1 1 190px; box-sizing: border-box; padding: 14px 16px; border-right: 1px solid #2E2E2E; display: flex; flex-direction: column; gap: 2px">
+<a href="#" aria-current="page" style="display: flex; gap: 10px; padding: 4px 8px; background: #E8E8E8; color: #0A0A0A; font-weight: 700; text-decoration: none"><span>1</span><span style="flex-grow: 1">inbox</span><span>3</span></a>
+<a href="#" style="display: flex; gap: 10px; padding: 4px 8px; text-decoration: none"><span style="color: #9A9A9A">2</span><span style="flex-grow: 1">tasks</span></a>
+<a href="#" style="display: flex; gap: 10px; padding: 4px 8px; text-decoration: none"><span style="color: #9A9A9A">3</span><span style="flex-grow: 1">review</span><span style="color: #9A9A9A">1</span></a>
+<a href="#" style="display: flex; gap: 10px; padding: 4px 8px; text-decoration: none"><span style="color: #9A9A9A">4</span><span style="flex-grow: 1">automations</span></a>
+<a href="#" style="display: flex; gap: 10px; padding: 4px 8px; text-decoration: none"><span style="color: #9A9A9A">5</span><span style="flex-grow: 1">skills &amp; rules</span></a>
+<a href="#" style="display: flex; gap: 10px; padding: 4px 8px; text-decoration: none"><span style="color: #9A9A9A">,</span><span style="flex-grow: 1">settings</span></a>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 14px 20px 20px; display: flex; flex-direction: column; gap: 20px">
+
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 700">NEEDS YOU (3)<span aria-hidden="true" style="flex-grow: 1; height: 1px; background: #2E2E2E"></span></h2>
+
+<article style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid #2E2E2E">
+<div style="display: flex; flex-wrap: wrap; gap: 4px 14px">
+<span style="color: {{accent}}">[PERMISSION]</span>
+<a href="#" style="flex-grow: 1; font-weight: 700; text-decoration: none">Add rate limiting to /login</a>
+<span style="color: #7DB8FF">codex</span>
+<span style="color: #9A9A9A">2m</span>
+</div>
+<p style="margin: 0; color: #9A9A9A">wants to run a command in the task worktree</p>
+<pre style="margin: 0; overflow-x: auto; font: inherit"><span style="color: #9A9A9A">$ </span>npm install express-rate-limit</pre>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid {{accent}}; border-radius: 0; background: {{accent}}; color: #0A0A0A; font: inherit; font-weight: 700; cursor: pointer">a allow once</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit; cursor: pointer"><span style="color: {{accent}}">A</span> always in this task</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit; cursor: pointer"><span style="color: {{accent}}">d</span> deny</button>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid #2E2E2E">
+<div style="display: flex; flex-wrap: wrap; gap: 4px 14px">
+<span style="color: {{accent}}">[QUESTION]</span>
+<a href="#" style="flex-grow: 1; font-weight: 700; text-decoration: none">Migrate date utils to Temporal</a>
+<span style="color: #C9A6FF">claude</span>
+<span style="color: #9A9A9A">5m</span>
+</div>
+<p style="margin: 0">formatDate is exported from two files. Keep both exports or merge them into one?</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit; cursor: pointer"><span style="color: {{accent}}">1</span> keep both</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit; cursor: pointer"><span style="color: {{accent}}">2</span> merge into one</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit; cursor: pointer"><span style="color: {{accent}}">r</span> reply in chat</button>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid #2E2E2E">
+<div style="display: flex; flex-wrap: wrap; gap: 4px 14px">
+<span style="color: {{accent}}">[READY TO REVIEW]</span>
+<a href="#" style="flex-grow: 1; font-weight: 700; text-decoration: none">Fix flaky checkout test</a>
+<span><span style="color: #C9A6FF">claude</span> <span style="color: #7DB8FF">codex</span> <span style="color: #5FD9C9">gemini</span></span>
+<span style="color: #9A9A9A">12m</span>
+</div>
+<p style="margin: 0; color: #9A9A9A">race finished: 3 results, 2 pass all checks</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid {{accent}}; border-radius: 0; background: {{accent}}; color: #0A0A0A; font: inherit; font-weight: 700; cursor: pointer">c compare results</button>
+</div>
+</article>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 700">RUNNING (3)<span aria-hidden="true" style="flex-grow: 1; height: 1px; background: #2E2E2E"></span></h2>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; white-space: nowrap; text-align: left">
+<thead>
+<tr style="color: #9A9A9A">
+<th scope="col" style="padding: 4px 20px 4px 0; font-weight: 400">TASK</th>
+<th scope="col" style="padding: 4px 20px 4px 0; font-weight: 400">MODE</th>
+<th scope="col" style="padding: 4px 20px 4px 0; font-weight: 400">AGENT</th>
+<th scope="col" style="padding: 4px 20px 4px 0; font-weight: 400">NOW</th>
+<th scope="col" style="padding: 4px 0; font-weight: 400; text-align: right">TIME</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="padding: 4px 20px 4px 0"><a href="#" style="text-decoration: none">Migrate date utils to Temporal</a></td>
+<td style="padding: 4px 20px 4px 0">team 2/3</td>
+<td style="padding: 4px 20px 4px 0; color: #7DB8FF">codex</td>
+<td style="padding: 4px 20px 4px 0; color: #9A9A9A">editing src/utils/date.ts</td>
+<td style="padding: 4px 0; text-align: right">6m</td>
+</tr>
+<tr>
+<td style="padding: 4px 20px 4px 0"><a href="#" style="text-decoration: none">Update API docs for v2 endpoints</a></td>
+<td style="padding: 4px 20px 4px 0">solo</td>
+<td style="padding: 4px 20px 4px 0; color: #5FD9C9">gemini</td>
+<td style="padding: 4px 20px 4px 0; color: #9A9A9A">reading docs/api/orders.md</td>
+<td style="padding: 4px 0; text-align: right">2m</td>
+</tr>
+<tr>
+<td style="padding: 4px 20px 4px 0"><a href="#" style="text-decoration: none">Add rate limiting to /login</a></td>
+<td style="padding: 4px 20px 4px 0">solo</td>
+<td style="padding: 4px 20px 4px 0; color: #7DB8FF">codex</td>
+<td style="padding: 4px 20px 4px 0; color: {{accent}}">paused, waiting for your permission</td>
+<td style="padding: 4px 0; text-align: right">4m</td>
+</tr>
+</tbody>
+</table>
+</div>
+<a href="#" style="color: #9A9A9A; text-decoration: none">done today (5)</a>
+</section>
+
+<section style="margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid #2E2E2E">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px">
+<label for="task-c" style="font-weight: 700; color: {{accent}}">new task ›</label>
+<input id="task-c" type="text" placeholder="describe what the agents should do" style="flex: 1 1 320px; min-width: 0; box-sizing: border-box; height: 32px; padding: 0 8px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit">
+<button type="button" style="height: 32px; padding: 0 12px; border: 1px solid {{accent}}; border-radius: 0; background: {{accent}}; color: #0A0A0A; font: inherit; font-weight: 700; cursor: pointer">enter start</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: #9A9A9A">
+<span>mode</span>
+<button type="button" aria-pressed="true" style="height: 26px; padding: 0 8px; border: 1px solid #E8E8E8; border-radius: 0; background: #E8E8E8; color: #0A0A0A; font: inherit; font-weight: 700; cursor: pointer">solo</button>
+<button type="button" aria-pressed="false" style="height: 26px; padding: 0 8px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit; cursor: pointer">race</button>
+<button type="button" aria-pressed="false" style="height: 26px; padding: 0 8px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit; cursor: pointer">team</button>
+<span style="padding-left: 12px">agent</span>
+<button type="button" aria-pressed="false" style="height: 26px; padding: 0 8px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #C9A6FF; font: inherit; cursor: pointer">claude</button>
+<button type="button" aria-pressed="true" style="height: 26px; padding: 0 8px; border: 1px solid #7DB8FF; border-radius: 0; background: #7DB8FF; color: #0A0A0A; font: inherit; font-weight: 700; cursor: pointer">codex</button>
+<button type="button" aria-pressed="false" style="height: 26px; padding: 0 8px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #5FD9C9; font: inherit; cursor: pointer">gemini</button>
+<button type="button" style="height: 26px; padding: 0 8px; margin-left: 12px; border: 1px solid #5A5A5A; border-radius: 0; background: transparent; color: #E8E8E8; font: inherit; cursor: pointer">+ image</button>
+</div>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#FFB000"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#FFB000' };
+}
+}
+</script>
+</body>
+</html>

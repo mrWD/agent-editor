@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Workbench: search everything and run commands</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#A9B0BC}a:hover{color:#E7E9ED}
+</style>
+</helmet>
+<div style="position: relative; min-height: 100vh; display: flex; flex-direction: column; background: #0F1115; color: #E7E9ED; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 12px; background: #0B0D10; border-bottom: 1px solid #1F242D">
+<nav aria-label="Sections" style="flex: 999 1 400px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px">
+<a href="WbHome.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+Home
+<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #17130A; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center">3</span>
+</a>
+<a href="WbIssues.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Issues</a>
+<a href="WbHealth.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Health</a>
+<a href="WbAuto.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Automations</a>
+<a href="WbUsage.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Agents</a>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>
+New task
+</button>
+</nav>
+<button type="button" aria-expanded="true" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 10px; border: 1px solid #272C36; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+Search
+<kbd style="padding: 0 6px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px">⌘K</kbd>
+</button>
+<button type="button" aria-label="Settings" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+</button>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="font-size: 13px; color: #8B93A1">appose</span>
+<h1 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Add rate limiting to /login</h1>
+<div style="display: flex; gap: 2px; padding: 2px; border: 1px solid #272C36; border-radius: 8px; background: #0B0D10">
+<a href="WbPlan.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Plan</a>
+<a href="Workbench.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; background: #272C36; color: #E7E9ED; font-size: 13px; font-weight: 500; text-decoration: none">Code</a>
+<a href="WbChanges.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Changes</a>
+<a href="WbPreview.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Preview</a>
+<a href="WbMap.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Map</a>
+<a href="WbChecks.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Checks</a>
+</div>
+</div>
+
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+<section style="flex: 1 1 190px; min-width: 0; box-sizing: border-box; padding: 10px 8px; border-right: 1px solid #1F242D; display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; padding: 0 6px; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px">Files</h2>
+<div style="display: flex; flex-direction: column; font-family: 'JetBrains Mono', monospace; font-size: 13px">
+<a href="#" style="display: flex; align-items: center; min-height: 28px; padding: 0 6px; border-radius: 6px; text-decoration: none">src/</a>
+<a href="#" style="display: flex; align-items: center; min-height: 28px; padding: 0 6px 0 20px; border-radius: 6px; text-decoration: none">middleware/</a>
+<a href="#" style="display: flex; align-items: center; min-height: 28px; padding: 0 6px 0 34px; border-radius: 6px; text-decoration: none">rateLimit.ts</a>
+<a href="#" style="display: flex; align-items: center; min-height: 28px; padding: 0 6px 0 20px; border-radius: 6px; text-decoration: none">routes/</a>
+<a href="#" style="display: flex; align-items: center; min-height: 28px; padding: 0 6px; border-radius: 6px; text-decoration: none">tests/</a>
+</div>
+</section>
+<section style="flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid #1F242D">
+<a href="#" aria-current="true" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px 8px 0 0; background: #1C2028; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 13px; text-decoration: none">rateLimit.ts</a>
+</div>
+<div style="flex-grow: 1; min-height: 300px; box-sizing: border-box; padding: 10px 0; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.7">
+<div style="display: flex; gap: 10px; padding: 0 12px"><span style="flex: 0 0 22px; text-align: right; color: #8B93A1">1</span><span style="white-space: pre"><span style="color: #E38BB7">import</span> rateLimit <span style="color: #E38BB7">from</span> <span style="color: #9FD59A">'express-rate-limit'</span>;</span></div>
+<div style="display: flex; gap: 10px; padding: 0 12px"><span style="flex: 0 0 22px; text-align: right; color: #8B93A1">2</span><span style="white-space: pre"> </span></div>
+<div style="display: flex; gap: 10px; padding: 0 12px"><span style="flex: 0 0 22px; text-align: right; color: #8B93A1">3</span><span style="white-space: pre"><span style="color: #E38BB7">export const</span> loginLimiter = rateLimit({</span></div>
+</div>
+</section>
+<aside style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #1F242D; background: #0B0D10">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="display: flex; align-items: center; gap: 6px; font-weight: 500"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>Codex</span>
+</div>
+</aside>
+</div>
+
+<section aria-label="Projects and the state of each task" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 12px; background: #0B0D10; border-top: 1px solid #343A46">
+<h2 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px">Projects</h2>
+<span style="font-size: 13px; font-weight: 600">appose</span>
+<span style="font-size: 13px; font-weight: 600">lingary</span>
+<span style="font-size: 13px; font-weight: 600">it-skills</span>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">3 need you · 5 ready to merge</span>
+</section>
+
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(8,10,13,0.68)"></div>
+
+<section role="dialog" aria-label="Search everything" style="position: absolute; top: 84px; left: 50%; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); box-sizing: border-box; display: flex; flex-direction: column; border: 1px solid #343A46; border-radius: 12px; background: #161920; box-shadow: 0 24px 64px rgba(0,0,0,0.6)">
+
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #272C36">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#A9B0BC" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+<input type="search" aria-label="Search tasks, files, chats, commits and commands" value="limit" style="flex: 1 1 0; min-width: 0; height: 28px; padding: 0; border: 0; background: transparent; color: #E7E9ED; font: inherit; font-size: 16px; outline: none">
+<kbd style="padding: 0 6px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px; color: #A9B0BC">Esc</kbd>
+</div>
+
+<div role="group" aria-label="Where to look" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px 4px">
+<button type="button" aria-pressed="true" style="height: 24px; padding: 0 10px; border: 1px solid #E7E9ED; border-radius: 12px; background: #272C36; color: #E7E9ED; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">All 11</button>
+<button type="button" aria-pressed="false" style="height: 24px; padding: 0 10px; border: 1px solid #343A46; border-radius: 12px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Tasks 2</button>
+<button type="button" aria-pressed="false" style="height: 24px; padding: 0 10px; border: 1px solid #343A46; border-radius: 12px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Files 3</button>
+<button type="button" aria-pressed="false" style="height: 24px; padding: 0 10px; border: 1px solid #343A46; border-radius: 12px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Chats 3</button>
+<button type="button" aria-pressed="false" style="height: 24px; padding: 0 10px; border: 1px solid #343A46; border-radius: 12px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Commits 1</button>
+<button type="button" aria-pressed="false" style="height: 24px; padding: 0 10px; border: 1px solid #343A46; border-radius: 12px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Commands 2</button>
+</div>
+
+<div style="display: flex; flex-direction: column; padding: 0 6px 6px">
+
+<h3 style="margin: 8px 0 2px; padding: 0 10px; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 500; color: #8B93A1">Tasks</h3>
+<a href="Workbench.dc.html" aria-current="true" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; background: #272C36; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span style="flex: 0 0 14px; display: flex; justify-content: center"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#E7E9ED" stroke-width="1.5"></circle></svg></span>
+<span style="flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Add rate <mark style="background: transparent; color: {{accent}}; font-weight: 600">limit</mark>ing to /login</span>
+<span style="font-size: 12px; color: #A9B0BC">appose · your turn</span>
+<kbd style="padding: 0 6px; border: 1px solid #4A515E; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px; color: #A9B0BC">Enter</kbd>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span style="flex: 0 0 14px; display: flex; justify-content: center"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Raise the upload size <mark style="background: transparent; color: {{accent}}; font-weight: 600">limit</mark></span>
+<span style="font-size: 12px; color: #8B93A1">lingary · ready to merge</span>
+</a>
+
+<h3 style="margin: 8px 0 2px; padding: 0 10px; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 500; color: #8B93A1">Files</h3>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span style="flex: 0 0 14px; display: flex; justify-content: center"><svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="#A9B0BC" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2 1h5l3 3v9H2V1z"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0; font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">middleware/rate<mark style="background: transparent; color: {{accent}}; font-weight: 500">Limit</mark>.ts</span>
+<span style="font-size: 12px; color: #8B93A1">appose · changed in this task</span>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span style="flex: 0 0 14px; display: flex; justify-content: center"><svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="#A9B0BC" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2 1h5l3 3v9H2V1z"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0; font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">config/<mark style="background: transparent; color: {{accent}}; font-weight: 500">limit</mark>s.ts</span>
+<span style="font-size: 12px; color: #8B93A1">appose</span>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span style="flex: 0 0 14px; display: flex; justify-content: center"><svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="#A9B0BC" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2 1h5l3 3v9H2V1z"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0; font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">tests/rate<mark style="background: transparent; color: {{accent}}; font-weight: 500">Limit</mark>.test.ts</span>
+<span style="font-size: 12px; color: #8B93A1">appose</span>
+</a>
+
+<h3 style="margin: 8px 0 2px; padding: 0 10px; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 500; color: #8B93A1">Chats</h3>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span aria-label="Codex said" role="img" style="flex: 0 0 22px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>
+<span style="flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">I can add one with a higher <mark style="background: transparent; color: {{accent}}; font-weight: 600">limit</mark>, ten per minute.</span>
+<span style="font-size: 12px; color: #8B93A1">this task · 1 min ago</span>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span aria-label="You said" role="img" style="flex: 0 0 28px; border-radius: 4px; background: #E7E9ED; color: #0F1115; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">You</span>
+<span style="flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Should the <mark style="background: transparent; color: {{accent}}; font-weight: 600">limit</mark>er cover /register too?</span>
+<span style="font-size: 12px; color: #8B93A1">this task · 3 min ago</span>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span aria-label="Claude said" role="img" style="flex: 0 0 22px; border-radius: 4px; background: rgba(184,161,255,0.16); color: #B8A1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cl</span>
+<span style="flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">The upload <mark style="background: transparent; color: {{accent}}; font-weight: 600">limit</mark> is set in two places, nginx and the app.</span>
+<span style="font-size: 12px; color: #8B93A1">Raise the upload size limit · yesterday</span>
+</a>
+
+<h3 style="margin: 8px 0 2px; padding: 0 10px; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 500; color: #8B93A1">Commits</h3>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span style="flex: 0 0 auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">b7c6d5e</span>
+<span style="flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><mark style="background: transparent; color: {{accent}}; font-weight: 600">Limit</mark> login attempts to five a minute</span>
+<span style="font-size: 12px; color: #8B93A1">appose · 6 min ago</span>
+</a>
+
+<h3 style="margin: 8px 0 2px; padding: 0 10px; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 500; color: #8B93A1">Commands</h3>
+<a href="WbUsage.dc.html" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span style="flex: 0 0 14px; display: flex; justify-content: center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#A9B0BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2l5 4-5 4"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0">Open <mark style="background: transparent; color: {{accent}}; font-weight: 600">limit</mark>s and cost</span>
+<span style="font-size: 12px; color: #8B93A1">Agents</span>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span style="flex: 0 0 14px; display: flex; justify-content: center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#A9B0BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2l5 4-5 4"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0">Look for “<mark style="background: transparent; color: {{accent}}; font-weight: 600">limit</mark>” inside the code of every project</span>
+<span style="font-size: 12px; color: #8B93A1">full text</span>
+</a>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 8px 14px; border-top: 1px solid #272C36; font-size: 12px; color: #8B93A1">
+<span style="display: flex; align-items: center; gap: 4px"><kbd style="padding: 0 5px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px; color: #A9B0BC">↑</kbd><kbd style="padding: 0 5px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px; color: #A9B0BC">↓</kbd>move</span>
+<span style="display: flex; align-items: center; gap: 4px"><kbd style="padding: 0 5px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px; color: #A9B0BC">Enter</kbd>open</span>
+<span style="display: flex; align-items: center; gap: 4px"><kbd style="padding: 0 5px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px; color: #A9B0BC">⌘ Enter</kbd>open beside the code</span>
+<span style="flex-grow: 1"></span>
+<span>Start with &gt; for commands, @ for tasks, # for files</span>
+</div>
+
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F5B544"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#F5B544' };
+}
+}
+</script>
+</body>
+</html>

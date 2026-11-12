@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Workbench: changes, commit and push</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#A9B0BC}a:hover{color:#E7E9ED}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #0F1115; color: #E7E9ED; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 12px; background: #0B0D10; border-bottom: 1px solid #1F242D">
+<nav aria-label="Sections" style="flex: 999 1 400px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px">
+<a href="WbHome.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+Home
+<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #17130A; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center">3</span>
+</a>
+<a href="WbIssues.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Issues</a>
+<a href="WbHealth.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Health</a>
+<a href="WbAuto.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Automations</a>
+<a href="WbUsage.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Agents</a>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>
+New task
+</button>
+</nav>
+<a href="WbSearch.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 10px; border: 1px solid #272C36; border-radius: 8px; font-size: 13px; text-decoration: none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>Search<kbd style="padding: 0 6px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px">⌘K</kbd></a>
+<button type="button" aria-label="Settings" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+</button>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="font-size: 13px; color: #8B93A1">appose</span>
+<h1 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Add rate limiting to /login</h1>
+<div style="display: flex; gap: 2px; padding: 2px; border: 1px solid #272C36; border-radius: 8px; background: #0B0D10">
+<a href="WbPlan.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Plan</a>
+<a href="Workbench.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Code</a>
+<a href="WbChanges.dc.html" aria-current="page" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 6px; background: #272C36; color: #E7E9ED; font-size: 13px; font-weight: 500; text-decoration: none">Changes <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">2</span></a>
+<a href="WbPreview.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Preview</a>
+<a href="WbMap.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Map</a>
+<a href="WbChecks.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Checks</a>
+</div>
+<a href="WbIssues.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 12px; text-decoration: none">APP-214</a>
+<span style="flex-grow: 1"></span>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #A9B0BC"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#5BD08A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-6.5"></path></svg>Lint, types and tests passed</span>
+<span style="font-size: 13px; color: {{accent}}">1 security warning</span>
+<button type="button" style="height: 30px; padding: 0 12px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Run checks</button>
+</div>
+
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+
+<section aria-label="Git: what goes in, commit, push" style="flex: 1 1 300px; min-width: 0; box-sizing: border-box; padding: 10px; border-right: 1px solid #1F242D; display: flex; flex-direction: column; gap: 14px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">task/rate-limit</span>
+<span style="flex-grow: 1; font-size: 12px; color: #8B93A1">main has 3 new commits</span>
+<button type="button" style="height: 26px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Update from main</button>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; align-items: baseline; gap: 8px">
+<h2 style="flex-grow: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px">Not committed</h2>
+<span style="font-size: 12px; color: #8B93A1">Ticked files go into the commit</span>
+</div>
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; background: #1C2028">
+<input type="checkbox" checked aria-label="Put routes/auth.ts into the commit" style="flex: 0 0 16px; width: 16px; height: 16px; margin: 0; accent-color: {{accent}}">
+<a href="#" aria-current="true" style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 13px; text-decoration: none">
+<span style="overflow-wrap: anywhere">routes/auth.ts</span>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 12px"><span style="color: #5BD08A">+6</span><span style="color: #FF8A8A">−1</span><span aria-label="Changed by Codex" role="img" style="width: 20px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-size: 10px; line-height: 16px; text-align: center">Cx</span></span>
+</a>
+<button type="button" aria-label="Revert routes/auth.ts to the last commit" style="height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Revert</button>
+</div>
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px">
+<input type="checkbox" checked aria-label="Put middleware/rateLimit.ts into the commit" style="flex: 0 0 16px; width: 16px; height: 16px; margin: 0; accent-color: {{accent}}">
+<a href="#" style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 13px; text-decoration: none">
+<span style="overflow-wrap: anywhere">middleware/rateLimit.ts</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px"><span style="color: #5BD08A">+11</span><span aria-label="Changed by Codex" role="img" style="width: 20px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-size: 10px; line-height: 16px; text-align: center">Cx</span><span aria-label="Changed by you" role="img" style="width: 28px; border-radius: 4px; background: #E7E9ED; color: #0F1115; font-size: 10px; line-height: 16px; text-align: center">You</span><span style="font-family: Inter, system-ui, sans-serif; color: #A9B0BC">1 of 2 changes ticked</span></span>
+</a>
+<button type="button" aria-label="Revert middleware/rateLimit.ts to the last commit" style="height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Revert</button>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 8px">
+<label for="commit-msg" style="flex-grow: 1; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px">Commit message</label>
+<button type="button" style="height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Rewrite</button>
+</div>
+<textarea id="commit-msg" rows="2" style="box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #343A46; border-radius: 8px; background: #0B0D10; color: #E7E9ED; font: inherit; font-size: 13px; resize: vertical">Limit login attempts to five a minute</textarea>
+<span style="font-size: 12px; color: #8B93A1">Codex wrote this from the changes. Edit it freely.</span>
+
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 2px">
+<legend style="padding: 0; margin-bottom: 4px; font-size: 12px; color: #8B93A1">After the commit</legend>
+<label style="display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px"><input type="radio" name="after-commit" style="margin: 0; accent-color: {{accent}}">Stop there</label>
+<label style="display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px"><input type="radio" name="after-commit" checked style="margin: 0; accent-color: {{accent}}">Push</label>
+<label style="display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px"><input type="radio" name="after-commit" style="margin: 0; accent-color: {{accent}}">Push and open a merge request</label>
+</fieldset>
+
+<button type="button" style="height: 36px; padding: 0 14px; border: 0; border-radius: 8px; background: {{accent}}; color: #17130A; font: inherit; font-weight: 600; cursor: pointer">Commit 2 files and push</button>
+<label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #A9B0BC"><input type="checkbox" style="width: 14px; height: 14px; margin: 0; accent-color: {{accent}}">Add to the last commit, not a new one</label>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; align-items: center; gap: 8px">
+<h2 style="flex-grow: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px">On this branch</h2>
+<span style="font-size: 12px; color: {{accent}}">1 not pushed</span>
+<button type="button" style="height: 26px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Push</button>
+</div>
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px">
+<div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 13px">Add tests for the login limiter</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 12px; color: #8B93A1"><span style="font-family: 'JetBrains Mono', monospace">9f8e7d6</span><span>Codex, 9 min ago</span><span style="color: {{accent}}">not pushed</span></span>
+</div>
+<button type="button" aria-label="Undo the commit Add tests for the login limiter and keep its changes" style="height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Undo</button>
+</div>
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px">
+<div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 13px">Add express-rate-limit</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 12px; color: #8B93A1"><span style="font-family: 'JetBrains Mono', monospace">a1b2c3d</span><span>Codex, 20 min ago</span><span>pushed</span></span>
+</div>
+<button type="button" aria-label="Revert the commit Add express-rate-limit with a new commit" style="height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Revert</button>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding-top: 12px; border-top: 1px solid #1F242D">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px">Merge request</h2>
+<span style="flex-grow: 1; font-size: 12px; color: #8B93A1">none yet</span>
+<a href="WbMR.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 12px; font-weight: 500; text-decoration: none">Create</a>
+</div>
+
+</section>
+
+<section style="flex: 999 1 480px; min-width: 0; display: flex; flex-direction: column">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px">
+<h2 style="margin: 0; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 13px">routes/auth.ts</h2>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px"><span style="color: #5BD08A">+6</span> <span style="color: #FF8A8A">−1</span></span>
+<span style="font-size: 12px; color: #8B93A1">2 changes, both in the commit</span>
+<span style="flex-grow: 1"></span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Revert this file</button>
+</div>
+
+<div style="flex-grow: 1; padding: 0 0 10px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.7">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; padding: 4px 16px; border-top: 1px solid #1F242D; border-bottom: 1px solid #1F242D; background: #161920; font-family: Inter, system-ui, sans-serif; font-size: 12px; line-height: 1.45; color: #A9B0BC">
+<label style="display: flex; align-items: center; gap: 8px; min-height: 24px; color: #E7E9ED"><input type="checkbox" checked style="width: 14px; height: 14px; margin: 0; accent-color: {{accent}}">In the commit</label>
+<span>Lines 3 to 5, written by Codex</span>
+<span style="flex-grow: 1"></span>
+<button type="button" style="height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Revert this change</button>
+</div>
+<div style="display: flex; gap: 10px; padding: 0 16px"><span style="flex: 0 0 24px; text-align: right; color: #8B93A1">3</span><span style="flex: 0 0 10px"> </span><span style="white-space: pre-wrap; overflow-wrap: anywhere">import { login, logout } from '../services/users';</span></div>
+<div style="display: flex; gap: 10px; padding: 0 16px; background: rgba(91,208,138,0.10)"><span style="flex: 0 0 24px; text-align: right; color: #A9B0BC">4</span><span style="flex: 0 0 10px; color: #5BD08A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">import { loginLimiter } from '../middleware/rateLimit';</span></div>
+<div style="display: flex; gap: 10px; padding: 0 16px"><span style="flex: 0 0 24px; text-align: right; color: #8B93A1">5</span><span style="flex: 0 0 10px"> </span><span style="white-space: pre-wrap"> </span></div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin-top: 8px; padding: 4px 16px; border-top: 1px solid #1F242D; border-bottom: 1px solid #1F242D; background: #161920; font-family: Inter, system-ui, sans-serif; font-size: 12px; line-height: 1.45; color: #A9B0BC">
+<label style="display: flex; align-items: center; gap: 8px; min-height: 24px; color: #E7E9ED"><input type="checkbox" checked style="width: 14px; height: 14px; margin: 0; accent-color: {{accent}}">In the commit</label>
+<span>Line 12, written by Codex</span>
+<span style="flex-grow: 1"></span>
+<button type="button" style="height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Revert this change</button>
+</div>
+<div style="display: flex; gap: 10px; padding: 0 16px; background: rgba(255,122,122,0.10)"><span style="flex: 0 0 24px; text-align: right; color: #A9B0BC">12</span><span style="flex: 0 0 10px; color: #FF8A8A">−</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">router.post('/login', login);</span></div>
+<div style="display: flex; gap: 10px; padding: 0 16px; background: rgba(91,208,138,0.10)"><span style="flex: 0 0 24px; text-align: right; color: #A9B0BC">12</span><span style="flex: 0 0 10px; color: #5BD08A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">router.post('/login', loginLimiter, login);</span></div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; margin: 8px 16px 8px 50px; padding: 12px; border: 1px solid #343A46; border-radius: 8px; background: #161920; font-family: Inter, system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 6px; color: #8B93A1"><span aria-hidden="true" style="width: 30px; border-radius: 4px; background: #E7E9ED; color: #0F1115; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">You</span>on line 12 · sent to Codex</span>
+<p style="margin: 0; font-size: 14px">Should the limiter cover /register too?</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 6px; color: #8B93A1"><span aria-hidden="true" style="width: 22px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>Codex · 1 min ago</span>
+<p style="margin: 0; font-size: 14px">It could. /register has no limit today. I can add one with a higher limit, ten per minute.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 30px; padding: 0 12px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-weight: 600; cursor: pointer">Yes, add it</button>
+<button type="button" style="height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-weight: 500; cursor: pointer">No, leave it</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<label for="reply-diff" style="font-size: 12px; color: #8B93A1">Reply</label>
+<input id="reply-diff" type="text" placeholder="Write to Codex about this line" style="flex: 1 1 200px; min-width: 0; box-sizing: border-box; height: 30px; padding: 0 10px; border: 1px solid #272C36; border-radius: 6px; background: #0F1115; color: #E7E9ED; font: inherit">
+</div>
+</div>
+
+<div style="display: flex; gap: 10px; padding: 0 16px"><span style="flex: 0 0 24px; text-align: right; color: #8B93A1">13</span><span style="flex: 0 0 10px"> </span><span style="white-space: pre-wrap; overflow-wrap: anywhere">router.post('/logout', logout);</span></div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 2px 16px; padding: 6px 12px; border-top: 1px solid #1F242D; font-size: 12px; color: #8B93A1">
+<span>Click a line number to comment on it</span>
+<span style="flex-grow: 1"></span>
+<span>Comments go to the agent that wrote the line</span>
+</div>
+</section>
+
+<aside style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #1F242D; background: #0B0D10">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 5px; border: 1px solid #272C36; border-radius: 8px; background: transparent; color: #E7E9ED; font: inherit; font-weight: 500; cursor: pointer">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>
+Codex
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8B93A1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>
+</button>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 10px; border: 1px solid #272C36; border-radius: 8px; background: transparent; color: #E7E9ED; font: inherit; font-weight: 500; cursor: pointer">
+Solo
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8B93A1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>
+</button>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">Context 41%</span>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 6px; margin: 12px 12px 0; padding: 12px; border: 1px solid #272C36; border-radius: 10px; background: #161920">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Codex is waiting for your answer</h2>
+<p style="margin: 0; font-size: 13px; color: #A9B0BC">It asked about line 12 of routes/auth.ts. You can answer there or here.</p>
+</section>
+
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px; padding: 12px">
+
+<a href="Workbench.dc.html" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 8px; background: #161920; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span aria-hidden="true" style="width: 22px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>
+<span style="color: #A9B0BC">created</span>
+<span style="flex-grow: 1; font-family: 'JetBrains Mono', monospace; font-size: 12.5px">middleware/rateLimit.ts</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #5BD08A">+11</span>
+</a>
+
+<a href="#" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 8px; background: #161920; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span aria-hidden="true" style="width: 22px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>
+<span style="color: #A9B0BC">edited</span>
+<span style="flex-grow: 1; font-family: 'JetBrains Mono', monospace; font-size: 12.5px">routes/auth.ts</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px"><span style="color: #5BD08A">+6</span> <span style="color: #FF8A8A">−1</span></span>
+</a>
+
+<a href="#" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 8px; background: #161920; color: #E7E9ED; font-size: 13px; text-decoration: none">
+<span aria-hidden="true" style="width: 22px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>
+<span style="color: #A9B0BC">committed</span>
+<span style="flex-grow: 1">Add tests for the login limiter</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #8B93A1">9f8e7d6</span>
+</a>
+
+<div style="align-self: flex-end; max-width: 300px; display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: #272C36">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">routes/auth.ts, line 12</span>
+<span>Should the limiter cover /register too?</span>
+</div>
+
+<article style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>
+<span style="font-weight: 600">Codex</span>
+<span style="color: #8B93A1">1 min ago</span>
+</div>
+<p style="margin: 0">It could. /register has no limit today. I can add one with a higher limit, ten per minute.</p>
+</article>
+
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-top: 1px solid #1F242D">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+<label for="msg-changes" style="margin-right: 2px; font-size: 12px; color: #8B93A1">Message Codex about</label>
+<span style="padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 22px">auth.ts</span>
+<span style="padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 22px">line 12</span>
+</div>
+<textarea id="msg-changes" rows="2" placeholder="Answer, or say what to do next" style="box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #272C36; border-radius: 8px; background: #0F1115; color: #E7E9ED; font: inherit; resize: vertical"></textarea>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<button type="button" aria-label="Attach image" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid #272C36; border-radius: 8px; background: transparent; color: #A9B0BC; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2"></rect><path d="M2 11l3.5-3.5L8 10l2.5-2.5L14 11"></path></svg>
+</button>
+<span style="flex-grow: 1"></span>
+<button type="button" style="height: 32px; padding: 0 14px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font: inherit; font-weight: 600; cursor: pointer">Send</button>
+</div>
+</section>
+
+</aside>
+</div>
+<section aria-label="Projects and the state of each task" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 12px; background: #0B0D10; border-top: 1px solid #343A46">
+<h2 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px">Projects</h2>
+<a href="#" aria-current="true" aria-label="appose: 1 needs you, 2 ready to merge, 9 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">appose
+<svg width="172" height="12" viewBox="0 0 172 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><circle cx="26" cy="6" r="4.5" fill="none" stroke="#E7E9ED" stroke-width="1.5"></circle><circle cx="46" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="46" cy="6" r="1.8" fill="#A9B0BC"></circle><path d="M62.5 6.5l2.5 2.5 4.5-5M82.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="102" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect><circle cx="126" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="146" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="166" cy="6" r="2.5" fill="#8B93A1"></circle></svg>
+</a>
+<a href="#" aria-label="lingary: 1 needs you, 2 ready to merge, 6 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">lingary
+<svg width="112" height="12" viewBox="0 0 112 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><path d="M22.5 6.5l2.5 2.5 4.5-5M42.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="62" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect><circle cx="86" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="106" cy="6" r="2.5" fill="#8B93A1"></circle></svg>
+</a>
+<a href="#" aria-label="it-skills: 1 needs you, 1 ready to merge, 4 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">it-skills
+<svg width="72" height="12" viewBox="0 0 72 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><circle cx="26" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="26" cy="6" r="1.8" fill="#A9B0BC"></circle><path d="M42.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="62" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect></svg>
+</a>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">3 need you · 5 ready to merge</span>
+<a href="ProjDockOpen.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 12px; font-weight: 500; text-decoration: none">Expand
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4-4 4 4"></path></svg>
+</a>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F5B544"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#F5B544' };
+}
+}
+</script>
+</body>
+</html>

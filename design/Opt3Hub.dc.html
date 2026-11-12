@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option 3: the home tab as a hub</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#A9B0BC}a:hover{color:#E7E9ED}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #0F1115; color: #E7E9ED; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 12px; background: #0B0D10; border-bottom: 1px solid #1F242D">
+<button type="button" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 4px; border: 0; border-radius: 8px; background: transparent; color: #E7E9ED; font: inherit; font-weight: 600; cursor: pointer">
+<span aria-hidden="true" style="width: 24px; height: 24px; border-radius: 6px; background: #272C36; font-family: 'Space Grotesk', sans-serif; font-size: 13px; line-height: 24px; text-align: center">S</span>
+shop-api
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8B93A1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>
+</button>
+<nav aria-label="Open tasks" style="flex: 999 1 400px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px">
+<a href="#" aria-current="page" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 8px; background: #1C2028; color: #E7E9ED; font-size: 13px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+Inbox
+<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #17130A; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center">3</span>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 8px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>
+Add rate limiting to /login
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 8px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(86,212,196,0.16); color: #56D4C4; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Ge</span>
+Migrate date utils to Temporal
+<span style="font-size: 12px; color: {{accent}}">asks you</span>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 8px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: #272C36; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">×3</span>
+Fix flaky checkout test
+<span style="font-size: 12px; color: {{accent}}">ready</span>
+</a>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>
+New task
+</button>
+</nav>
+<button type="button" aria-label="Settings" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+</button>
+</header>
+
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 22px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 24px">
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 28px; line-height: 1.2">Three things need you</h1>
+<p style="margin: 0; color: #A9B0BC">Two more tasks are running and need nothing yet.</p>
+</div>
+<p style="margin: 0; font-size: 13px; color: #8B93A1">Spent today <span style="font-family: 'JetBrains Mono', monospace; color: #E7E9ED">$4.82</span></p>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid #272C36; border-radius: 12px; background: #161920">
+<label for="task-opt3" style="font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">New task</label>
+<textarea id="task-opt3" rows="2" placeholder="Describe what the agents should do, or press Start on an issue" style="box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #272C36; border-radius: 8px; background: #0F1115; color: #E7E9ED; font: inherit; resize: vertical"></textarea>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<div style="display: flex; gap: 2px; padding: 2px; border: 1px solid #272C36; border-radius: 8px; background: #0F1115">
+<button type="button" aria-pressed="true" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: #272C36; color: #E7E9ED; font: inherit; font-weight: 500; cursor: pointer">Solo</button>
+<button type="button" aria-pressed="false" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-weight: 500; cursor: pointer">Race</button>
+<button type="button" aria-pressed="false" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-weight: 500; cursor: pointer">Team</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 6px; border: 1px solid #272C36; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; cursor: pointer"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(184,161,255,0.16); color: #B8A1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cl</span>Claude</button>
+<button type="button" aria-pressed="true" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 6px; border: 1px solid #6FB1FF; border-radius: 8px; background: rgba(111,177,255,0.10); color: #E7E9ED; font: inherit; cursor: pointer"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>Codex</button>
+<button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 6px; border: 1px solid #272C36; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; cursor: pointer"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(86,212,196,0.16); color: #56D4C4; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Ge</span>Gemini</button>
+</div>
+<span style="flex-grow: 1"></span>
+<button type="button" style="height: 34px; padding: 0 16px; border: 0; border-radius: 8px; background: {{accent}}; color: #17130A; font: inherit; font-weight: 600; cursor: pointer">Start</button>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 18px">Needs you</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr)); gap: 14px">
+
+<article style="display: flex; flex-direction: column; overflow: hidden; border: 1px solid #272C36; border-radius: 12px; background: #161920">
+<div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(86,212,196,0.10)">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(86,212,196,0.16); color: #56D4C4; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Ge</span>
+<span style="flex-grow: 1; font-weight: 600; color: #56D4C4">Gemini has a question</span>
+<span style="font-size: 12px; color: #A9B0BC">5 min</span>
+</div>
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px; padding: 14px">
+<a href="#" style="color: #E7E9ED; font-weight: 600; font-size: 15px; text-decoration: none">Migrate date utils to Temporal</a>
+<p style="margin: 0">legacy/reports.ts still imports moment through a plugin. Send it back to Codex or leave it for a separate task?</p>
+<span style="flex-grow: 1"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 34px; padding: 0 14px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font: inherit; font-weight: 500; cursor: pointer">Send back to Codex</button>
+<button type="button" style="height: 34px; padding: 0 14px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font: inherit; font-weight: 500; cursor: pointer">Leave for later</button>
+</div>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; overflow: hidden; border: 1px solid #272C36; border-radius: 12px; background: #161920">
+<div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #1C2028">
+<span role="img" aria-label="Claude, Codex, Gemini" style="display: flex; gap: 4px">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(184,161,255,0.16); color: #B8A1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cl</span>
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(86,212,196,0.16); color: #56D4C4; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Ge</span>
+</span>
+<span style="flex-grow: 1; font-weight: 600">Race is ready to compare</span>
+<span style="font-size: 12px; color: #A9B0BC">12 min</span>
+</div>
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px; padding: 14px">
+<a href="#" style="color: #E7E9ED; font-weight: 600; font-size: 15px; text-decoration: none">Fix flaky checkout test</a>
+<p style="margin: 0; color: #A9B0BC">Three results, two pass all checks.</p>
+<span style="flex-grow: 1"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<a href="#" style="display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 8px; background: {{accent}}; color: #17130A; font-weight: 600; text-decoration: none">Compare results</a>
+</div>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; overflow: hidden; border: 1px solid #272C36; border-radius: 12px; background: #161920">
+<div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(184,161,255,0.10)">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(184,161,255,0.16); color: #B8A1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cl</span>
+<span style="flex-grow: 1; font-weight: 600; color: #B8A1FF">Claude opened a merge request</span>
+<span style="font-size: 12px; color: #A9B0BC">20 min</span>
+</div>
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px; padding: 14px">
+<a href="#" style="color: #E7E9ED; font-weight: 600; font-size: 15px; text-decoration: none">Add CSV export to orders</a>
+<p style="margin: 0; color: #A9B0BC">Merge request <span style="font-family: 'JetBrains Mono', monospace; color: #E7E9ED">!48</span> waits for your review. Checks passed with one warning.</p>
+<span style="flex-grow: 1"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<a href="#" style="display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 8px; background: {{accent}}; color: #17130A; font-weight: 600; text-decoration: none">Review changes</a>
+</div>
+</div>
+</article>
+
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 18px">In progress</h2>
+<a href="#" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; border: 1px solid #272C36; border-radius: 10px; color: #E7E9ED; text-decoration: none">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>
+<span style="flex: 1 1 240px; font-weight: 500">Add rate limiting to /login</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8B93A1">SHOP-142</span>
+<span style="font-size: 13px; color: #A9B0BC">Your turn, Codex is paused</span>
+</a>
+<a href="#" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; border: 1px solid #272C36; border-radius: 10px; color: #E7E9ED; text-decoration: none">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(184,161,255,0.16); color: #B8A1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cl</span>
+<span style="flex: 1 1 240px; font-weight: 500">Update API docs for v2 endpoints</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8B93A1">SHOP-149</span>
+<span style="font-size: 13px; color: #A9B0BC">Reading docs/api/orders.md</span>
+</a>
+</section>
+
+</main>
+
+<aside style="flex: 1 1 420px; min-width: 0; box-sizing: border-box; padding: 20px 16px 32px; border-left: 1px solid #1F242D; background: #0B0D10; display: flex; flex-direction: column; gap: 14px">
+
+<section style="display: flex; flex-direction: column; padding: 12px 14px 6px; border: 1px solid #272C36; border-radius: 12px; background: #161920">
+<div style="display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px">
+<h2 style="flex-grow: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Issues</h2>
+<span style="font-size: 12px; color: #8B93A1">Linear · Sprint 24</span>
+<a href="#" style="font-size: 13px">All</a>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 70px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">SHOP-155</span>
+<a href="#" style="flex: 1 1 160px; color: #E7E9ED; font-weight: 500; text-decoration: none">Password reset emails arrive late</a>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Start</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 70px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">SHOP-158</span>
+<a href="#" style="flex: 1 1 160px; color: #E7E9ED; font-weight: 500; text-decoration: none">Add pagination to /orders</a>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Start</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 70px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">SHOP-142</span>
+<a href="#" style="flex: 1 1 160px; color: #E7E9ED; font-weight: 500; text-decoration: none">Login allows unlimited attempts</a>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #A9B0BC"><span aria-hidden="true" style="width: 20px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>in progress</span>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; padding: 12px 14px 6px; border: 1px solid #272C36; border-radius: 12px; background: #161920">
+<div style="display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px">
+<h2 style="flex-grow: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Branches and merge requests</h2>
+<a href="#" style="font-size: 13px">All</a>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 34px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">!48</span>
+<span style="flex: 1 1 180px; display: flex; flex-direction: column"><a href="#" style="color: #E7E9ED; font-weight: 500; text-decoration: none">Add CSV export to orders</a><span style="font-size: 12px; color: #A9B0BC">Checks passed, one warning. Waits for you.</span></span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Review</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 34px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">new</span>
+<span style="flex: 1 1 180px; display: flex; flex-direction: column"><a href="#" style="color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 13px; text-decoration: none">task/rate-limit</a><span style="font-size: 12px; color: #A9B0BC">Two files changed, no merge request yet.</span></span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Create</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 34px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">!47</span>
+<span style="flex: 1 1 180px; display: flex; flex-direction: column"><a href="#" style="color: #E7E9ED; font-weight: 500; text-decoration: none">Fix rounding of order totals</a><span style="font-size: 12px; color: #A9B0BC">Merged yesterday.</span></span>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; padding: 12px 14px 6px; border: 1px solid #272C36; border-radius: 12px; background: #161920">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding-bottom: 8px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Project health</h2>
+<span style="flex-grow: 1; font-size: 12px; color: #8B93A1">What the project is missing. Fix starts a task.</span>
+<a href="#" style="font-size: 13px">All 4</a>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 70px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: {{accent}}">Security</span>
+<span style="flex: 1 1 160px">Two dependencies have known vulnerabilities</span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Fix</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 70px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #A9B0BC">Tests</span>
+<span style="flex: 1 1 160px">No tests cover services/payments.ts</span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Fix</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span style="flex: 0 0 70px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #A9B0BC">Pipeline</span>
+<span style="flex: 1 1 160px">Lint does not run before merging</span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Fix</button>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; padding: 12px 14px 6px; border: 1px solid #272C36; border-radius: 12px; background: #161920">
+<div style="display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px">
+<h2 style="flex-grow: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Automations</h2>
+<a href="#" style="font-size: 13px">New</a>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(184,161,255,0.16); color: #B8A1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cl</span>
+<span style="flex: 1 1 200px; display: flex; flex-direction: column"><span style="font-weight: 500">Update dependencies and open a merge request</span><span style="font-size: 12px; color: #A9B0BC">Every night. Ran six hours ago.</span></span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>
+<span style="flex: 1 1 200px; display: flex; flex-direction: column"><span style="font-weight: 500">Reproduce the bug and write a failing test</span><span style="font-size: 12px; color: #A9B0BC">On each new issue labelled bug.</span></span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #272C36">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(86,212,196,0.16); color: #56D4C4; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Ge</span>
+<span style="flex: 1 1 200px; display: flex; flex-direction: column"><span style="font-weight: 500">Review the change for security problems</span><span style="font-size: 12px; color: #A9B0BC">Before each merge request.</span></span>
+</div>
+</section>
+
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F5B544"},"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#F5B544' };
+}
+}
+</script>
+</body>
+</html>

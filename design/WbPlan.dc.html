@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Workbench: a flowchart the task is built from</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#A9B0BC}a:hover{color:#E7E9ED}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #0F1115; color: #E7E9ED; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 12px; background: #0B0D10; border-bottom: 1px solid #1F242D">
+<nav aria-label="Sections" style="flex: 999 1 400px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px">
+<a href="WbHome.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+Home
+<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #17130A; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center">3</span>
+</a>
+<a href="WbIssues.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Issues</a>
+<a href="WbHealth.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Health</a>
+<a href="WbAuto.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Automations</a>
+<a href="WbUsage.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Agents</a>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>
+New task
+</button>
+</nav>
+<a href="WbSearch.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 10px; border: 1px solid #272C36; border-radius: 8px; font-size: 13px; text-decoration: none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>Search<kbd style="padding: 0 6px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px">⌘K</kbd></a>
+<button type="button" aria-label="Settings" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+</button>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="font-size: 13px; color: #8B93A1">appose</span>
+<h1 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Add rate limiting to /login</h1>
+<div style="display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid #272C36; border-radius: 8px; background: #0B0D10">
+<a href="#" aria-current="page" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 6px; background: #272C36; color: #E7E9ED; font-size: 13px; font-weight: 500; text-decoration: none">Plan <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">2 of 5</span></a>
+<a href="Workbench.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Code</a>
+<a href="WbChanges.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Changes <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8B93A1">2</span></a>
+<a href="WbPreview.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Preview</a>
+<a href="WbMap.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Map</a>
+<a href="WbChecks.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Checks</a>
+</div>
+<a href="WbIssues.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 12px; text-decoration: none">APP-214</a>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 13px; color: {{accent}}">1 block waits for your yes</span>
+</div>
+
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+
+<section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<div role="group" aria-label="Add to the plan" style="display: flex; flex-wrap: wrap; gap: 4px">
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="4" width="12" height="8" rx="2"></rect></svg>Step</button>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2l6 6-6 6-6-6 6-6z"></path></svg>Question</button>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h6"></path></svg>Note</button>
+</div>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Draft from the issue</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Draw from the code</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Tidy up</button>
+<span style="flex-grow: 1"></span>
+<label style="display: flex; align-items: center; gap: 8px; font-size: 13px"><input type="checkbox" checked style="width: 14px; height: 14px; margin: 0; accent-color: {{accent}}">Agents build only what is in the plan</label>
+<button type="button" style="height: 30px; padding: 0 12px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Build the next block</button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 6px 12px; border-bottom: 1px solid #1F242D; font-size: 12px; color: #A9B0BC">
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 14px; box-sizing: border-box; border: 1px solid #5BD08A; border-radius: 4px; background: rgba(91,208,138,0.12)"></span>Built</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 14px; box-sizing: border-box; border: 1px solid #A9B0BC; border-radius: 4px; background: #1C2028"></span>Being built</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 14px; box-sizing: border-box; border: 1px dashed #8B93A1; border-radius: 4px"></span>Planned</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 14px; box-sizing: border-box; border: 1px dashed {{accent}}; border-radius: 4px"></span>Proposed by an agent</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 14px; box-sizing: border-box; border: 1px solid #343A46; border-radius: 4px; background: #161920"></span>Was in the code before</span>
+</div>
+
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px 20px; padding: 16px">
+
+<div style="flex: 999 1 540px; min-width: 0; overflow-x: auto; border: 1px solid #1F242D; border-radius: 10px; background-color: #0B0D10; background-image: radial-gradient(#1F242D 1px, transparent 1px); background-size: 16px 16px">
+<div style="position: relative; width: 540px; height: 412px; margin: 12px; font-size: 13px">
+
+<svg width="8" height="39" viewBox="0 0 8 39" preserveAspectRatio="none" style="position: absolute; left: 146px; top: 56px; width: 8px; height: 39px; overflow: visible; fill: none; stroke: #8B93A1; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-1" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#8B93A1" stroke="none" style="stroke: none; fill: #8B93A1; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 35" marker-end="url(#dc-arrow-head-filled-1)"></path></svg>
+<svg width="59" height="8" viewBox="0 0 59 8" preserveAspectRatio="none" style="position: absolute; left: 270px; top: 136px; width: 59px; height: 8px; overflow: visible; fill: none; stroke: #8B93A1; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-2" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#8B93A1" stroke="none" style="stroke: none; fill: #8B93A1; fill: context-stroke"/></marker></defs><path d="M 0 4 L 55 4" marker-end="url(#dc-arrow-head-filled-2)"></path></svg>
+<svg width="8" height="39" viewBox="0 0 8 39" preserveAspectRatio="none" style="position: absolute; left: 416px; top: 162px; width: 8px; height: 39px; overflow: visible; fill: none; stroke: #8B93A1; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-3" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#8B93A1" stroke="none" style="stroke: none; fill: #8B93A1; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 35" marker-end="url(#dc-arrow-head-filled-3)"></path></svg>
+<svg width="8" height="39" viewBox="0 0 8 39" preserveAspectRatio="none" style="position: absolute; left: 416px; top: 262px; width: 8px; height: 39px; overflow: visible; fill: none; stroke: #8B93A1; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-4" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#8B93A1" stroke="none" style="stroke: none; fill: #8B93A1; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 35" marker-end="url(#dc-arrow-head-filled-4)"></path></svg>
+<svg width="8" height="47" viewBox="0 0 8 47" preserveAspectRatio="none" style="position: absolute; left: 146px; top: 184px; width: 8px; height: 47px; overflow: visible; fill: none; stroke: #8B93A1; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-5" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#8B93A1" stroke="none" style="stroke: none; fill: #8B93A1; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 43" marker-end="url(#dc-arrow-head-filled-5)"></path></svg>
+<svg width="8" height="39" viewBox="0 0 8 39" preserveAspectRatio="none" style="position: absolute; left: 146px; top: 276px; width: 8px; height: 39px; overflow: visible; fill: none; color: {{accent}}; stroke: currentColor; stroke-width: 2; stroke-dasharray: 4 4; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-6" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" stroke="none" style="stroke: none; fill: currentColor"/></marker></defs><path d="M 4 0 L 4 35" marker-end="url(#dc-arrow-head-filled-6)"></path></svg>
+
+<button type="button" style="position: absolute; left: 40px; top: 12px; width: 220px; height: 44px; box-sizing: border-box; padding: 4px 8px; display: flex; align-items: center; justify-content: center; text-align: center; background: #161920; border: 1px solid #343A46; border-radius: 8px; color: #E7E9ED; font: inherit; cursor: pointer">Request to POST /login</button>
+
+<button type="button" aria-label="Question: Over the limit? Built" style="position: absolute; left: 30px; top: 96px; width: 240px; height: 88px; box-sizing: border-box; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; border: 0; background: #1F3A2C; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); color: #E7E9ED; font: inherit; font-weight: 600; cursor: pointer"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>Over the limit?</button>
+
+<button type="button" aria-pressed="true" aria-label="Step: Respond 429. Built. Selected" style="position: absolute; left: 330px; top: 118px; width: 180px; height: 44px; box-sizing: border-box; padding: 4px 8px; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; background: rgba(91,208,138,0.12); border: 1px solid #5BD08A; border-radius: 8px; outline: 2px solid #E7E9ED; outline-offset: 3px; color: #E7E9ED; font: inherit; font-weight: 600; cursor: pointer"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>Respond 429</button>
+
+<button type="button" style="position: absolute; left: 330px; top: 202px; width: 180px; height: 60px; box-sizing: border-box; padding: 4px 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; background: #1C2028; border: 1px solid #A9B0BC; border-radius: 8px; color: #E7E9ED; font: inherit; cursor: pointer"><span>Tell the form how long to wait</span><span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #A9B0BC"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="6" cy="6" r="1.8" fill="#A9B0BC"></circle></svg>Codex is building</span></button>
+
+<button type="button" style="position: absolute; left: 330px; top: 302px; width: 180px; height: 60px; box-sizing: border-box; padding: 4px 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; background: transparent; border: 1px dashed #8B93A1; border-radius: 8px; color: #E7E9ED; font: inherit; cursor: pointer"><span>Log the blocked attempt</span><span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #A9B0BC"><span aria-hidden="true" style="width: 28px; border-radius: 4px; background: #E7E9ED; color: #0F1115; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">You</span>planned, yours</span></button>
+
+<button type="button" aria-label="Add a block after Log the blocked attempt" style="position: absolute; left: 408px; top: 372px; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center; border: 1px dashed #4A515E; border-radius: 50%; background: #0B0D10; color: #A9B0BC; cursor: pointer"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg></button>
+
+<button type="button" style="position: absolute; left: 40px; top: 232px; width: 220px; height: 44px; box-sizing: border-box; padding: 4px 8px; display: flex; align-items: center; justify-content: center; text-align: center; background: #161920; border: 1px solid #343A46; border-radius: 8px; color: #E7E9ED; font: inherit; cursor: pointer">Check the password</button>
+
+<button type="button" style="position: absolute; left: 40px; top: 316px; width: 220px; height: 64px; box-sizing: border-box; padding: 4px 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; background: transparent; border: 1px dashed {{accent}}; border-radius: 8px; color: #E7E9ED; font: inherit; cursor: pointer"><span>Reset the count after a correct password</span><span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: {{accent}}"><span aria-hidden="true" style="width: 20px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>proposed, waits for you</span></button>
+
+<div style="position: absolute; left: 284px; top: 114px; width: 32px; text-align: center; font-size: 13px; line-height: 16px; color: #A9B0BC">yes</div>
+<div style="position: absolute; left: 160px; top: 192px; width: 24px; text-align: center; font-size: 13px; line-height: 16px; color: #A9B0BC">no</div>
+</div>
+</div>
+
+<section aria-label="The selected block" style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid #272C36; border-radius: 10px; background: #161920">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px">
+<h2 style="flex-grow: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Respond 429</h2>
+<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #A9B0BC"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>Built</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<label for="block-text" style="font-size: 12px; color: #8B93A1">What this block should do</label>
+<textarea id="block-text" rows="3" style="box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #343A46; border-radius: 8px; background: #0B0D10; color: #E7E9ED; font: inherit; font-size: 13px; resize: vertical">Answer 429 and say in the Retry-After header how long to wait. Never reach the password check.</textarea>
+</div>
+
+<dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px">
+<dt style="color: #8B93A1">Built in</dt>
+<dd style="margin: 0"><a href="Workbench.dc.html" style="color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 12px; overflow-wrap: anywhere">middleware/rateLimit.ts, lines 4 to 9</a></dd>
+<dt style="color: #8B93A1">Proved by</dt>
+<dd style="margin: 0"><a href="WbChecks.dc.html" style="color: #E7E9ED">The test “answers 429 on the sixth attempt”</a></dd>
+<dt style="color: #8B93A1">Built by</dt>
+<dd style="margin: 0; display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 20px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>Codex, 14 min ago</dd>
+</dl>
+
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<button type="button" style="height: 30px; padding: 0 12px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Build it again</button>
+<button type="button" style="height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">I will do it myself</button>
+<button type="button" style="height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Remove</button>
+</div>
+<span style="font-size: 12px; color: #8B93A1">Change the text and the block goes back to Planned. The agent gets only what changed.</span>
+</section>
+
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 2px 16px; padding: 6px 12px; border-top: 1px solid #1F242D; font-size: 12px; color: #8B93A1">
+<span>Draw it yourself or let an agent draft it. Drag from a block to connect it, double-click to rename.</span>
+<span style="flex-grow: 1"></span>
+<span>2 of 5 built · 1 being built · 1 planned · 1 proposed</span>
+</div>
+</section>
+
+<aside style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #1F242D; background: #0B0D10">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="display: flex; align-items: center; gap: 6px; font-weight: 500"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>Codex</span>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">Solo · Context 42%</span>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 8px; margin: 12px 12px 0; padding: 12px; border: 1px solid {{accent}}; border-radius: 10px; background: #161920">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Codex wants to add one block</h2>
+<p style="margin: 0; font-size: 13px; color: #A9B0BC">“Reset the count after a correct password.” Without it, someone who mistyped four times stays one slip away from a lock for the rest of the minute.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 34px; padding: 0 14px; border: 0; border-radius: 8px; background: {{accent}}; color: #17130A; font: inherit; font-weight: 600; cursor: pointer">Add it to the plan</button>
+<button type="button" style="height: 34px; padding: 0 12px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font: inherit; font-weight: 500; cursor: pointer">Not needed</button>
+</div>
+<span style="font-size: 12px; color: #8B93A1">It is not in the plan, so Codex will not build it until you say yes.</span>
+</section>
+
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px; padding: 12px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 8px; background: #161920; font-size: 13px">
+<span aria-hidden="true" style="width: 22px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>
+<span style="color: #A9B0BC">built the block</span>
+<span style="flex-grow: 1">Respond 429</span>
+<span style="font-size: 12px; color: #8B93A1">14 min ago</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 8px; background: #161920; font-size: 13px">
+<span aria-hidden="true" style="width: 30px; border-radius: 4px; background: #E7E9ED; color: #0F1115; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">You</span>
+<span style="color: #A9B0BC">added the block</span>
+<span style="flex-grow: 1">Log the blocked attempt</span>
+<span style="font-size: 12px; color: #8B93A1">6 min ago</span>
+</div>
+
+<article style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>
+<span style="font-weight: 600">Codex</span>
+<span style="color: #8B93A1">just now</span>
+</div>
+<p style="margin: 0">I am on “Tell the form how long to wait”. You took “Log the blocked attempt” for yourself, so I leave it alone.</p>
+</article>
+
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-top: 1px solid #1F242D">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+<label for="msg-plan" style="margin-right: 2px; font-size: 12px; color: #8B93A1">Message Codex about</label>
+<span style="padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 22px">plan</span>
+<span style="padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 22px">block: Respond 429</span>
+</div>
+<textarea id="msg-plan" rows="2" placeholder="Say what to change in the plan or in this block" style="box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #272C36; border-radius: 8px; background: #0F1115; color: #E7E9ED; font: inherit; resize: vertical"></textarea>
+</section>
+
+</aside>
+</div>
+<section aria-label="Projects and the state of each task" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 12px; background: #0B0D10; border-top: 1px solid #343A46">
+<h2 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px">Projects</h2>
+<a href="#" aria-current="true" aria-label="appose: 1 needs you, 2 ready to merge, 9 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">appose
+<svg width="172" height="12" viewBox="0 0 172 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><circle cx="26" cy="6" r="4.5" fill="none" stroke="#E7E9ED" stroke-width="1.5"></circle><circle cx="46" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="46" cy="6" r="1.8" fill="#A9B0BC"></circle><path d="M62.5 6.5l2.5 2.5 4.5-5M82.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="102" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect><circle cx="126" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="146" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="166" cy="6" r="2.5" fill="#8B93A1"></circle></svg>
+</a>
+<a href="#" aria-label="lingary: 1 needs you, 2 ready to merge, 6 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">lingary
+<svg width="112" height="12" viewBox="0 0 112 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><path d="M22.5 6.5l2.5 2.5 4.5-5M42.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="62" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect><circle cx="86" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="106" cy="6" r="2.5" fill="#8B93A1"></circle></svg>
+</a>
+<a href="#" aria-label="it-skills: 1 needs you, 1 ready to merge, 4 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">it-skills
+<svg width="72" height="12" viewBox="0 0 72 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><circle cx="26" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="26" cy="6" r="1.8" fill="#A9B0BC"></circle><path d="M42.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="62" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect></svg>
+</a>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">3 need you · 5 ready to merge</span>
+<a href="ProjDockOpen.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 12px; font-weight: 500; text-decoration: none">Expand
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4-4 4 4"></path></svg>
+</a>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F5B544"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#F5B544' };
+}
+}
+</script>
+</body>
+</html>

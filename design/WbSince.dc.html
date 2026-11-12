@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Workbench: what changed since your last visit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#A9B0BC}a:hover{color:#E7E9ED}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #0F1115; color: #E7E9ED; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 12px; background: #0B0D10; border-bottom: 1px solid #1F242D">
+<nav aria-label="Sections" style="flex: 999 1 400px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px">
+<a href="WbHome.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+Home
+<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #17130A; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center">3</span>
+</a>
+<a href="WbIssues.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Issues</a>
+<a href="WbHealth.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Health</a>
+<a href="WbAuto.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Automations</a>
+<a href="WbUsage.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Agents</a>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>
+New task
+</button>
+</nav>
+<a href="WbSearch.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 10px; border: 1px solid #272C36; border-radius: 8px; font-size: 13px; text-decoration: none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>Search<kbd style="padding: 0 6px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px">⌘K</kbd></a>
+<button type="button" aria-label="Settings" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+</button>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="font-size: 13px; color: #8B93A1">appose</span>
+<h1 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Add rate limiting to /login</h1>
+<div style="display: flex; gap: 2px; padding: 2px; border: 1px solid #272C36; border-radius: 8px; background: #0B0D10">
+<a href="WbPlan.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Plan</a>
+<a href="Workbench.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Code</a>
+<a href="WbChanges.dc.html" aria-current="page" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 6px; background: #272C36; color: #E7E9ED; font-size: 13px; font-weight: 500; text-decoration: none">Changes <span style="font-size: 12px; font-weight: 400; color: {{accent}}">3 new</span></a>
+<a href="WbPreview.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Preview</a>
+<a href="WbMap.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Map</a>
+<a href="WbChecks.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Checks</a>
+</div>
+<a href="WbIssues.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 12px; text-decoration: none">APP-214</a>
+<span style="flex-grow: 1"></span>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #A9B0BC"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#5BD08A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-6.5"></path></svg>Pipeline passed, review approved</span>
+</div>
+
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+
+<section aria-label="What happened while you were away" style="flex: 1 1 300px; min-width: 0; box-sizing: border-box; padding: 10px; border-right: 1px solid #1F242D; display: flex; flex-direction: column; gap: 14px">
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 12px; color: #8B93A1">Show changes</span>
+<div role="group" aria-label="Which changes to show" style="display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid #272C36; border-radius: 8px; background: #0B0D10">
+<button type="button" aria-pressed="true" style="flex: 1 1 auto; height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: #272C36; color: #E7E9ED; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Since last visit</button>
+<button type="button" aria-pressed="false" style="flex: 1 1 auto; height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Not committed</button>
+<button type="button" aria-pressed="false" style="flex: 1 1 auto; height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Branch</button>
+</div>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 2px">
+<div style="display: flex; align-items: baseline; gap: 8px; padding-bottom: 2px">
+<h2 style="flex-grow: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px">While you were away</h2>
+<span style="font-size: 12px; color: #8B93A1">38 min</span>
+</div>
+
+<div style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; font-size: 13px">
+<span aria-hidden="true" style="flex: 0 0 22px; margin-top: 2px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>
+<span style="flex: 1 1 0; min-width: 0">Codex changed 3 files <span style="color: #8B93A1">31 min ago</span></span>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; font-size: 13px">
+<span aria-hidden="true" style="flex: 0 0 22px; margin-top: 2px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>
+<span style="flex: 1 1 0; min-width: 0">Codex committed and pushed “Move the limit into config” <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8B93A1">c4d3e2f</span></span>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; font-size: 13px">
+<span style="flex: 0 0 22px; display: flex; justify-content: center; margin-top: 4px"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0">Pipeline passed, e2e 20 of 20 <span style="color: #8B93A1">12 min ago</span></span>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; font-size: 13px">
+<span style="flex: 0 0 22px; display: flex; justify-content: center; margin-top: 4px"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0">Review approved <span style="color: #8B93A1">9 min ago</span></span>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; font-size: 13px">
+<span style="flex: 0 0 22px; display: flex; justify-content: center; margin-top: 4px; color: #8B93A1"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="2.5" fill="currentColor"></circle></svg></span>
+<span style="flex: 1 1 0; min-width: 0">main got 2 new commits <span style="color: #8B93A1">no conflicts with this task</span></span>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 2px">
+<h2 style="margin: 0 0 2px; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px">Files changed since then</h2>
+<a href="#" aria-current="true" style="display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 6px; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 13px; text-decoration: none"><span style="flex: 1 1 0; min-width: 0; overflow-wrap: anywhere">routes/auth.ts</span><span style="font-size: 12px"><span style="color: #5BD08A">+2</span> <span style="color: #FF8A8A">−2</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 6px; border-radius: 6px; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 13px; text-decoration: none"><span style="flex: 1 1 0; min-width: 0; overflow-wrap: anywhere">middleware/rateLimit.ts</span><span style="font-size: 12px"><span style="color: #5BD08A">+6</span> <span style="color: #FF8A8A">−1</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 6px; border-radius: 6px; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 13px; text-decoration: none"><span style="flex: 1 1 0; min-width: 0; overflow-wrap: anywhere">config/limits.ts</span><span style="font-family: Inter, system-ui, sans-serif; font-size: 12px; color: #A9B0BC">new</span><span style="font-size: 12px; color: #5BD08A">+4</span></a>
+</section>
+
+<span style="flex-grow: 1"></span>
+
+<div style="display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid #1F242D">
+<button type="button" style="height: 34px; padding: 0 14px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font: inherit; font-weight: 600; cursor: pointer">Mark all as seen</button>
+<span style="font-size: 12px; color: #8B93A1">The next visit starts counting from here. Opening a file also marks it as seen.</span>
+</div>
+
+</section>
+
+<section style="flex: 999 1 480px; min-width: 0; display: flex; flex-direction: column">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Since you were last here</h2>
+<span style="font-size: 12px; color: #8B93A1">38 minutes ago, when e2e was at 14 of 20</span>
+<span style="flex-grow: 1"></span>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 10px; border: 1px solid #272C36; border-radius: 6px; background: transparent; color: #E7E9ED; font: inherit; font-size: 13px; cursor: pointer"><span style="color: #A9B0BC">Compare with</span>my last visit
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8B93A1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>
+</button>
+</div>
+
+<div style="flex-grow: 1; padding: 0 0 10px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.7">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; padding: 6px 16px; font-size: 13px">
+<span style="font-weight: 500">routes/auth.ts</span>
+<span style="font-size: 12px"><span style="color: #5BD08A">+2</span> <span style="color: #FF8A8A">−2</span></span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; padding: 4px 16px; border-top: 1px solid #1F242D; border-bottom: 1px solid #1F242D; background: #161920; font-family: Inter, system-ui, sans-serif; font-size: 12px; line-height: 1.45; color: #A9B0BC">
+<span style="display: flex; align-items: center; gap: 6px; min-height: 24px"><span aria-hidden="true" style="width: 22px; border-radius: 4px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; text-align: center">Cx</span>Codex, 31 min ago, answering the review comment on line 12</span>
+<span style="flex-grow: 1"></span>
+<a href="#" style="font-weight: 500">Show the message</a>
+<button type="button" style="height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Revert this change</button>
+</div>
+<div style="display: flex; gap: 10px; padding: 0 16px"><span style="flex: 0 0 24px; text-align: right; color: #8B93A1">3</span><span style="flex: 0 0 10px"> </span><span style="white-space: pre-wrap; overflow-wrap: anywhere">import { login, logout, register } from '../services/users';</span></div>
+<div style="display: flex; gap: 10px; padding: 0 16px; background: rgba(255,122,122,0.10)"><span style="flex: 0 0 24px; text-align: right; color: #A9B0BC">4</span><span style="flex: 0 0 10px; color: #FF8A8A">−</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">import { loginLimiter } from '../middleware/rateLimit';</span></div>
+<div style="display: flex; gap: 10px; padding: 0 16px; background: rgba(91,208,138,0.10)"><span style="flex: 0 0 24px; text-align: right; color: #A9B0BC">4</span><span style="flex: 0 0 10px; color: #5BD08A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">import { loginLimiter, registerLimiter } from '../middleware/rateLimit';</span></div>
+<div style="padding: 2px 16px 2px 50px; color: #8B93A1">seven unchanged lines</div>
+<div style="display: flex; gap: 10px; padding: 0 16px"><span style="flex: 0 0 24px; text-align: right; color: #8B93A1">12</span><span style="flex: 0 0 10px"> </span><span style="white-space: pre-wrap; overflow-wrap: anywhere">router.post('/login', loginLimiter, login);</span></div>
+<div style="display: flex; gap: 10px; padding: 0 16px; background: rgba(255,122,122,0.10)"><span style="flex: 0 0 24px; text-align: right; color: #A9B0BC">13</span><span style="flex: 0 0 10px; color: #FF8A8A">−</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">router.post('/register', register);</span></div>
+<div style="display: flex; gap: 10px; padding: 0 16px; background: rgba(91,208,138,0.10)"><span style="flex: 0 0 24px; text-align: right; color: #A9B0BC">13</span><span style="flex: 0 0 10px; color: #5BD08A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">router.post('/register', registerLimiter, register);</span></div>
+<div style="display: flex; gap: 10px; padding: 0 16px"><span style="flex: 0 0 24px; text-align: right; color: #8B93A1">14</span><span style="flex: 0 0 10px"> </span><span style="white-space: pre-wrap; overflow-wrap: anywhere">router.post('/logout', logout);</span></div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin-top: 14px; padding: 6px 16px; border-top: 1px solid #1F242D; font-size: 13px">
+<span style="flex: 1 1 0; min-width: 0; font-weight: 500">middleware/rateLimit.ts</span>
+<span style="font-size: 12px"><span style="color: #5BD08A">+6</span> <span style="color: #FF8A8A">−1</span></span>
+<button type="button" aria-expanded="false" style="height: 24px; padding: 0 8px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 500; cursor: pointer">Show</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; padding: 6px 16px; border-top: 1px solid #1F242D; border-bottom: 1px solid #1F242D; font-size: 13px">
+<span style="flex: 1 1 0; min-width: 0; font-weight: 500">config/limits.ts</span>
+<span style="font-size: 12px; color: #5BD08A">+4</span>
+<button type="button" aria-expanded="false" style="height: 24px; padding: 0 8px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 500; cursor: pointer">Show</button>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 2px 16px; padding: 6px 12px; border-top: 1px solid #1F242D; font-size: 12px; color: #8B93A1">
+<span>Only what is new since your last visit is shown. Lines you already saw are left out.</span>
+</div>
+</section>
+
+<aside style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #1F242D; background: #0B0D10">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="display: flex; align-items: center; gap: 6px; font-weight: 500"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>Codex</span>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">Idle · Context 52%</span>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 6px; margin: 12px 12px 0; padding: 12px; border: 1px solid #272C36; border-radius: 10px; background: #161920">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Where you stopped</h2>
+<p style="margin: 0; font-size: 13px; color: #A9B0BC">You opened the merge request, told Codex to address both review comments, and left while e2e was running.</p>
+</section>
+
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px; padding: 12px">
+
+<article style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px">
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>
+<span style="font-weight: 600">Codex</span>
+<span style="color: #8B93A1">while you were away</span>
+</div>
+<ul style="margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 4px">
+<li>Moved the limit of 5 into config/limits.ts.</li>
+<li>Put a limiter on /register, ten a minute.</li>
+<li>Pushed. The pipeline passed and the review is approved.</li>
+</ul>
+<p style="margin: 0">Nothing is waiting for you except the merge.</p>
+</article>
+
+<a href="WbMR.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 8px; background: {{accent}}; color: #17130A; font-weight: 600; text-decoration: none">Open the merge request</a>
+
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-top: 1px solid #1F242D">
+<label for="msg-since" style="font-size: 12px; color: #8B93A1">Message Codex</label>
+<textarea id="msg-since" rows="2" placeholder="Ask about any of these changes" style="box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #272C36; border-radius: 8px; background: #0F1115; color: #E7E9ED; font: inherit; resize: vertical"></textarea>
+</section>
+
+</aside>
+</div>
+<section aria-label="Projects and the state of each task" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 12px; background: #0B0D10; border-top: 1px solid #343A46">
+<h2 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px">Projects</h2>
+<a href="#" aria-current="true" aria-label="appose: 1 needs you, 2 ready to merge, 9 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">appose
+<svg width="172" height="12" viewBox="0 0 172 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><circle cx="26" cy="6" r="4.5" fill="none" stroke="#E7E9ED" stroke-width="1.5"></circle><circle cx="46" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="46" cy="6" r="1.8" fill="#A9B0BC"></circle><path d="M62.5 6.5l2.5 2.5 4.5-5M82.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="102" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect><circle cx="126" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="146" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="166" cy="6" r="2.5" fill="#8B93A1"></circle></svg>
+</a>
+<a href="#" aria-label="lingary: 1 needs you, 2 ready to merge, 6 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">lingary
+<svg width="112" height="12" viewBox="0 0 112 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><path d="M22.5 6.5l2.5 2.5 4.5-5M42.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="62" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect><circle cx="86" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="106" cy="6" r="2.5" fill="#8B93A1"></circle></svg>
+</a>
+<a href="#" aria-label="it-skills: 1 needs you, 1 ready to merge, 4 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">it-skills
+<svg width="72" height="12" viewBox="0 0 72 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><circle cx="26" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="26" cy="6" r="1.8" fill="#A9B0BC"></circle><path d="M42.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="62" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect></svg>
+</a>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">3 need you · 5 ready to merge</span>
+<a href="ProjDockOpen.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 12px; font-weight: 500; text-decoration: none">Expand
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4-4 4 4"></path></svg>
+</a>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F5B544"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#F5B544' };
+}
+}
+</script>
+</body>
+</html>

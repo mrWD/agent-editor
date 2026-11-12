@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Task with a team of agents</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5F5B73}a:hover{color:#1E1B2E}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #F2F1F6; color: #1E1B2E; font-family: 'DM Sans', system-ui, sans-serif; font-size: 16px; line-height: 1.5">
+
+<nav aria-label="Sections" style="flex: 1 1 96px; box-sizing: border-box; padding: 20px 12px; display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 6px">
+<button type="button" aria-label="Workspace shop-api, branch main" style="width: 48px; height: 48px; margin: 0 12px 10px; border: 0; border-radius: 16px; background: #1E1B2E; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 18px; cursor: pointer">S</button>
+<a href="Inbox.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+<span style="display: flex; align-items: center; gap: 4px">Inbox<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #FFFFFF; font-size: 11px; line-height: 18px; text-align: center">4</span></span>
+</a>
+<a href="#" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06); color: {{accent}}; font-size: 12px; font-weight: 600; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h10"></path></svg>
+Tasks
+</a>
+<a href="Review.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M5.5 8l2 2 3-3.5"></path></svg>
+Review
+</a>
+<a href="Editor.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4L2 8l4 4M10 4l4 4-4 4"></path></svg>
+Editor
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>
+Automate
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h8.5v11H4a1 1 0 0 1-1-1v-10z"></path><path d="M3 11.5h8.5"></path></svg>
+Skills
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+Settings
+</a>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 28px 40px 56px">
+<div style="max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px">
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<a href="Inbox.dc.html" style="align-self: flex-start; display: flex; align-items: center; gap: 6px; min-height: 32px; font-size: 14px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
+Inbox
+</a>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 12px">
+<h1 style="flex: 1 1 360px; margin: 0; font-weight: 700; font-size: 30px; line-height: 1.2; letter-spacing: -0.01em">Migrate date utils to Temporal</h1>
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #FFFFFF; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Pause after this step</button>
+<button type="button" style="height: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: #5F5B73; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Edit steps</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; color: #5F5B73">
+<span style="padding: 0 12px; border-radius: 999px; background: #FFFFFF; color: #1E1B2E; font-size: 13px; font-weight: 600; line-height: 28px">Team</span>
+<span style="font-family: 'DM Mono', monospace; font-size: 13px">task/temporal-dates</span>
+<span>Started 21 min ago</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 4px">
+<a href="#" aria-current="page" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; background: #1E1B2E; color: #FFFFFF; font-size: 15px; font-weight: 600; text-decoration: none">Team</a>
+<a href="Chat.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; color: #1E1B2E; font-size: 15px; font-weight: 600; text-decoration: none">Chat</a>
+<a href="Review.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 999px; color: #1E1B2E; font-size: 15px; font-weight: 600; text-decoration: none">Changes <span style="color: #5F5B73">9</span></a>
+<a href="#" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; color: #1E1B2E; font-size: 15px; font-weight: 600; text-decoration: none">Terminal</a>
+</div>
+</div>
+
+<ol style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 16px">
+
+<li style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; border: 2px solid transparent; border-radius: 24px; background: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="28" height="28" viewBox="0 0 20 20" role="img" aria-label="Step 1, done"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="font-weight: 700; font-size: 18px">Plan</span>
+</div>
+<span style="align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 4px; border-radius: 999px; background: #ECE7FF; color: #5B3FC4; font-size: 13px; font-weight: 600; line-height: 28px"><span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; line-height: 22px; text-align: center">Cl</span>Claude</span>
+<span style="font-size: 14px; color: #5F5B73">Done in 2 min</span>
+</li>
+
+<li style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; border: 2px solid transparent; border-radius: 24px; background: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="28" height="28" viewBox="0 0 20 20" role="img" aria-label="Step 2, done"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="font-weight: 700; font-size: 18px">Build</span>
+</div>
+<span style="align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 4px; border-radius: 999px; background: #E1EDFF; color: #1D5BB8; font-size: 13px; font-weight: 600; line-height: 28px"><span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; line-height: 22px; text-align: center">Cx</span>Codex</span>
+<span style="font-size: 14px; color: #5F5B73">Done in 9 min</span>
+</li>
+
+<li aria-current="step" style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; border: 2px solid {{accent}}; border-radius: 24px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06)">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 50%; background: {{accent}}; color: #FFFFFF; font-size: 14px; font-weight: 700; line-height: 28px; text-align: center">3</span>
+<span style="font-weight: 700; font-size: 18px">Review</span>
+</div>
+<span style="align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 4px; border-radius: 999px; background: #DDF4EF; color: #0B6E5F; font-size: 13px; font-weight: 600; line-height: 28px"><span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; line-height: 22px; text-align: center">Ge</span>Gemini</span>
+<span style="font-size: 14px; font-weight: 600; color: {{accent}}">Waiting for your answer</span>
+</li>
+
+<li style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; border: 2px solid transparent; border-radius: 24px; background: #FFFFFF; color: #5F5B73">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 50%; background: #F2F1F6; color: #5F5B73; font-size: 14px; font-weight: 700; line-height: 28px; text-align: center">4</span>
+<span style="font-weight: 700; font-size: 18px; color: #1E1B2E">Checks</span>
+</div>
+<span style="align-self: flex-start; padding: 0 12px; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font-size: 13px; font-weight: 600; line-height: 28px">Lint, tests, security</span>
+<span style="font-size: 14px">Not started</span>
+</li>
+</ol>
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px">
+
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+<article style="display: flex; flex-direction: column; overflow: hidden; border-radius: 24px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06)">
+<div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #DDF4EF; color: #0B6E5F">
+<span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; line-height: 28px; text-align: center">Ge</span>
+<span style="flex-grow: 1; font-weight: 600">Gemini has a question</span>
+<span style="font-size: 13px; color: #5F5B73">5 min ago</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 20px">
+<p style="margin: 0; font-size: 17px">legacy/reports.ts still imports moment through a plugin. Send it back to Codex or leave it for a separate task?</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Send back to Codex</button>
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Leave for later</button>
+<a href="Chat.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 14px; border-radius: 999px; font-size: 15px; font-weight: 600; text-decoration: none">Reply in chat</a>
+</div>
+</div>
+</article>
+
+<section style="display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 20px; border-radius: 24px; background: #FFFFFF">
+<h2 style="margin: 0; font-weight: 700; font-size: 17px">Review so far</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px">
+<li style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="Looks good" style="flex-shrink: 0; margin-top: 2px"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="display: flex; flex-direction: column"><span style="font-family: 'DM Mono', monospace; font-size: 13.5px">src/utils/date.ts</span><span>formatDate keeps its old signature.</span></span>
+</li>
+<li style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="Looks good" style="flex-shrink: 0; margin-top: 2px"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="display: flex; flex-direction: column"><span style="font-family: 'DM Mono', monospace; font-size: 13.5px">tests/orders.test.ts</span><span>Two snapshots updated, both expected.</span></span>
+</li>
+<li style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="Needs a decision" style="flex-shrink: 0; margin-top: 2px"><path d="M10 1.5l9 16.5H1L10 1.5z" fill="#FBEBCB"></path><path d="M10 7.5v4.5M10 14.6v.4" fill="none" stroke="#8A5200" stroke-width="1.8" stroke-linecap="round"></path></svg>
+<span style="display: flex; flex-direction: column"><span style="font-family: 'DM Mono', monospace; font-size: 13.5px">legacy/reports.ts</span><span>Still imports moment through a plugin.</span></span>
+</li>
+</ul>
+</section>
+
+</div>
+
+<aside style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 20px; border-radius: 24px; background: #FFFFFF">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 style="margin: 0; font-weight: 700; font-size: 17px">Shared board</h2>
+<p style="margin: 0; font-size: 14px; color: #5F5B73">Notes the agents leave for each other. You can add your own.</p>
+</div>
+
+<article style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 16px; background: #F2F1F6">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #5F5B73">
+<span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: #ECE7FF; color: #5B3FC4; font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; line-height: 22px; text-align: center">Cl</span>
+<span style="flex-grow: 1"><span style="font-weight: 600; color: #5B3FC4">Claude</span> to <span style="font-weight: 600; color: #1D5BB8">Codex</span></span>
+<span>19 min ago</span>
+</div>
+<p style="margin: 0; font-size: 15px">Keep the formatDate signature. Callers depend on the string format.</p>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 16px; background: #F2F1F6">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #5F5B73">
+<span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: #E1EDFF; color: #1D5BB8; font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; line-height: 22px; text-align: center">Cx</span>
+<span style="flex-grow: 1"><span style="font-weight: 600; color: #1D5BB8">Codex</span> to <span style="font-weight: 600; color: #0B6E5F">Gemini</span></span>
+<span>10 min ago</span>
+</div>
+<p style="margin: 0; font-size: 15px">Skipped legacy/reports.ts. It uses a moment plugin with no Temporal equivalent.</p>
+</article>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<label for="note-team" style="font-size: 14px; font-weight: 600; color: #5F5B73">Add a note for the team</label>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<input id="note-team" type="text" placeholder="Visible to every agent on this task" style="flex: 1 1 180px; min-width: 0; box-sizing: border-box; height: 44px; padding: 0 16px; border: 1px solid #C9C6D8; border-radius: 999px; background: #FFFFFF; color: #1E1B2E; font: inherit; font-size: 15px">
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Add</button>
+</div>
+</div>
+</aside>
+
+</div>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#4338CA"},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#4338CA' };
+}
+}
+</script>
+</body>
+</html>

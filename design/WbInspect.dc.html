@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Workbench: pick an element in the preview</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#A9B0BC}a:hover{color:#E7E9ED}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #0F1115; color: #E7E9ED; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 12px; background: #0B0D10; border-bottom: 1px solid #1F242D">
+<nav aria-label="Sections" style="flex: 999 1 400px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px">
+<a href="WbHome.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+Home
+<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #17130A; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center">3</span>
+</a>
+<a href="WbIssues.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Issues</a>
+<a href="WbHealth.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Health</a>
+<a href="WbAuto.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Automations</a>
+<a href="WbUsage.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Agents</a>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>
+New task
+</button>
+</nav>
+<a href="WbSearch.dc.html" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 10px; border: 1px solid #272C36; border-radius: 8px; font-size: 13px; text-decoration: none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>Search<kbd style="padding: 0 6px; border: 1px solid #343A46; border-radius: 4px; background: #1C2028; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 18px">⌘K</kbd></a>
+<button type="button" aria-label="Settings" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+</button>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="font-size: 13px; color: #8B93A1">appose</span>
+<h1 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Add rate limiting to /login</h1>
+<div style="display: flex; gap: 2px; padding: 2px; border: 1px solid #272C36; border-radius: 8px; background: #0B0D10">
+<a href="WbPlan.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Plan</a>
+<a href="Workbench.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Code</a>
+<a href="WbChanges.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Changes <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8B93A1">2</span></a>
+<a href="WbPreview.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; background: #272C36; color: #E7E9ED; font-size: 13px; font-weight: 500; text-decoration: none">Preview</a>
+<a href="WbMap.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Map</a>
+<a href="WbChecks.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none">Checks</a>
+</div>
+<a href="WbIssues.dc.html" style="display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; color: #E7E9ED; font-family: 'JetBrains Mono', monospace; font-size: 12px; text-decoration: none">APP-214</a>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8B93A1">task/rate-limit</span>
+</div>
+
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+
+<section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<div role="group" aria-label="Tools" style="display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid #272C36; border-radius: 8px; background: #0B0D10">
+<button type="button" aria-pressed="true" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: #272C36; color: #E7E9ED; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l4.2 10 1.5-4.3L13 7.2 3 3z"></path></svg>Pick an element</button>
+<button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l1-3.5L10.5 3l2.5 2.5L6.5 12 3 13z"></path></svg>Draw on the page</button>
+<button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="12" height="9" rx="2"></rect><circle cx="8" cy="8.5" r="2.2"></circle></svg>Screenshot</button>
+</div>
+<span style="flex: 1 1 200px; min-width: 0; font-size: 12px; color: #8B93A1">Click anything in the page. The pick is marked on every width.</span>
+<span style="font-size: 12px; color: #8B93A1">Shown at 80%</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border: 1px solid #272C36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A9B0BC">localhost:3012/login</span>
+</div>
+
+<div style="flex-grow: 1; overflow-x: auto; padding: 16px; background: #0B0D10">
+<div style="display: flex; align-items: flex-start; gap: 24px; zoom: 0.8">
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 16px; font-weight: 600">Phone <span style="font-family: 'JetBrains Mono', monospace; font-weight: 400; color: #A9B0BC">320</span></span>
+<div style="width: 320px; height: 600px; border: 10px solid #343A46; border-radius: 36px; overflow: hidden; background: #FFFFFF; color: #1F2328; font-family: system-ui, sans-serif; font-size: 15px; line-height: 1.5">
+<div style="display: flex; flex-direction: column; gap: 16px; padding: 28px 20px">
+<span style="font-weight: 700; font-size: 20px; color: #B4420A">shop.</span>
+<h2 style="margin: 8px 0 0; font-weight: 700; font-size: 26px; line-height: 1.2">Sign in</h2>
+<div style="position: relative">
+<p style="margin: 0; padding: 12px 14px; border-radius: 8px; background: #FFF1E5; color: #8A2F00">Too many attempts.</p>
+<svg width="300" height="72" viewBox="0 0 300 72" aria-hidden="true" style="position: absolute; left: -10px; top: -12px; overflow: visible; fill: none; stroke: #D1242F; stroke-width: 3; stroke-linecap: round"><path d="M14 38 C 8 8, 282 0, 292 34 C 298 64, 34 74, 12 46"></path></svg>
+<span role="img" aria-label="Drawing 1" style="position: absolute; right: -8px; top: -16px; width: 22px; height: 22px; border-radius: 50%; background: #D1242F; color: #FFFFFF; font-size: 12px; font-weight: 700; line-height: 22px; text-align: center">1</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="insp-email-phone" style="font-weight: 600">Email</label>
+<input id="insp-email-phone" type="email" placeholder="you@example.com" style="box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border: 1px solid #8C959F; border-radius: 8px; background: #FFFFFF; color: #1F2328; font: inherit">
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="insp-pass-phone" style="font-weight: 600">Password</label>
+<input id="insp-pass-phone" type="password" placeholder="Your password" style="box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border: 1px solid #8C959F; border-radius: 8px; background: #FFFFFF; color: #1F2328; font: inherit">
+</div>
+<div style="position: relative">
+<button type="button" disabled style="width: 100%; height: 46px; border: 0; border-radius: 8px; background: #D8DEE4; color: #57606A; font: inherit; font-weight: 600; outline: 3px solid #1F6FEB; outline-offset: 3px">Try again in 42 s</button>
+<span style="position: absolute; left: -3px; top: calc(100% + 10px); padding: 2px 8px; border-radius: 4px; background: #1F6FEB; color: #FFFFFF; font-family: 'JetBrains Mono', monospace; font-size: 12px; white-space: nowrap">SubmitButton · LoginForm.tsx:42</span>
+</div>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 16px; font-weight: 600">Tablet <span style="font-family: 'JetBrains Mono', monospace; font-weight: 400; color: #A9B0BC">768</span></span>
+<div style="width: 768px; height: 600px; border: 10px solid #343A46; border-radius: 28px; overflow: hidden; background: #FFFFFF; color: #1F2328; font-family: system-ui, sans-serif; font-size: 15px; line-height: 1.5; display: flex">
+<div style="flex: 0 0 300px; box-sizing: border-box; padding: 40px 32px; background: #FFF1E5; display: flex; flex-direction: column; gap: 12px">
+<span style="font-weight: 700; font-size: 24px; color: #B4420A">shop.</span>
+<p style="margin: 0; font-size: 18px; line-height: 1.4; color: #5C2B0A">Good things, sent quickly.</p>
+</div>
+<div style="flex: 1 1 0; min-width: 0; box-sizing: border-box; padding: 40px; display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-weight: 700; font-size: 28px; line-height: 1.2">Sign in</h2>
+<p style="margin: 0; padding: 12px 14px; border-radius: 8px; background: #FFF1E5; color: #8A2F00">Too many attempts.</p>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="insp-email-tablet" style="font-weight: 600">Email</label>
+<input id="insp-email-tablet" type="email" placeholder="you@example.com" style="box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border: 1px solid #8C959F; border-radius: 8px; background: #FFFFFF; color: #1F2328; font: inherit">
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="insp-pass-tablet" style="font-weight: 600">Password</label>
+<input id="insp-pass-tablet" type="password" placeholder="Your password" style="box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border: 1px solid #8C959F; border-radius: 8px; background: #FFFFFF; color: #1F2328; font: inherit">
+</div>
+<div style="position: relative; align-self: flex-start">
+<button type="button" disabled style="height: 46px; padding: 0 28px; border: 0; border-radius: 8px; background: #D8DEE4; color: #57606A; font: inherit; font-weight: 600; outline: 3px dashed #1F6FEB; outline-offset: 3px">Try again in 42 s</button>
+<span style="position: absolute; left: -3px; top: calc(100% + 10px); padding: 2px 8px; border-radius: 4px; background: #1F6FEB; color: #FFFFFF; font-size: 12px; white-space: nowrap">the same element here</span>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</section>
+
+<aside style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #1F242D; background: #0B0D10">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #1F242D">
+<span style="display: flex; align-items: center; gap: 6px; font-weight: 500"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 6px; background: rgba(111,177,255,0.16); color: #6FB1FF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; line-height: 20px; text-align: center">Cx</span>Codex</span>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">Solo · Context 45%</span>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 10px; margin: 12px 12px 0; padding: 12px; border: 1px solid #343A46; border-radius: 10px; background: #161920">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px">Submit button</h2>
+<span style="font-size: 12px; color: #8B93A1">picked on phone 320</span>
+</div>
+<dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px">
+<dt style="color: #8B93A1">Component</dt><dd style="margin: 0">LoginPage › LoginForm › SubmitButton</dd>
+<dt style="color: #8B93A1">Source</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; overflow-wrap: anywhere">src/components/LoginForm.tsx, line 42</dd>
+<dt style="color: #8B93A1">Here</dt><dd style="margin: 0">280 by 46, disabled</dd>
+<dt style="color: #8B93A1">Changed</dt><dd style="margin: 0">by Codex in this task, 12 min ago</dd>
+</dl>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<a href="Workbench.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 1px solid #343A46; border-radius: 8px; background: #1C2028; color: #E7E9ED; font-size: 13px; font-weight: 500; text-decoration: none">Open in code</a>
+<a href="WbMap.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none">Show in Map</a>
+<button type="button" style="height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #A9B0BC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Pick its parent</button>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 4px; margin: 10px 12px 0; padding: 10px 12px; border: 1px solid #272C36; border-radius: 10px">
+<label for="draw-note" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 50%; background: #D1242F; color: #FFFFFF; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center">1</span>Your drawing, around the message</label>
+<input id="draw-note" type="text" value="Too close to the title" style="box-sizing: border-box; width: 100%; height: 30px; padding: 0 10px; border: 1px solid #272C36; border-radius: 6px; background: #0F1115; color: #E7E9ED; font: inherit; font-size: 13px">
+</section>
+
+<span style="flex-grow: 1"></span>
+
+<section style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-top: 1px solid #1F242D">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+<label for="msg-inspect" style="margin-right: 2px; font-size: 12px; color: #8B93A1">Message Codex about</label>
+<span style="padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 22px">SubmitButton</span>
+<span style="padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 22px">drawing 1</span>
+<span style="padding: 0 8px; border: 1px solid #272C36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 22px">phone 320</span>
+</div>
+<textarea id="msg-inspect" rows="3" style="box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #343A46; border-radius: 8px; background: #0F1115; color: #E7E9ED; font: inherit; resize: vertical">Show the wait as a bar that fills up on this button, and give the message more room above.</textarea>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<label style="flex-grow: 1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #A9B0BC"><input type="checkbox" checked style="width: 14px; height: 14px; margin: 0; accent-color: {{accent}}">Send a screenshot too</label>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: {{accent}}; color: #17130A; font: inherit; font-weight: 600; cursor: pointer">Send</button>
+</div>
+</section>
+
+</aside>
+</div>
+<section aria-label="Projects and the state of each task" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 12px; background: #0B0D10; border-top: 1px solid #343A46">
+<h2 style="margin: 0 8px 0 0; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px">Projects</h2>
+<a href="#" aria-current="true" aria-label="appose: 1 needs you, 2 ready to merge, 9 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">appose
+<svg width="172" height="12" viewBox="0 0 172 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><circle cx="26" cy="6" r="4.5" fill="none" stroke="#E7E9ED" stroke-width="1.5"></circle><circle cx="46" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="46" cy="6" r="1.8" fill="#A9B0BC"></circle><path d="M62.5 6.5l2.5 2.5 4.5-5M82.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="102" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect><circle cx="126" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="146" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="166" cy="6" r="2.5" fill="#8B93A1"></circle></svg>
+</a>
+<a href="#" aria-label="lingary: 1 needs you, 2 ready to merge, 6 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">lingary
+<svg width="112" height="12" viewBox="0 0 112 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><path d="M22.5 6.5l2.5 2.5 4.5-5M42.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="62" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect><circle cx="86" cy="6" r="2.5" fill="#8B93A1"></circle><circle cx="106" cy="6" r="2.5" fill="#8B93A1"></circle></svg>
+</a>
+<a href="#" aria-label="it-skills: 1 needs you, 1 ready to merge, 4 tasks" style="display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 8px; border-radius: 6px; color: #E7E9ED; font-size: 13px; font-weight: 600; text-decoration: none">it-skills
+<svg width="72" height="12" viewBox="0 0 72 12" aria-hidden="true" style="color: {{accent}}"><circle cx="6" cy="6" r="5" fill="currentColor"></circle><circle cx="26" cy="6" r="4.5" fill="none" stroke="#A9B0BC" stroke-width="1.5"></circle><circle cx="26" cy="6" r="1.8" fill="#A9B0BC"></circle><path d="M42.5 6.5l2.5 2.5 4.5-5" fill="none" stroke="#5BD08A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><rect x="62" y="2" width="8" height="8" rx="1.5" fill="none" stroke="#8B93A1" stroke-width="1.5"></rect></svg>
+</a>
+<span style="flex-grow: 1"></span>
+<span style="font-size: 12px; color: #8B93A1">3 need you · 5 ready to merge</span>
+<a href="ProjDockOpen.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 10px; border: 1px solid #343A46; border-radius: 6px; background: #1C2028; color: #E7E9ED; font-size: 12px; font-weight: 500; text-decoration: none">Expand
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4-4 4 4"></path></svg>
+</a>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F5B544"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#F5B544' };
+}
+}
+</script>
+</body>
+</html>

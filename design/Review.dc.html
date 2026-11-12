@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Review changes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5F5B73}a:hover{color:#1E1B2E}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #F2F1F6; color: #1E1B2E; font-family: 'DM Sans', system-ui, sans-serif; font-size: 16px; line-height: 1.5">
+
+<nav aria-label="Sections" style="flex: 1 1 96px; box-sizing: border-box; padding: 20px 12px; display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 6px">
+<button type="button" aria-label="Workspace shop-api, branch main" style="width: 48px; height: 48px; margin: 0 12px 10px; border: 0; border-radius: 16px; background: #1E1B2E; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 18px; cursor: pointer">S</button>
+<a href="Inbox.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+<span style="display: flex; align-items: center; gap: 4px">Inbox<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #FFFFFF; font-size: 11px; line-height: 18px; text-align: center">4</span></span>
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h10"></path></svg>
+Tasks
+</a>
+<a href="Review.dc.html" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06); color: {{accent}}; font-size: 12px; font-weight: 600; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M5.5 8l2 2 3-3.5"></path></svg>
+Review
+</a>
+<a href="Editor.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4L2 8l4 4M10 4l4 4-4 4"></path></svg>
+Editor
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>
+Automate
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h8.5v11H4a1 1 0 0 1-1-1v-10z"></path><path d="M3 11.5h8.5"></path></svg>
+Skills
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+Settings
+</a>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 28px 40px 56px">
+<div style="max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px">
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<a href="Inbox.dc.html" style="align-self: flex-start; display: flex; align-items: center; gap: 6px; min-height: 32px; font-size: 14px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
+Inbox
+</a>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 12px">
+<h1 style="flex: 1 1 360px; margin: 0; font-weight: 700; font-size: 30px; line-height: 1.2; letter-spacing: -0.01em">Add CSV export to orders</h1>
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #FFFFFF; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Merge into main</button>
+<button type="button" style="height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: {{accent}}; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Create pull request</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; color: #5F5B73">
+<span style="padding: 0 12px; border-radius: 999px; background: #FFFFFF; color: #1E1B2E; font-size: 13px; font-weight: 600; line-height: 28px">Solo</span>
+<span style="display: flex; align-items: center; gap: 6px; padding: 0 12px 0 4px; border-radius: 999px; background: #ECE7FF; color: #5B3FC4; font-size: 13px; font-weight: 600; line-height: 28px"><span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; line-height: 22px; text-align: center">Cl</span>Claude</span>
+<span style="font-family: 'DM Mono', monospace; font-size: 13px">task/orders-csv into main</span>
+<span>Finished 20 min ago</span>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px">
+
+<section style="flex: 1 1 230px; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 18px 12px; border-radius: 24px; background: #FFFFFF">
+<h2 style="margin: 0; padding: 0 8px; font-weight: 700; font-size: 17px">Files</h2>
+<div style="display: flex; flex-direction: column; gap: 2px; font-family: 'DM Mono', monospace; font-size: 13px">
+<a href="#" aria-current="true" style="display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 10px 8px; border-radius: 12px; background: #F2F1F6; color: #1E1B2E; font-weight: 500; text-decoration: none"><span style="flex-grow: 1; min-width: 0; overflow-wrap: anywhere">src/orders/export.ts</span><span><span style="color: #1B6B3A">+7</span> <span style="color: #A32222">−1</span></span></a>
+<a href="#" style="display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 10px 8px; border-radius: 12px; color: #1E1B2E; text-decoration: none"><span style="flex-grow: 1; min-width: 0; overflow-wrap: anywhere">src/routes/orders.ts</span><span style="color: #1B6B3A">+9</span></a>
+<a href="#" style="display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 10px 8px; border-radius: 12px; color: #1E1B2E; text-decoration: none"><span style="flex-grow: 1; min-width: 0; overflow-wrap: anywhere">tests/export.test.ts</span><span style="color: #1B6B3A">+34</span></a>
+<a href="#" style="display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 10px 8px; border-radius: 12px; color: #1E1B2E; text-decoration: none"><span style="flex-grow: 1; min-width: 0; overflow-wrap: anywhere">README.md</span><span style="color: #1B6B3A">+6</span></a>
+</div>
+</section>
+
+<section style="flex: 999 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 24px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06)">
+<h2 style="margin: 0; font-family: 'DM Mono', monospace; font-weight: 500; font-size: 14px">src/orders/export.ts</h2>
+<div style="padding: 10px 0; border-radius: 16px; background: #F7F6FA; font-family: 'DM Mono', monospace; font-size: 13.5px; line-height: 1.7">
+<div style="display: flex; gap: 12px; padding: 0 16px"><span style="min-width: 24px; text-align: right; color: #5F5B73">12</span><span style="min-width: 10px"> </span><span style="white-space: pre-wrap; overflow-wrap: anywhere">export function toCsv(orders: Order[]): string {</span></div>
+<div style="display: flex; gap: 12px; padding: 0 16px; background: #FBE9E9"><span style="min-width: 24px; text-align: right; color: #5F5B73">13</span><span style="min-width: 10px; font-weight: 500; color: #A32222">−</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">  return orders.map((o) =&gt; [o.id, o.customer, o.total].join(',')).join('\n');</span></div>
+<div style="display: flex; gap: 12px; padding: 0 16px; background: #E6F4EA"><span style="min-width: 24px; text-align: right; color: #5F5B73">13</span><span style="min-width: 10px; font-weight: 500; color: #1B6B3A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">  const rows = orders.map((o) =&gt; [o.id, o.customer, o.total]);</span></div>
+<div style="display: flex; gap: 12px; padding: 0 16px; background: #E6F4EA"><span style="min-width: 24px; text-align: right; color: #5F5B73">14</span><span style="min-width: 10px; font-weight: 500; color: #1B6B3A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">  return rows.map((r) =&gt; r.map(escapeCell).join(',')).join('\n');</span></div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; margin: 10px 16px 10px 52px; padding: 14px 16px; border: 1px solid #DAD8E6; border-radius: 16px; background: #FFFFFF; font-family: 'DM Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.5">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 13px; color: #5F5B73"><span style="font-weight: 600; color: #1E1B2E">You</span> · on line 14 · sent to Claude</span>
+<p style="margin: 0">Customer names can contain commas and quotes. Does this handle both?</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #5F5B73"><span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 50%; background: #ECE7FF; color: #5B3FC4; font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; line-height: 20px; text-align: center">Cl</span><span><span style="font-weight: 600; color: #5B3FC4">Claude</span> · 3 min ago</span></span>
+<p style="margin: 0">Yes. escapeCell wraps those values in quotes and doubles the quotes inside. I added a test with a name that has both.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="reply-review" style="font-size: 13px; font-weight: 600; color: #5F5B73">Reply or ask for a change</label>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<input id="reply-review" type="text" placeholder="Write a comment" style="flex: 1 1 200px; min-width: 0; box-sizing: border-box; height: 44px; padding: 0 16px; border: 1px solid #C9C6D8; border-radius: 999px; background: #FFFFFF; color: #1E1B2E; font: inherit">
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font: inherit; font-weight: 600; cursor: pointer">Send to Claude</button>
+</div>
+</div>
+</div>
+
+<div style="display: flex; gap: 12px; padding: 0 16px"><span style="min-width: 24px; text-align: right; color: #5F5B73">15</span><span style="min-width: 10px"> </span><span style="white-space: pre-wrap; overflow-wrap: anywhere">}</span></div>
+<div style="display: flex; gap: 12px; padding: 0 16px; background: #E6F4EA"><span style="min-width: 24px; text-align: right; color: #5F5B73">16</span><span style="min-width: 10px; font-weight: 500; color: #1B6B3A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere"> </span></div>
+<div style="display: flex; gap: 12px; padding: 0 16px; background: #E6F4EA"><span style="min-width: 24px; text-align: right; color: #5F5B73">17</span><span style="min-width: 10px; font-weight: 500; color: #1B6B3A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">function escapeCell(value: string | number): string {</span></div>
+<div style="display: flex; gap: 12px; padding: 0 16px; background: #E6F4EA"><span style="min-width: 24px; text-align: right; color: #5F5B73">18</span><span style="min-width: 10px; font-weight: 500; color: #1B6B3A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">  const text = String(value);</span></div>
+<div style="display: flex; gap: 12px; padding: 0 16px; background: #E6F4EA"><span style="min-width: 24px; text-align: right; color: #5F5B73">19</span><span style="min-width: 10px; font-weight: 500; color: #1B6B3A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">  return needsQuotes(text) ? quote(text) : text;</span></div>
+<div style="display: flex; gap: 12px; padding: 0 16px; background: #E6F4EA"><span style="min-width: 24px; text-align: right; color: #5F5B73">20</span><span style="min-width: 10px; font-weight: 500; color: #1B6B3A">+</span><span style="white-space: pre-wrap; overflow-wrap: anywhere">}</span></div>
+</div>
+</section>
+
+<aside style="flex: 1 1 290px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px 20px; border-radius: 24px; background: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px">
+<h2 style="flex-grow: 1; margin: 0; font-weight: 700; font-size: 17px">Checks</h2>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Strict preset
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>
+</button>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px">
+<li style="display: flex; align-items: center; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style="flex-shrink: 0"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="flex-grow: 1">Lint</span><span style="font-size: 14px; color: #5F5B73">Passed</span>
+</li>
+<li style="display: flex; align-items: center; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style="flex-shrink: 0"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="flex-grow: 1">Types</span><span style="font-size: 14px; color: #5F5B73">Passed</span>
+</li>
+<li style="display: flex; align-items: center; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style="flex-shrink: 0"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="flex-grow: 1">Tests</span><span style="font-size: 14px; color: #5F5B73">Passed</span>
+</li>
+<li style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px"><path d="M10 1.5l9 16.5H1L10 1.5z" fill="#FBEBCB"></path><path d="M10 7.5v4.5M10 14.6v.4" fill="none" stroke="#8A5200" stroke-width="1.8" stroke-linecap="round"></path></svg>
+<span style="flex-grow: 1; display: flex; flex-direction: column"><span>Security scan</span><span style="font-size: 14px; color: #5F5B73">One dependency has a newer patch release.</span></span>
+<span style="font-size: 14px; font-weight: 600; color: #8A5200; white-space: nowrap">1 warning</span>
+</li>
+</ul>
+<button type="button" style="align-self: flex-start; height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Run checks again</button>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px 20px; border-radius: 24px; background: #FFFFFF">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 style="margin: 0; font-weight: 700; font-size: 17px">Second opinion</h2>
+<p style="margin: 0; font-size: 14px; color: #5F5B73">Ask another agent to review this change before you merge.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px 0 8px; border: 0; border-radius: 999px; background: #E1EDFF; color: #1D5BB8; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer"><span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; line-height: 28px; text-align: center">Cx</span>Ask Codex</button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px 0 8px; border: 0; border-radius: 999px; background: #DDF4EF; color: #0B6E5F; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer"><span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; line-height: 28px; text-align: center">Ge</span>Ask Gemini</button>
+</div>
+</section>
+
+</aside>
+</div>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#4338CA"},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#4338CA' };
+}
+}
+</script>
+</body>
+</html>

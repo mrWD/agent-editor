@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inbox, light paper</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Source+Serif+4:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#4A4F57}a:hover{color:#1A1C1F}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #F8F8F6; color: #1A1C1F; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.55">
+
+<header style="border-bottom: 1px solid #DEDED8">
+<div style="max-width: 1120px; margin: 0 auto; box-sizing: border-box; padding: 12px 32px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 28px">
+<button type="button" style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border: 0; background: transparent; color: #1A1C1F; font: inherit; font-weight: 600; cursor: pointer">shop-api <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 400; color: #666C75">main</span></button>
+<nav aria-label="Sections" style="flex-grow: 1; display: flex; flex-wrap: wrap; gap: 4px 22px">
+<a href="#" aria-current="page" style="padding: 6px 0; border-bottom: 2px solid #1A1C1F; color: #1A1C1F; font-weight: 600; text-decoration: none">Inbox <span style="color: {{accent}}">3</span></a>
+<a href="#" style="padding: 6px 0; border-bottom: 2px solid transparent; text-decoration: none">Tasks</a>
+<a href="#" style="padding: 6px 0; border-bottom: 2px solid transparent; text-decoration: none">Review <span style="color: #666C75">1</span></a>
+<a href="#" style="padding: 6px 0; border-bottom: 2px solid transparent; text-decoration: none">Automations</a>
+<a href="#" style="padding: 6px 0; border-bottom: 2px solid transparent; text-decoration: none">Skills &amp; rules</a>
+<a href="#" style="padding: 6px 0; border-bottom: 2px solid transparent; text-decoration: none">Settings</a>
+</nav>
+<span style="font-size: 13px; color: #666C75">Spent today <span style="font-family: 'IBM Plex Mono', monospace; color: #1A1C1F">$4.82</span> · Keep awake on</span>
+</div>
+</header>
+
+<main style="max-width: 760px; margin: 0 auto; box-sizing: border-box; padding: 40px 32px 56px; display: flex; flex-direction: column; gap: 36px">
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: 34px; line-height: 1.2">Three things need you</h1>
+<p style="margin: 0; color: #4A4F57">Three more tasks are running and need nothing yet.</p>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<label for="task-b" style="font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #666C75">New task</label>
+<textarea id="task-b" rows="2" placeholder="Describe what the agents should do" style="box-sizing: border-box; width: 100%; padding: 8px 0; border: 0; border-bottom: 1px solid #1A1C1F; border-radius: 0; background: transparent; color: #1A1C1F; font-family: 'Source Serif 4', Georgia, serif; font-size: 20px; line-height: 1.5; resize: vertical"></textarea>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px">
+<div style="display: flex; gap: 14px">
+<button type="button" aria-pressed="true" style="height: 36px; padding: 0; border: 0; border-bottom: 2px solid #1A1C1F; background: transparent; color: #1A1C1F; font: inherit; font-weight: 600; cursor: pointer">Solo</button>
+<button type="button" aria-pressed="false" style="height: 36px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #4A4F57; font: inherit; cursor: pointer">Race</button>
+<button type="button" aria-pressed="false" style="height: 36px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #4A4F57; font: inherit; cursor: pointer">Team</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border: 1px solid #DEDED8; border-radius: 4px; background: transparent; color: #4A4F57; font: inherit; cursor: pointer">Claude</button>
+<button type="button" aria-pressed="true" style="height: 32px; padding: 0 12px; border: 1px solid #1D5FBF; border-radius: 4px; background: #FFFFFF; color: #1D5FBF; font: inherit; font-weight: 500; cursor: pointer">Codex</button>
+<button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border: 1px solid #DEDED8; border-radius: 4px; background: transparent; color: #4A4F57; font: inherit; cursor: pointer">Gemini</button>
+</div>
+<button type="button" style="height: 32px; padding: 0; border: 0; background: transparent; color: #4A4F57; font: inherit; text-decoration: underline; cursor: pointer">Attach image</button>
+<span style="flex-grow: 1"></span>
+<button type="button" style="height: 36px; padding: 0 18px; border: 0; border-radius: 4px; background: #1A1C1F; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer">Start</button>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column">
+<h2 style="margin: 0 0 12px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #666C75">Needs you</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column">
+
+<li style="display: flex; gap: 20px; padding: 20px 0; border-top: 1px solid #DEDED8">
+<span aria-hidden="true" style="min-width: 24px; font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; line-height: 1.25; color: #666C75">1</span>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 13px; color: #666C75">
+<span style="font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: {{accent}}">Permission</span>
+<span style="font-weight: 500; color: #1D5FBF">Codex</span>
+<span>2 min ago</span>
+</div>
+<a href="#" style="font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: 21px; line-height: 1.3; color: #1A1C1F; text-decoration: none">Add rate limiting to /login</a>
+<p style="margin: 0; color: #4A4F57">Wants to run a command in the task worktree.</p>
+<pre style="margin: 0; padding: 10px 12px; border-radius: 4px; background: #EFEFEB; color: #1A1C1F; font-family: 'IBM Plex Mono', monospace; font-size: 13px; overflow-x: auto">npm install express-rate-limit</pre>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 36px; padding: 0 16px; border: 0; border-radius: 4px; background: #1A1C1F; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer">Allow once</button>
+<button type="button" style="height: 36px; padding: 0 16px; border: 1px solid #1A1C1F; border-radius: 4px; background: transparent; color: #1A1C1F; font: inherit; font-weight: 500; cursor: pointer">Always allow in this task</button>
+<button type="button" style="height: 36px; padding: 0 8px; border: 0; background: transparent; color: #4A4F57; font: inherit; text-decoration: underline; cursor: pointer">Deny</button>
+</div>
+</div>
+</li>
+
+<li style="display: flex; gap: 20px; padding: 20px 0; border-top: 1px solid #DEDED8">
+<span aria-hidden="true" style="min-width: 24px; font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; line-height: 1.25; color: #666C75">2</span>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 13px; color: #666C75">
+<span style="font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: {{accent}}">Question</span>
+<span style="font-weight: 500; color: #6B46C1">Claude</span>
+<span>5 min ago</span>
+</div>
+<a href="#" style="font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: 21px; line-height: 1.3; color: #1A1C1F; text-decoration: none">Migrate date utils to Temporal</a>
+<p style="margin: 0; color: #1A1C1F">formatDate is exported from two files. Keep both exports or merge them into one?</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 36px; padding: 0 16px; border: 1px solid #1A1C1F; border-radius: 4px; background: transparent; color: #1A1C1F; font: inherit; font-weight: 500; cursor: pointer">Keep both</button>
+<button type="button" style="height: 36px; padding: 0 16px; border: 1px solid #1A1C1F; border-radius: 4px; background: transparent; color: #1A1C1F; font: inherit; font-weight: 500; cursor: pointer">Merge into one</button>
+<button type="button" style="height: 36px; padding: 0 8px; border: 0; background: transparent; color: #4A4F57; font: inherit; text-decoration: underline; cursor: pointer">Reply in chat</button>
+</div>
+</div>
+</li>
+
+<li style="display: flex; gap: 20px; padding: 20px 0; border-top: 1px solid #DEDED8; border-bottom: 1px solid #DEDED8">
+<span aria-hidden="true" style="min-width: 24px; font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; line-height: 1.25; color: #666C75">3</span>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 13px; color: #666C75">
+<span style="font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: {{accent}}">Ready to review</span>
+<span><span style="font-weight: 500; color: #6B46C1">Claude</span>, <span style="font-weight: 500; color: #1D5FBF">Codex</span>, <span style="font-weight: 500; color: #0E7C6B">Gemini</span></span>
+<span>12 min ago</span>
+</div>
+<a href="#" style="font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: 21px; line-height: 1.3; color: #1A1C1F; text-decoration: none">Fix flaky checkout test</a>
+<p style="margin: 0; color: #4A4F57">Race finished. Three results, two pass all checks.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 36px; padding: 0 16px; border: 0; border-radius: 4px; background: #1A1C1F; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer">Compare results</button>
+</div>
+</div>
+</li>
+</ol>
+</section>
+
+<section style="display: flex; flex-direction: column">
+<h2 style="margin: 0 0 12px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #666C75">Running</h2>
+
+<a href="#" style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; padding: 14px 0; border-top: 1px solid #DEDED8; color: #1A1C1F; text-decoration: none">
+<span style="flex: 1 1 260px; font-family: 'Source Serif 4', Georgia, serif; font-size: 18px">Migrate date utils to Temporal</span>
+<span style="font-size: 13px; color: #4A4F57">Team · <span style="font-weight: 500; color: #1D5FBF">Codex</span> builds, step 2 of 3 · 6 min</span>
+<span style="flex: 1 1 100%; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: #666C75">Editing src/utils/date.ts</span>
+</a>
+
+<a href="#" style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; padding: 14px 0; border-top: 1px solid #DEDED8; color: #1A1C1F; text-decoration: none">
+<span style="flex: 1 1 260px; font-family: 'Source Serif 4', Georgia, serif; font-size: 18px">Update API docs for v2 endpoints</span>
+<span style="font-size: 13px; color: #4A4F57">Solo · <span style="font-weight: 500; color: #0E7C6B">Gemini</span> · 2 min</span>
+<span style="flex: 1 1 100%; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: #666C75">Reading docs/api/orders.md</span>
+</a>
+
+<a href="#" style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; padding: 14px 0; border-top: 1px solid #DEDED8; border-bottom: 1px solid #DEDED8; color: #1A1C1F; text-decoration: none">
+<span style="flex: 1 1 260px; font-family: 'Source Serif 4', Georgia, serif; font-size: 18px">Add rate limiting to /login</span>
+<span style="font-size: 13px; color: #4A4F57">Solo · <span style="font-weight: 500; color: #1D5FBF">Codex</span> · 4 min</span>
+<span style="flex: 1 1 100%; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: {{accent}}">Paused, waiting for your permission</span>
+</a>
+
+<a href="#" style="padding: 14px 0 0; font-size: 14px">Done today · 5</a>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2747C7"},"$preview":{"width":1440,"height":1520}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#2747C7' };
+}
+}
+</script>
+</body>
+</html>

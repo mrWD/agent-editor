@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Task chat</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5F5B73}a:hover{color:#1E1B2E}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #F2F1F6; color: #1E1B2E; font-family: 'DM Sans', system-ui, sans-serif; font-size: 16px; line-height: 1.5">
+
+<nav aria-label="Sections" style="flex: 1 1 96px; box-sizing: border-box; padding: 20px 12px; display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 6px">
+<button type="button" aria-label="Workspace shop-api, branch main" style="width: 48px; height: 48px; margin: 0 12px 10px; border: 0; border-radius: 16px; background: #1E1B2E; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 18px; cursor: pointer">S</button>
+<a href="Inbox.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l2-6h8l2 6v4H2V9z"></path><path d="M2 9h4l1 2h2l1-2h4"></path></svg>
+<span style="display: flex; align-items: center; gap: 4px">Inbox<span style="min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: {{accent}}; color: #FFFFFF; font-size: 11px; line-height: 18px; text-align: center">4</span></span>
+</a>
+<a href="#" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06); color: {{accent}}; font-size: 12px; font-weight: 600; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h10"></path></svg>
+Tasks
+</a>
+<a href="Review.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M5.5 8l2 2 3-3.5"></path></svg>
+Review
+</a>
+<a href="Editor.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4L2 8l4 4M10 4l4 4-4 4"></path></svg>
+Editor
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>
+Automate
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h8.5v11H4a1 1 0 0 1-1-1v-10z"></path><path d="M3 11.5h8.5"></path></svg>
+Skills
+</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 0; border-radius: 16px; font-size: 12px; font-weight: 500; text-decoration: none">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg>
+Settings
+</a>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 28px 40px 56px">
+<div style="max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px">
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<a href="Inbox.dc.html" style="align-self: flex-start; display: flex; align-items: center; gap: 6px; min-height: 32px; font-size: 14px; font-weight: 500; text-decoration: none">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
+Inbox
+</a>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 12px">
+<h1 style="flex: 1 1 360px; margin: 0; font-weight: 700; font-size: 30px; line-height: 1.2; letter-spacing: -0.01em">Add rate limiting to /login</h1>
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #FFFFFF; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Hand off to another agent</button>
+<button type="button" style="height: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: #5F5B73; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Stop</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; color: #5F5B73">
+<span style="padding: 0 12px; border-radius: 999px; background: #FFFFFF; color: #1E1B2E; font-size: 13px; font-weight: 600; line-height: 28px">Solo</span>
+<span style="display: flex; align-items: center; gap: 6px; padding: 0 12px 0 4px; border-radius: 999px; background: #E1EDFF; color: #1D5BB8; font-size: 13px; font-weight: 600; line-height: 28px"><span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; line-height: 22px; text-align: center">Cx</span>Codex</span>
+<span style="font-family: 'DM Mono', monospace; font-size: 13px">task/rate-limit</span>
+<span>Started 4 min ago</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 4px">
+<a href="#" aria-current="page" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; background: #1E1B2E; color: #FFFFFF; font-size: 15px; font-weight: 600; text-decoration: none">Chat</a>
+<a href="Review.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 999px; color: #1E1B2E; font-size: 15px; font-weight: 600; text-decoration: none">Changes <span style="color: #5F5B73">3</span></a>
+<a href="#" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; color: #1E1B2E; font-size: 15px; font-weight: 600; text-decoration: none">Terminal</a>
+<a href="Preview.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; color: #1E1B2E; font-size: 15px; font-weight: 600; text-decoration: none">Preview</a>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px">
+
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+<article style="align-self: flex-end; max-width: 640px; display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; border-radius: 24px 24px 6px 24px; background: #1E1B2E; color: #FFFFFF">
+<p style="margin: 0">Add rate limiting to POST /login: five attempts per minute for each IP. Return 429 with a Retry-After header.</p>
+<span style="align-self: flex-start; display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 12px; background: rgba(255,255,255,0.14); font-size: 14px">
+<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2"></rect><path d="M2 11l3.5-3.5L8 10l2.5-2.5L14 11"></path></svg>
+login-errors.png
+</span>
+</article>
+
+<article style="max-width: 720px; display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; border-radius: 24px 24px 24px 6px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06)">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 50%; background: #E1EDFF; color: #1D5BB8; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; line-height: 28px; text-align: center">Cx</span>
+<span style="font-weight: 600; color: #1D5BB8">Codex</span>
+<span style="font-size: 13px; color: #5F5B73">4 min ago</span>
+</div>
+<p style="margin: 0">The login route has no limiter yet. My plan:</p>
+<ol style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px">
+<li>Add a limiter middleware with a one-minute window and a limit of five.</li>
+<li>Attach it to POST /login only.</li>
+<li>Add tests for the sixth attempt and for the Retry-After header.</li>
+</ol>
+</article>
+
+<section aria-label="What Codex did" style="max-width: 720px; display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border-radius: 20px; background: #E9E7F0">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 6px 4px; font-size: 14px"><span style="min-width: 72px; font-weight: 600; color: #5F5B73">Read</span><span style="font-family: 'DM Mono', monospace; font-size: 13.5px">src/routes/auth.ts</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 6px 4px; font-size: 14px"><span style="min-width: 72px; font-weight: 600; color: #5F5B73">Searched</span><span style="font-family: 'DM Mono', monospace; font-size: 13.5px">rateLimit in src/</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 6px 4px; font-size: 14px"><span style="min-width: 72px; font-weight: 600; color: #5F5B73">Created</span><span style="flex-grow: 1; font-family: 'DM Mono', monospace; font-size: 13.5px">src/middleware/rateLimit.ts</span><span style="font-family: 'DM Mono', monospace; font-size: 13.5px; font-weight: 500; color: #1B6B3A">+42</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 6px 4px; font-size: 14px"><span style="min-width: 72px; font-weight: 600; color: #5F5B73">Edited</span><span style="flex-grow: 1; font-family: 'DM Mono', monospace; font-size: 13.5px">src/routes/auth.ts</span><span style="font-family: 'DM Mono', monospace; font-size: 13.5px; font-weight: 500"><span style="color: #1B6B3A">+6</span> <span style="color: #A32222">−1</span></span></div>
+</section>
+
+<article style="max-width: 720px; display: flex; flex-direction: column; overflow: hidden; border-radius: 24px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06)">
+<div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #E1EDFF; color: #1D5BB8">
+<span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 50%; background: #FFFFFF; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; line-height: 28px; text-align: center">Cx</span>
+<span style="flex-grow: 1; font-weight: 600">Codex asks permission</span>
+<span style="font-size: 13px; color: #5F5B73">2 min ago</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px 20px">
+<p style="margin: 0; color: #5F5B73">Wants to run a command in the task worktree.</p>
+<pre style="margin: 0; padding: 12px 14px; border-radius: 12px; background: #F2F1F6; color: #1E1B2E; font-family: 'DM Mono', monospace; font-size: 14px; overflow-x: auto">npm install express-rate-limit</pre>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: {{accent}}; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Allow once</button>
+<button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Always in this task</button>
+<button type="button" style="height: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: #5F5B73; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Deny</button>
+</div>
+</div>
+</article>
+
+<section style="display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; border-radius: 24px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(30,27,46,0.06), 0 8px 24px rgba(30,27,46,0.06)">
+<label for="reply-chat" style="font-size: 14px; font-weight: 600; color: #5F5B73">Reply to Codex</label>
+<textarea id="reply-chat" rows="2" placeholder="Write a message" style="box-sizing: border-box; width: 100%; padding: 4px 0; border: 0; background: transparent; color: #1E1B2E; font: inherit; font-size: 17px; resize: vertical"></textarea>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px">
+<button type="button" aria-label="Attach image" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: #F2F1F6; color: #1E1B2E; cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2"></rect><path d="M2 11l3.5-3.5L8 10l2.5-2.5L14 11"></path></svg>
+</button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer">Ask before running commands
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>
+</button>
+<span style="flex-grow: 1"></span>
+<button type="button" style="height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: {{accent}}; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Send</button>
+</div>
+</section>
+
+</div>
+
+<aside style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; border-radius: 24px; background: #FFFFFF">
+<h2 style="margin: 0; font-weight: 700; font-size: 17px">Plan</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px">
+<li style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="Done" style="flex-shrink: 0; margin-top: 2px"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Add the limiter middleware</span>
+</li>
+<li style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="Done" style="flex-shrink: 0; margin-top: 2px"><circle cx="10" cy="10" r="10" fill="#DDF3E4"></circle><path d="M6 10.5l2.6 2.6L14 7.5" fill="none" stroke="#1B6B3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Attach it to POST /login</span>
+</li>
+<li style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="Waiting for you" style="flex-shrink: 0; margin-top: 2px; color: {{accent}}"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="2"></circle><circle cx="10" cy="10" r="4" fill="currentColor"></circle></svg>
+<span style="display: flex; flex-direction: column"><span style="font-weight: 600">Install express-rate-limit</span><span style="font-size: 14px; color: {{accent}}">Waiting for your permission</span></span>
+</li>
+<li style="display: flex; align-items: flex-start; gap: 10px; color: #5F5B73">
+<svg width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="To do" style="flex-shrink: 0; margin-top: 2px"><circle cx="10" cy="10" r="8.5" fill="none" stroke="#8D89A3" stroke-width="2"></circle></svg>
+<span>Add tests</span>
+</li>
+</ul>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; border-radius: 24px; background: #FFFFFF">
+<h2 style="margin: 0; font-weight: 700; font-size: 17px">Changes</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-family: 'DM Mono', monospace; font-size: 13.5px">
+<li style="display: flex; gap: 12px"><span style="flex-grow: 1; min-width: 0; overflow-wrap: anywhere">src/middleware/rateLimit.ts</span><span style="font-weight: 500; color: #1B6B3A">+42</span></li>
+<li style="display: flex; gap: 12px"><span style="flex-grow: 1; min-width: 0; overflow-wrap: anywhere">src/routes/auth.ts</span><span style="font-weight: 500; white-space: nowrap"><span style="color: #1B6B3A">+6</span> <span style="color: #A32222">−1</span></span></li>
+<li style="display: flex; gap: 12px"><span style="flex-grow: 1; min-width: 0; overflow-wrap: anywhere">README.md</span><span style="font-weight: 500; color: #1B6B3A">+4</span></li>
+</ul>
+<a href="Review.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 999px; background: #F2F1F6; color: #1E1B2E; font-size: 15px; font-weight: 600; text-decoration: none">Review changes</a>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border-radius: 24px; background: #FFFFFF">
+<h2 style="margin: 0; font-weight: 700; font-size: 17px">Usage</h2>
+<div style="display: flex; justify-content: space-between; gap: 12px; font-size: 15px"><span style="color: #5F5B73">Context used</span><span style="font-family: 'DM Mono', monospace">38%</span></div>
+<span aria-hidden="true" style="display: block; height: 8px; border-radius: 4px; background: #F2F1F6"><span style="display: block; width: 38%; height: 8px; border-radius: 4px; background: #1D5BB8"></span></span>
+<div style="display: flex; justify-content: space-between; gap: 12px; font-size: 15px"><span style="color: #5F5B73">Cost so far</span><span style="font-family: 'DM Mono', monospace">$0.41</span></div>
+</section>
+
+</aside>
+</div>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#4338CA"},"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#4338CA' };
+}
+}
+</script>
+</body>
+</html>
