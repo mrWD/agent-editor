@@ -31,6 +31,18 @@ export function TeamPanel(props: { task: Task; onClose: () => void }): JSX.Eleme
   const [problem, setProblem] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const first = () => props.task.info.agentId;
+  /**
+   * Whether the editor can read what an agent answers. A program in a terminal answers on its own
+   * screen: it can build, and it cannot hand a plan or a verdict on.
+   */
+  const answers = (id: string) => state.agents.find((agent) => agent.id === id)?.speaks !== 'terminal';
+  /** The task's own agent where it can take the role, else the first one that can. */
+  const firstThatAnswers = () =>
+    answers(first()) ? first() : (agents().find((agent) => answers(agent.id))?.id ?? first());
+  const reviewer = () =>
+    review() ??
+    agents().find((agent) => agent.id !== (build() || first()) && answers(agent.id))?.id ??
+    firstThatAnswers();
   const idle = () => props.task.info.state === 'idle' || props.task.info.state === 'asleep';
 
   const act = async (work: () => Promise<unknown>) => {
@@ -60,7 +72,13 @@ export function TeamPanel(props: { task: Task; onClose: () => void }): JSX.Eleme
     return <Ring />;
   };
 
-  const roleSelect = (label: string, value: () => string | null, set: (id: string) => void, optional = false) => (
+  const roleSelect = (
+    label: string,
+    value: () => string | null,
+    set: (id: string) => void,
+    optional = false,
+    mustAnswer = false,
+  ) => (
     <label class="team-role">
       <span>{label}</span>
       <select
@@ -72,7 +90,14 @@ export function TeamPanel(props: { task: Task; onClose: () => void }): JSX.Eleme
         <Show when={optional}>
           <option value="">Nobody</option>
         </Show>
-        <For each={agents()}>{(agent) => <option value={agent.id}>{agent.name}</option>}</For>
+        <For each={agents()}>
+          {(agent) => (
+            <option value={agent.id} disabled={mustAnswer && !answers(agent.id)}>
+              {agent.name}
+              {mustAnswer && !answers(agent.id) ? ' (in a terminal: it can only build)' : ''}
+            </option>
+          )}
+        </For>
       </select>
     </label>
   );
@@ -94,20 +119,17 @@ export function TeamPanel(props: { task: Task; onClose: () => void }): JSX.Eleme
             </span>
             {roleSelect(
               'Plans',
-              () => plan() || first(),
+              () => plan() || firstThatAnswers(),
               (id) => setPlan(id),
+              false,
+              true,
             )}
             {roleSelect(
               'Builds',
               () => build() || first(),
               (id) => setBuild(id),
             )}
-            {roleSelect(
-              'Reviews',
-              () => review() ?? agents().find((agent) => agent.id !== (build() || first()))?.id ?? first(),
-              (id) => setReview(id),
-              true,
-            )}
+            {roleSelect('Reviews', reviewer, (id) => setReview(id), true, true)}
             <span class="fine">Then the task's checks run.</span>
             <div class="actions">
               <button
@@ -118,12 +140,9 @@ export function TeamPanel(props: { task: Task; onClose: () => void }): JSX.Eleme
                 onClick={() =>
                   act(() =>
                     startTeam(taskId(), {
-                      plan: plan() || first(),
+                      plan: plan() || firstThatAnswers(),
                       build: build() || first(),
-                      review:
-                        review() === ''
-                          ? null
-                          : (review() ?? agents().find((agent) => agent.id !== (build() || first()))?.id ?? first()),
+                      review: review() === '' ? null : reviewer(),
                     }),
                   )
                 }
