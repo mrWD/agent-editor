@@ -569,6 +569,17 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
                 .await?;
             Ok(json!(task))
         }
+        "setup.start" => {
+            // An agent sets the editor up: it is told to follow the guide, then what the user said about their team.
+            let told = params.get("text").and_then(Value::as_str).unwrap_or_default().trim();
+            let text = if told.is_empty() {
+                crate::setup::SETUP_PROMPT.to_string()
+            } else {
+                format!("{}\n\nWhat my team uses: {told}", crate::setup::SETUP_PROMPT)
+            };
+            let task = manager.create(text_param(params, "projectId")?, text_param(params, "agentId")?, &text).await?;
+            Ok(json!(task))
+        }
         "tasks.history" => {
             let events = manager.history(text_param(params, "taskId")?)?;
             Ok(json!({ "events": events }))

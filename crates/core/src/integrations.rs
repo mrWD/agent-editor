@@ -101,7 +101,7 @@ impl Manager {
     // ----- what is connected -----
 
     /// The Linear key: the one the user saved, else the one in the environment.
-    fn linear_key(&self) -> Option<String> {
+    pub(crate) fn linear_key(&self) -> Option<String> {
         self.store()
             .setting("linear.key")
             .ok()
@@ -113,7 +113,18 @@ impl Manager {
 
     /// Which services can be used right now, and what to do about those that cannot.
     pub fn integrations(&self) -> Value {
-        // The servers the projects live on: a company's own GitLab is asked about itself, not gitlab.com.
+        let servers = self.code_servers();
+        json!({
+            "github": self.hosts.tool_state(HostKind::GitHub, &servers[0]),
+            "gitlab": self.hosts.tool_state(HostKind::GitLab, &servers[1]),
+            "linear": { "hasKey": self.linear_key().is_some() },
+            "docker": self.hosts.docker_state(),
+        })
+    }
+
+    /// The servers the projects live on, GitHub's first and GitLab's second: a company's own GitLab is asked
+    /// about itself, not gitlab.com.
+    pub(crate) fn code_servers(&self) -> [Vec<String>; 2] {
         let mut servers: [Vec<String>; 2] = [vec![], vec![]];
         for project in self.store().projects().unwrap_or_default() {
             if let Some(remote) = crate::hosts::remote_of(std::path::Path::new(&project.path)) {
@@ -123,12 +134,7 @@ impl Manager {
                 }
             }
         }
-        json!({
-            "github": self.hosts.tool_state(HostKind::GitHub, &servers[0]),
-            "gitlab": self.hosts.tool_state(HostKind::GitLab, &servers[1]),
-            "linear": { "hasKey": self.linear_key().is_some() },
-            "docker": self.hosts.docker_state(),
-        })
+        servers
     }
 
     /// Saves the Linear key, or forgets it. It is kept in the core's own database on this machine.
@@ -150,7 +156,7 @@ impl Manager {
         Ok(())
     }
 
-    fn linear_team(&self, project_id: &str) -> Option<String> {
+    pub(crate) fn linear_team(&self, project_id: &str) -> Option<String> {
         self.store().setting(&team_setting(project_id)).ok().flatten()
     }
 
