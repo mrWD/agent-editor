@@ -525,6 +525,8 @@ impl Manager {
         {
             use std::os::unix::process::CommandExt;
             command.process_group(0);
+            // SAFETY: the function only calls `fcntl`, which is safe between `fork` and `exec`.
+            unsafe { command.pre_exec(crate::acp::leave_others_streams) };
         }
         let mut child = command.spawn().map_err(|error| anyhow!("Could not start `{}`: {error}", check.command))?;
         let run = Arc::new(Run {

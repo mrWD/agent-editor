@@ -1043,12 +1043,22 @@ enum Doing {
     Draw,
 }
 
+/// A number that only grows. A turn takes one when it starts and a job takes one when it is made, so what was
+/// started later always has the larger one.
+pub(crate) fn turn_number() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
+
 /// The one message of the plan a task's agent is working on.
 #[derive(Debug, Clone)]
 struct Job {
     doing: Doing,
     /// The message as it was sent, so the end of its turn is told from the end of any other.
     message: String,
+    /// Taken when the job was made. Only a turn that started after it can be this job's turn: the same block
+    /// built twice in a row sends the same message twice, and the end of the first must not end the second.
+    made: u64,
     started_at: u64,
 }
 
@@ -1212,7 +1222,8 @@ impl Manager {
             building.by = Some(author.id.clone());
             building.by_name = Some(author.name.clone());
             // From here on the end of a turn with this message is the end of this build.
-            let job = Job { doing: Doing::Build(id), message: message.clone(), started_at: now_ms() };
+            let job =
+                Job { doing: Doing::Build(id), message: message.clone(), made: turn_number(), started_at: now_ms() };
             self.plans.jobs.lock().unwrap().insert(task_id.to_string(), job);
             Ok((block, message))
         })?;
@@ -1236,7 +1247,7 @@ impl Manager {
             self.plan_agent_is_free(&task)?;
             plan.problem = None;
             let doing = if from_code { Doing::Draw } else { Doing::Draft };
-            let job = Job { doing, message: message.clone(), started_at: now_ms() };
+            let job = Job { doing, message: message.clone(), made: turn_number(), started_at: now_ms() };
             self.plans.jobs.lock().unwrap().insert(task_id.to_string(), job);
             Ok(())
         })?;
@@ -1244,10 +1255,11 @@ impl Manager {
     }
 
     /// Called at the end of every turn of a task, with the message the turn
-    /// answered and whether it ended by itself. This is where a block that was
-    /// being built becomes built, a draft arrives and proposals are read.
-    pub(crate) async fn plan_turn_ended(self: &Arc<Self>, task_id: &str, message: &str, ended_well: bool) {
-        let own = |job: &Job| job.message == message;
+    /// answered, the number the turn took when it started and whether it ended
+    /// by itself. This is where a block that was being built becomes built, a
+    /// draft arrives and proposals are read.
+    pub(crate) async fn plan_turn_ended(self: &Arc<Self>, task_id: &str, message: &str, turn: u64, ended_well: bool) {
+        let own = |job: &Job| job.message == message && job.made < turn;
         let job = self.plan_job(task_id).filter(own);
         // Any other turn matters to the plan only when its answer may propose a block.
         if job.is_none() && !ended_well {

@@ -104,7 +104,11 @@ impl Connection {
         // the real agent as its own child. The whole family gets one group, so
         // stopping the agent stops all of it.
         #[cfg(unix)]
-        command.process_group(0);
+        {
+            command.process_group(0);
+            // SAFETY: the function only calls `fcntl`, which is safe between `fork` and `exec`.
+            unsafe { command.pre_exec(leave_others_streams) };
+        }
         for (key, value) in env {
             command.env(key, value);
         }
@@ -276,6 +280,25 @@ impl Connection {
         }
         let _ = self.closed.send(Incoming::Closed);
     }
+}
+
+/// Run in a child between `fork` and `exec`: everything the child inherited
+/// besides its own three streams is marked to be closed when its program starts.
+///
+/// On macOS a pipe is made first and marked "close when a program starts"
+/// second, so a child started by another thread in between inherits it. A
+/// short-lived child gives it back at once. An agent, a language server or a
+/// check would hold it for as long as it lives, and whoever waits for that pipe
+/// to end (a `git` call whose output is being read) would wait as long.
+#[cfg(unix)]
+pub(crate) fn leave_others_streams() -> std::io::Result<()> {
+    for fd in 3..1024 {
+        // SAFETY: `fcntl` may be called between `fork` and `exec`; a number that is no open file is refused, which is fine.
+        unsafe {
+            libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+        }
+    }
+    Ok(())
 }
 
 /// Stops a process together with the processes it started.

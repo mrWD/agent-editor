@@ -952,6 +952,8 @@ impl Manager {
 
         let manager = self.clone();
         let task_id = task_id.to_string();
+        // Taken as the turn starts, so its end is never mistaken for the end of a later turn with the same words.
+        let turn = crate::plan::turn_number();
         tokio::spawn(async move {
             let result = live
                 .conn
@@ -977,7 +979,7 @@ impl Manager {
             let touched: Vec<String> = live.touched.lock().unwrap().iter().cloned().collect();
             manager.sweep_in_background(&task_id, Author::Agent, touched).await;
             // The plan hears how the turn ended: a block that was being built is built now, or planned again.
-            manager.plan_turn_ended(&task_id, &text, ended_well).await;
+            manager.plan_turn_ended(&task_id, &text, turn, ended_well).await;
             if *live.state.lock().unwrap() != TaskState::Asleep {
                 manager.set_state(&task_id, &live, TaskState::Idle);
             }

@@ -375,7 +375,11 @@ impl Server {
         // A language server starts helpers of its own (a compiler, a type checker).
         // The whole family gets one group, so stopping the server stops all of it.
         #[cfg(unix)]
-        command.process_group(0);
+        {
+            command.process_group(0);
+            // SAFETY: the function only calls `fcntl`, which is safe between `fork` and `exec`.
+            unsafe { command.pre_exec(crate::acp::leave_others_streams) };
+        }
         // What the core was configured with is the core's own business.
         for (name, _) in std::env::vars_os() {
             if name.to_string_lossy().starts_with("AE_") {
