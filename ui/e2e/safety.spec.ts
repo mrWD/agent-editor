@@ -25,8 +25,10 @@ test.describe('the test setup itself', () => {
 
     // Asking the core what is connected makes it call the tools: the stand-ins are what answers.
     const status = await core.request<Integrations>('integrations.status');
-    expect(core.calls('gh')).toContain('auth status');
-    expect(core.calls('glab')).toContain('auth status');
+    // With a project on a server of its own the question names that server: "auth status --hostname …".
+    const asked = (call: string) => call === 'auth status' || call.startsWith('auth status --hostname ');
+    expect(core.calls('gh').some(asked)).toBe(true);
+    expect(core.calls('glab').some(asked)).toBe(true);
     expect(core.calls('docker').some((call) => call.startsWith('info'))).toBe(true);
     expect(status.github).toEqual({ installed: true, signedIn: true, hint: null });
     // The stand-in for glab always says "not signed in", whatever the real one would say.
