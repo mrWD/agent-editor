@@ -799,6 +799,59 @@ textarea::placeholder {
   font-size: 12px;
   color: var(--text-3);
 }
+/* A setting of the agent, as a drop-down that looks like the buttons around it. */
+.pick {
+  max-width: 180px;
+  height: 30px;
+  padding: 0 26px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='%238B93A1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E")
+    no-repeat right 7px center;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  appearance: none;
+  cursor: pointer;
+}
+.pick:hover:not(:disabled) {
+  background-color: var(--panel);
+}
+.pick:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.pick option {
+  background: var(--panel);
+  color: var(--text);
+}
+.composer-row .pick {
+  height: 32px;
+  color: var(--text-2);
+  font-weight: 400;
+}
+.agent-more {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+  font-size: 13px;
+}
+.agent-more-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-more .fine {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
 .card {
   display: flex;
   flex-direction: column;
@@ -861,9 +914,89 @@ textarea::placeholder {
 .said-head .who {
   font-weight: 600;
 }
-.said p {
-  white-space: pre-wrap;
+/* An agent's message: Markdown shown as it is meant. */
+.md {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   overflow-wrap: anywhere;
+}
+.md > * {
+  margin: 0;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15px;
+}
+.md h1 {
+  font-size: 17px;
+}
+.md ul,
+.md ol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 20px;
+}
+.md li > p {
+  margin: 0;
+}
+.md code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.md pre {
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--ground);
+  overflow: auto;
+}
+.md pre code {
+  padding: 0;
+  background: none;
+  white-space: pre;
+}
+.md a {
+  color: var(--codex);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md a.file-link {
+  text-decoration: none;
+}
+.md a.file-link code {
+  color: var(--codex);
+}
+.md a.file-link:hover code {
+  text-decoration: underline;
+}
+.md blockquote {
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-2);
+}
+.md table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.md th,
+.md td {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  text-align: left;
+}
+.md hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 .thought {
   padding-left: 10px;

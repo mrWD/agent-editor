@@ -13,7 +13,7 @@ function task(): Task {
     seenSeq: -1,
     state: 'idle',
   };
-  return { info, feed: [], lastSeq: -1, lastAt: 0, changed: [] };
+  return { info, feed: [], lastSeq: -1, lastAt: 0, changed: [], usage: null, spentBefore: 0 };
 }
 
 let seq = 0;

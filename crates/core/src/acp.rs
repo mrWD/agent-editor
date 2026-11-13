@@ -79,6 +79,9 @@ pub struct Connection {
     in_order: Arc<AtomicBool>,
     next_id: AtomicU64,
     child: Mutex<Option<Child>>,
+    /// A second way into the stream of what the agent sends, to say "closed"
+    /// when the agent was stopped but something it started keeps its output open.
+    closed: mpsc::UnboundedSender<Incoming>,
 }
 
 impl Connection {
@@ -97,6 +100,11 @@ impl Connection {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        // Agents are often started through a launcher (`npx` is one), which starts
+        // the real agent as its own child. The whole family gets one group, so
+        // stopping the agent stops all of it.
+        #[cfg(unix)]
+        command.process_group(0);
         for (key, value) in env {
             command.env(key, value);
         }
@@ -135,6 +143,7 @@ impl Connection {
 
         // Reader: one JSON message per line. A line can be very long (a whole
         // diff), so no length limit is applied.
+        let closed = incoming_tx.clone();
         let reader_pending = pending.clone();
         let in_order = Arc::new(AtomicBool::new(false));
         let reader_in_order = in_order.clone();
@@ -158,8 +167,14 @@ impl Connection {
             let _ = incoming_tx.send(Incoming::Closed);
         });
 
-        let connection =
-            Arc::new(Self { outgoing, pending, in_order, next_id: AtomicU64::new(1), child: Mutex::new(Some(child)) });
+        let connection = Arc::new(Self {
+            outgoing,
+            pending,
+            in_order,
+            next_id: AtomicU64::new(1),
+            child: Mutex::new(Some(child)),
+            closed,
+        });
         Ok((connection, incoming_rx))
     }
 
@@ -247,10 +262,39 @@ impl Connection {
         let _ = self.outgoing.send(line);
     }
 
-    /// Stops the agent process. Safe to call more than once.
+    /// Stops the agent process and everything it started. Safe to call more than once.
     pub async fn kill(&self) {
-        if let Some(mut child) = self.child.lock().await.take() {
-            let _ = child.kill().await;
+        let Some(mut child) = self.child.lock().await.take() else { return };
+        if let Some(pid) = child.id() {
+            kill_family(pid);
         }
+        let _ = child.kill().await;
+        // Nobody will answer what is still pending, and nothing more will come.
+        let waiting: Vec<_> = self.pending.lock().unwrap().drain().collect();
+        for (_, tx) in waiting {
+            let _ = tx.send(Err(RpcError::closed()));
+        }
+        let _ = self.closed.send(Incoming::Closed);
     }
+}
+
+/// Stops a process together with the processes it started.
+#[cfg(unix)]
+fn kill_family(pid: u32) {
+    // The agent was started as the head of its own group: the group's number is its own.
+    // SAFETY: `killpg` only sends a signal; a group that is gone already is not an error to act on.
+    unsafe {
+        libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+    }
+}
+
+/// Stops a process together with the processes it started.
+#[cfg(windows)]
+fn kill_family(pid: u32) {
+    let _ = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }

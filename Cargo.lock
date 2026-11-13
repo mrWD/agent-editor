@@ -18,6 +18,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "ignore",
+ "libc",
  "portable-pty",
  "rusqlite",
  "serde",

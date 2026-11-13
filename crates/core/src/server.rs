@@ -349,6 +349,16 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             manager.answer_permission(text_param(params, "taskId")?, text_param(params, "requestId")?, option)?;
             Ok(json!({}))
         }
+        "tasks.setOption" => {
+            let config = manager
+                .set_option(
+                    text_param(params, "taskId")?,
+                    text_param(params, "optionId")?,
+                    text_param(params, "value")?,
+                )
+                .await?;
+            Ok(json!({ "config": config }))
+        }
         "tasks.cancel" => {
             manager.cancel(text_param(params, "taskId")?)?;
             Ok(json!({}))

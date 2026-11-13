@@ -38,20 +38,45 @@ pub fn mock_agent() -> PathBuf {
     .clone()
 }
 
+/// The practice agent three ways: as it is, able to pick an earlier session up
+/// again ("mock-load"), and offering its settings the older way ("mock-modes").
 pub fn registry() -> Registry {
-    Registry::with(vec![AgentDef {
-        id: "mock".into(),
-        name: "Practice agent".into(),
-        short: "Pr".into(),
-        vendor: "Agent Editor".into(),
-        program: mock_agent().to_string_lossy().into_owned(),
-        args: vec![],
+    let practice = |id: &str, switch: Option<&str>| {
         // No pauses between chunks: tests should be fast.
-        env: vec![("AE_MOCK_DELAY_MS".into(), "0".into())],
-        available: true,
-        note: None,
-        spends_tokens: false,
-    }])
+        let mut env = vec![("AE_MOCK_DELAY_MS".to_string(), "0".to_string())];
+        env.extend(switch.map(|name| (name.to_string(), "1".to_string())));
+        AgentDef {
+            id: id.into(),
+            name: "Practice agent".into(),
+            short: "Pr".into(),
+            vendor: "Agent Editor".into(),
+            program: mock_agent().to_string_lossy().into_owned(),
+            args: vec![],
+            env,
+            available: true,
+            note: None,
+            spends_tokens: false,
+        }
+    };
+    // The practice agent behind a launcher, the way `npx` starts real agents: the
+    // launcher is the process the core starts, the agent is the launcher's child.
+    let mut wrapped = practice("mock-wrapped", None);
+    // Beside the agent the launcher starts a helper that outlives a closed input
+    // and keeps the output open, as the helpers of real agents do.
+    let script = format!("sh -c 'sleep 30; true' \"$0\" & '{}' \"$0\"; true", wrapped.program);
+    wrapped.args = vec!["-c".into(), script, wrapped_marker()];
+    wrapped.program = "/bin/sh".into();
+    Registry::with(vec![
+        practice("mock", None),
+        practice("mock-load", Some("AE_MOCK_LOAD")),
+        practice("mock-modes", Some("AE_MOCK_MODES")),
+        wrapped,
+    ])
+}
+
+/// A word on the command line of the wrapped practice agent, to find its processes by.
+pub fn wrapped_marker() -> String {
+    format!("ae-wrapped-agent-{}", std::process::id())
 }
 
 /// A fresh folder for one test, removed when the value is dropped.
@@ -72,6 +97,10 @@ impl Sandbox {
     }
     pub fn data(&self) -> PathBuf {
         self.0.join("data")
+    }
+    /// A second way into the same database, for a test that changes what is stored.
+    pub fn store(&self) -> Store {
+        Store::open(&self.data().join("test.db")).unwrap()
     }
     /// A manager that cannot reach any real service: the tools it would call do not exist.
     pub fn manager(&self) -> Arc<Manager> {

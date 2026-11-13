@@ -1,8 +1,20 @@
 import { createEffect, createSignal, For, Match, on, Show, Switch, type JSX } from 'solid-js';
 import { go, route, taskHref } from '../app/router';
-import { agentOf, answerPermission, cancelTurn, sendPrompt, type Diff, type FeedItem, type Task } from '../core/store';
+import {
+  agentOf,
+  answerPermission,
+  cancelTurn,
+  sendPrompt,
+  setTaskOption,
+  spentOn,
+  type ConfigOption,
+  type Diff,
+  type FeedItem,
+  type Task,
+} from '../core/store';
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
 import { ago, Check, Chip, Ring, RingDot } from './bits';
+import { Markdown } from './Markdown';
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
 const linesOf = (quote: Quote) =>
@@ -71,6 +83,47 @@ function gitVerb(action: string): string {
   }
 }
 
+const isMode = (option: ConfigOption) => option.category === 'mode' || option.id === 'mode';
+const isModel = (option: ConfigOption) => option.category === 'model' || option.id === 'model';
+
+/** "$0.27", or "less than $0.01" for the small change agents report. */
+export function money(amount: number, currency: string): string {
+  const sign = currency === 'USD' ? '$' : `${currency} `;
+  return amount > 0 && amount < 0.01 ? `less than ${sign}0.01` : `${sign}${amount.toFixed(2)}`;
+}
+
+/** One setting of the agent as a drop-down list. */
+function OptionSelect(props: {
+  option: ConfigOption;
+  label: string;
+  busy: boolean;
+  onPick: (value: string) => void;
+}): JSX.Element {
+  const chosen = () => props.option.options.find((one) => one.value === props.option.currentValue);
+  return (
+    <select
+      class="pick"
+      aria-label={props.label}
+      title={chosen()?.description ?? props.option.description ?? props.label}
+      disabled={props.busy}
+      value={props.option.currentValue}
+      onChange={(event) => props.onPick(event.currentTarget.value)}
+    >
+      <For each={props.option.options}>
+        {(one) => (
+          <option
+            value={one.value}
+            title={one.description ?? undefined}
+            selected={one.value === props.option.currentValue}
+          >
+            {one.name}
+          </option>
+        )}
+      </For>
+    </select>
+  );
+}
+
 export function AgentPane(props: { task: Task }): JSX.Element {
   const agent = () => agentOf(props.task);
   const name = () => agent()?.name ?? props.task.info.agentId;
@@ -82,10 +135,34 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   const work = () => workOf(taskId());
 
   /** Shows a file of this task in the editor. Paths outside the task's folder are not links. */
-  const showFile = (path: string) => {
+  const showFile = (path: string, line?: number) => {
     const current = route();
     if (current.page !== 'task' || current.view !== 'code') go(taskHref(taskId(), 'code'));
-    setTimeout(() => openInEditor(taskId(), path), 0);
+    setTimeout(() => openInEditor(taskId(), path, line), 0);
+  };
+
+  // What the running agent offers to set: its mode by the Send button, its
+  // model in the head, everything else behind "More".
+  const options = () => props.task.info.config?.options ?? [];
+  const modeOption = () => options().find(isMode);
+  const modelOption = () => options().find((option) => isModel(option) && !isMode(option));
+  const otherOptions = () => options().filter((option) => !isMode(option) && !isModel(option));
+  const [moreOpen, setMoreOpen] = createSignal(false);
+  const [setting, setSetting] = createSignal(false);
+  const pick = (option: ConfigOption, value: string) => {
+    if (value === option.currentValue) return;
+    setSetting(true);
+    const id = taskId();
+    void act(() => setTaskOption(id, option.id, value)).finally(() => setSetting(false));
+  };
+
+  const usage = () => props.task.usage;
+  const contextShare = () => Math.min(100, Math.round((usage()!.used / usage()!.size) * 100));
+  const usageTitle = () => {
+    const now = usage()!;
+    const spent = spentOn(props.task);
+    const tokens = `${now.used.toLocaleString('en-US')} of ${now.size.toLocaleString('en-US')} tokens of context are in use.`;
+    return spent > 0 ? `${tokens} This task has cost ${money(spent, now.currency)} so far.` : tokens;
   };
   const inFolder = (path: string | null): path is string => Boolean(path) && !/^([a-zA-Z]:)?[\\/]/.test(path!);
 
@@ -179,7 +256,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               <span class="who">{name()}</span>
               <span class="muted">{ago(said().at)}</span>
             </div>
-            <p>{said().text}</p>
+            <Markdown text={said().text} onFile={showFile} />
           </article>
         )}
       </Match>
@@ -287,7 +364,34 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           <Chip agentId={agentId()} short={short()} />
           {name()}
         </span>
+        <Show when={modelOption()}>
+          {(option) => (
+            <OptionSelect
+              option={option()}
+              label={`Model of ${name()}`}
+              busy={setting()}
+              onPick={(value) => pick(option(), value)}
+            />
+          )}
+        </Show>
+        <Show when={otherOptions().length > 0}>
+          <button
+            type="button"
+            class="btn small ghost"
+            aria-expanded={moreOpen()}
+            aria-controls={`more-${taskId()}`}
+            onClick={() => setMoreOpen(!moreOpen())}
+          >
+            More
+          </button>
+        </Show>
         <span class="grow" />
+        <Show when={usage()}>
+          <span class="meta" title={usageTitle()}>
+            Context {contextShare()}%
+            <Show when={spentOn(props.task) > 0}> · {money(spentOn(props.task), usage()!.currency)}</Show>
+          </span>
+        </Show>
         <span class="meta">
           <Switch>
             <Match when={sessionState() === 'running'}>Working</Match>
@@ -298,6 +402,26 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           </Switch>
         </span>
       </div>
+      <Show when={moreOpen() && otherOptions().length > 0}>
+        <section class="agent-more" id={`more-${taskId()}`} aria-label={`More settings of ${name()}`}>
+          <For each={otherOptions()}>
+            {(option) => (
+              <label class="agent-more-row">
+                <span class="grow" title={option.description ?? undefined}>
+                  {option.name}
+                </span>
+                <OptionSelect
+                  option={option}
+                  label={option.name}
+                  busy={setting()}
+                  onPick={(value) => pick(option, value)}
+                />
+              </label>
+            )}
+          </For>
+          <span class="fine">These go with {name()} to your next tasks. The mode stays with this task.</span>
+        </section>
+      </Show>
 
       <Switch>
         <Match when={sessionState() === 'waiting_permission'}>
@@ -392,6 +516,16 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             <button type="button" class="btn ghost" onClick={() => act(() => cancelTurn(props.task.info.id))}>
               Stop this turn
             </button>
+          </Show>
+          <Show when={modeOption()}>
+            {(option) => (
+              <OptionSelect
+                option={option()}
+                label={`What ${name()} may do without asking`}
+                busy={setting()}
+                onPick={(value) => pick(option(), value)}
+              />
+            )}
           </Show>
           <span class="grow" />
           <button

@@ -53,6 +53,9 @@ pub struct TaskInfo {
     #[serde(flatten)]
     pub row: TaskRow,
     pub state: TaskState,
+    /// What the running agent lets the user set for this session (mode, model and
+    /// the like) and the commands it knows. `None` while no agent is running.
+    pub config: Option<Value>,
 }
 
 /// The running agent of one task.
@@ -67,6 +70,93 @@ struct Live {
     cwd: PathBuf,
     /// Files the agent named in its tool calls this turn, relative to `cwd`.
     touched: Mutex<BTreeSet<String>>,
+    /// The settings the agent offers for this session, as the agent describes them.
+    options: Mutex<Value>,
+    /// The commands the agent says it knows, such as its slash commands.
+    commands: Mutex<Value>,
+    /// True when the agent takes settings through `session/set_config_option`;
+    /// older agents only know `session/set_mode`.
+    has_config_options: bool,
+}
+
+impl Live {
+    /// What the agent offers to set and the commands it knows, for the interface.
+    fn config(&self) -> Value {
+        json!({ "options": self.options.lock().unwrap().clone(), "commands": self.commands.lock().unwrap().clone() })
+    }
+
+    /// Takes in an update about settings or commands. Returns false for any other update.
+    fn note_config(&self, update: &Value) -> bool {
+        match update.get("sessionUpdate").and_then(Value::as_str) {
+            Some("config_option_update") => {
+                if let Some(options) = update.get("configOptions").filter(|options| options.is_array()) {
+                    *self.options.lock().unwrap() = options.clone();
+                }
+                true
+            }
+            Some("current_mode_update") => {
+                if let Some(mode) = update.get("currentModeId").and_then(Value::as_str) {
+                    set_current(&mut self.options.lock().unwrap(), "mode", mode);
+                }
+                true
+            }
+            Some("available_commands_update") => {
+                *self.commands.lock().unwrap() = update.get("availableCommands").cloned().unwrap_or(json!([]));
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+/// The settings a session offers, from the agent's answer to opening it. Agents
+/// that only know modes get one setting, "mode", made from them.
+fn options_of(session: &Value) -> Value {
+    if let Some(options) = session.get("configOptions").filter(|options| options.is_array()) {
+        return options.clone();
+    }
+    let Some(modes) = session.pointer("/modes/availableModes").and_then(Value::as_array) else {
+        return json!([]);
+    };
+    let values: Vec<Value> = modes
+        .iter()
+        .map(
+            |mode| json!({ "value": mode.get("id"), "name": mode.get("name"), "description": mode.get("description") }),
+        )
+        .collect();
+    json!([{
+        "id": "mode",
+        "name": "Mode",
+        "category": "mode",
+        "type": "select",
+        "currentValue": session.pointer("/modes/currentModeId"),
+        "options": values
+    }])
+}
+
+/// Marks `value` as the current one of a setting.
+fn set_current(options: &mut Value, option_id: &str, value: &str) {
+    for option in options.as_array_mut().into_iter().flatten() {
+        if option.get("id").and_then(Value::as_str) == Some(option_id) {
+            option["currentValue"] = json!(value);
+        }
+    }
+}
+
+/// Where the user's choice of a setting is kept, per agent.
+fn option_setting(agent_id: &str, option_id: &str) -> String {
+    format!("agent.{agent_id}.{option_id}")
+}
+
+/// Where a task's own choice of a setting is kept.
+fn task_setting(task_id: &str, option_id: &str) -> String {
+    format!("task.{task_id}.{option_id}")
+}
+
+/// True for the setting that says how much the agent may do without asking.
+fn is_mode(option: &Value) -> bool {
+    option.get("category").and_then(Value::as_str) == Some("mode")
+        || option.get("id").and_then(Value::as_str) == Some("mode")
 }
 
 /// Owns every task and every running agent.
@@ -233,7 +323,8 @@ impl Manager {
 
     fn info(&self, row: TaskRow) -> TaskInfo {
         let state = self.state_of(&row.id);
-        TaskInfo { row, state }
+        let config = self.live_of(&row.id).map(|live| live.config());
+        TaskInfo { row, state, config }
     }
 
     pub fn list(&self) -> Result<Vec<TaskInfo>> {
@@ -304,12 +395,17 @@ impl Manager {
         Ok(agent)
     }
 
-    /// Starts the agent process in `cwd` and opens one session in it.
+    /// Starts the agent process in `cwd` and opens a session in it. With `resume`,
+    /// and an agent that can, the session with that id is picked up again instead
+    /// of a new one: the agent then remembers the conversation by itself.
+    /// Returns the agent, what it sends, its answer to `initialize`, and whether
+    /// the old session was picked up.
     async fn start_agent(
         &self,
         agent: &AgentDef,
         cwd: &Path,
-    ) -> Result<(Arc<Live>, mpsc::UnboundedReceiver<Incoming>, Value)> {
+        resume: Option<&str>,
+    ) -> Result<(Arc<Live>, mpsc::UnboundedReceiver<Incoming>, Value, bool)> {
         if !cwd.is_dir() {
             bail!("The task's folder is gone: {}", cwd.display());
         }
@@ -333,12 +429,22 @@ impl Manager {
                     }),
                 )
                 .await?;
+            let can_load = init.pointer("/agentCapabilities/loadSession").and_then(Value::as_bool).unwrap_or(false);
+            if let (Some(id), true) = (resume, can_load) {
+                // A session the agent no longer has is not an error: a new one is opened below.
+                if let Ok(mut loaded) =
+                    conn.request("session/load", json!({ "sessionId": id, "cwd": cwd, "mcpServers": [] })).await
+                {
+                    loaded["sessionId"] = json!(id);
+                    return Ok((init, loaded, true));
+                }
+            }
             let created = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": [] })).await?;
-            Ok::<_, RpcError>((init, created))
+            Ok::<_, RpcError>((init, created, false))
         };
 
-        let (init, created) = match tokio::time::timeout(START_TIMEOUT, handshake).await {
-            Ok(Ok(pair)) => pair,
+        let (init, session, loaded) = match tokio::time::timeout(START_TIMEOUT, handshake).await {
+            Ok(Ok(found)) => found,
             Ok(Err(error)) => {
                 conn.kill().await;
                 bail!("{} did not start: {error}{}", agent.name, stderr_tail(&mut incoming));
@@ -348,11 +454,23 @@ impl Manager {
                 bail!("{} did not answer in time{}", agent.name, stderr_tail(&mut incoming));
             }
         };
-        let Some(acp_session_id) = created.get("sessionId").and_then(Value::as_str) else {
+        let Some(acp_session_id) = session.get("sessionId").and_then(Value::as_str) else {
             conn.kill().await;
             bail!("{} gave no session id", agent.name);
         };
+        // While loading, the agent sends the old conversation again. It is in the
+        // task's history already, so it is dropped; only what it says about its
+        // settings and commands is kept.
+        let mut replayed = Vec::new();
+        if loaded {
+            while let Ok(message) = incoming.try_recv() {
+                if let Incoming::Notification { params, .. } = message {
+                    replayed.push(params);
+                }
+            }
+        }
 
+        let has_config_options = session.get("configOptions").is_some_and(Value::is_array);
         let live = Arc::new(Live {
             conn,
             acp_session_id: acp_session_id.to_string(),
@@ -360,8 +478,106 @@ impl Manager {
             permissions: Mutex::new(HashMap::new()),
             cwd: cwd.to_path_buf(),
             touched: Mutex::new(BTreeSet::new()),
+            options: Mutex::new(options_of(&session)),
+            commands: Mutex::new(json!([])),
+            has_config_options,
         });
-        Ok((live, incoming, init))
+        for params in &replayed {
+            live.note_config(params.get("update").unwrap_or(&Value::Null));
+        }
+        Ok((live, incoming, init, loaded))
+    }
+
+    /// Sets what the user chose earlier on a session that has just started: the
+    /// task's own choices first, then the ones made for this agent in other tasks.
+    /// The mode is never carried from one task to another: a task that may edit
+    /// without asking must not make every later task do the same. A choice the
+    /// agent no longer offers is left alone.
+    async fn apply_remembered(&self, live: &Live, agent_id: &str, task_id: &str) {
+        let offered: Vec<(String, bool, String, Vec<String>)> = live
+            .options
+            .lock()
+            .unwrap()
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|option| {
+                let values = option
+                    .get("options")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|o| o.get("value")?.as_str().map(str::to_string));
+                Some((
+                    option.get("id")?.as_str()?.to_string(),
+                    is_mode(option),
+                    option.get("currentValue")?.as_str()?.to_string(),
+                    values.collect(),
+                ))
+            })
+            .collect();
+        for (option_id, mode, current, values) in offered {
+            let own = self.store.setting(&task_setting(task_id, &option_id)).ok().flatten();
+            let shared = || self.store.setting(&option_setting(agent_id, &option_id)).ok().flatten();
+            let Some(wanted) = own.or_else(|| if mode { None } else { shared() }) else { continue };
+            if wanted != current
+                && values.contains(&wanted)
+                && let Err(error) = self.send_option(live, &option_id, &wanted).await
+            {
+                tracing::debug!("Could not set {option_id} for {agent_id}: {}", error.message);
+            }
+        }
+    }
+
+    /// Tells the agent to change one setting of its session and keeps what it answers.
+    async fn send_option(&self, live: &Live, option_id: &str, value: &str) -> Result<(), RpcError> {
+        if live.has_config_options {
+            let answer = live
+                .conn
+                .request(
+                    "session/set_config_option",
+                    json!({ "sessionId": live.acp_session_id, "configId": option_id, "value": value }),
+                )
+                .await?;
+            if let Some(options) = answer.get("configOptions").filter(|options| options.is_array()) {
+                *live.options.lock().unwrap() = options.clone();
+                return Ok(());
+            }
+        } else if option_id == "mode" {
+            live.conn.request("session/set_mode", json!({ "sessionId": live.acp_session_id, "modeId": value })).await?;
+        } else {
+            return Err(RpcError {
+                code: -32601,
+                message: format!("This agent has no setting called {option_id}"),
+                data: None,
+            });
+        }
+        set_current(&mut live.options.lock().unwrap(), option_id, value);
+        Ok(())
+    }
+
+    /// Changes one setting of a task's agent, such as its model or its mode, and
+    /// remembers the choice for the next tasks with the same agent.
+    pub async fn set_option(&self, task_id: &str, option_id: &str, value: &str) -> Result<Value> {
+        let row = self.store.task(task_id)?;
+        let Some(live) = self.live_of(task_id) else {
+            bail!("No agent is running in this task. Send a message first; it starts one.");
+        };
+        let mode = live
+            .options
+            .lock()
+            .unwrap()
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|option| option.get("id").and_then(Value::as_str) == Some(option_id) && is_mode(option));
+        self.send_option(&live, option_id, value).await.map_err(|error| anyhow!("{}", error.message))?;
+        self.store.set_setting(&task_setting(task_id, option_id), Some(value))?;
+        if !mode {
+            self.store.set_setting(&option_setting(&row.agent_id, option_id), Some(value))?;
+        }
+        let config = live.config();
+        self.broadcast("task.config", json!({ "taskId": task_id, "config": config }));
+        Ok(config)
     }
 
     /// Registers a started agent as the task's live agent and begins reading what it sends.
@@ -429,7 +645,7 @@ impl Manager {
         };
 
         let (cwd, branch, base_branch) = self.prepare_folder(&project, &id, &title).await?;
-        let (live, incoming, init) = match self.start_agent(&agent, &cwd).await {
+        let (live, incoming, init, _) = match self.start_agent(&agent, &cwd, None).await {
             Ok(started) => started,
             Err(error) => {
                 // Leave nothing behind for a task that never existed.
@@ -449,11 +665,16 @@ impl Manager {
             branch,
             base_branch,
             issue,
+            agent_session: Some(live.acp_session_id.clone()),
             created_at: now_ms(),
             seen_seq: -1,
         };
         self.store.insert_task(&row)?;
-        self.broadcast("task.created", json!(TaskInfo { row: row.clone(), state: TaskState::Idle }));
+        self.apply_remembered(&live, &agent.id, &row.id).await;
+        self.broadcast(
+            "task.created",
+            json!(TaskInfo { row: row.clone(), state: TaskState::Idle, config: Some(live.config()) }),
+        );
         self.emit(
             &id,
             json!({
@@ -469,20 +690,28 @@ impl Manager {
     }
 
     /// Starts a fresh agent for a task that is asleep.
-    async fn wake(self: &Arc<Self>, row: &TaskRow) -> Result<Arc<Live>> {
+    async fn wake(self: &Arc<Self>, row: &TaskRow) -> Result<(Arc<Live>, bool)> {
         let agent = self.agent(&row.agent_id)?;
-        let (live, incoming, init) = self.start_agent(&agent, Path::new(&row.cwd)).await?;
+        let (live, incoming, init, loaded) =
+            self.start_agent(&agent, Path::new(&row.cwd), row.agent_session.as_deref()).await?;
+        if row.agent_session.as_deref() != Some(live.acp_session_id.as_str()) {
+            self.store.set_agent_session(&row.id, &live.acp_session_id)?;
+        }
+        self.apply_remembered(&live, &agent.id, &row.id).await;
         self.emit(
             &row.id,
             json!({
                 "type": "agent_started",
                 "agentId": agent.id,
                 "resumed": true,
+                // True when the agent picked up its own session and so remembers the conversation itself.
+                "loaded": loaded,
                 "agentInfo": init.get("agentInfo").cloned().unwrap_or(Value::Null)
             }),
         );
         self.attach(&row.id, live.clone(), incoming);
-        Ok(live)
+        self.broadcast("task.config", json!({ "taskId": row.id, "config": live.config() }));
+        Ok((live, loaded))
     }
 
     /// Turns what the agent sends into events until the agent ends.
@@ -491,6 +720,12 @@ impl Manager {
             match message {
                 Incoming::Notification { method, params } if method == "session/update" => {
                     let update = params.get("update").cloned().unwrap_or(Value::Null);
+                    // What the agent offers to set is not part of the conversation: it is
+                    // kept with the running agent and shown as it stands now.
+                    if live.note_config(&update) {
+                        self.broadcast("task.config", json!({ "taskId": task_id, "config": live.config() }));
+                        continue;
+                    }
                     let finished_call = note_touched(&live, &update);
                     self.emit(&task_id, json!({ "type": "update", "update": update }));
                     if finished_call {
@@ -555,9 +790,13 @@ impl Manager {
             bail!("The message is empty");
         }
         let row = self.store.task(task_id)?;
-        let (live, woken) = match self.live_of(task_id) {
+        // An agent that was started afresh knows nothing of the task, unless it picked up its old session.
+        let (live, needs_recap) = match self.live_of(task_id) {
             Some(live) => (live, false),
-            None => (self.wake(&row).await?, true),
+            None => {
+                let (live, loaded) = self.wake(&row).await?;
+                (live, !loaded)
+            }
         };
         if *live.state.lock().unwrap() != TaskState::Idle {
             bail!("The agent is still working. Wait for it or stop the turn.");
@@ -570,7 +809,7 @@ impl Manager {
             self.manual.lock().unwrap().remove(task_id).map(|set| set.into_iter().collect()).unwrap_or_default();
 
         // A fresh agent knows nothing of the task: tell it what was said before.
-        let mut sent = if woken {
+        let mut sent = if needs_recap {
             match recap(&self.store.events(task_id)?) {
                 Some(before) => format!(
                     "This task continues an earlier conversation. What was said before:\n\n{before}\n\nNow the user says:\n\n{text}"

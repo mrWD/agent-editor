@@ -31,7 +31,25 @@ export type TaskInfo = {
   createdAt: number;
   seenSeq: number;
   state: TaskState;
+  /** What the running agent offers to set. Absent while no agent is running. */
+  config?: TaskConfig | null;
 };
+
+/** One setting an agent offers for a session, such as its model or its mode. */
+export type ConfigOption = {
+  id: string;
+  name: string;
+  description?: string | null;
+  /** "mode", "model", "thought_level" and the like; agents may leave it out. */
+  category?: string | null;
+  currentValue: string;
+  options: { value: string; name: string; description?: string | null }[];
+};
+
+export type TaskConfig = { options: ConfigOption[]; commands: { name: string; description?: string }[] };
+
+/** How full the agent's context is and what the session has cost, as the agent reports it. */
+export type Usage = { used: number; size: number; cost: number | null; currency: string };
 
 export type TaskIssue = { key: string; id: string; url: string; title: string; source: 'github' | 'gitlab' | 'linear' };
 
@@ -93,7 +111,16 @@ export type Task = {
   lastAt: number;
   /** The files that are not as they were at the last review. */
   changed: FileReview[];
+  /** The newest note on the context, or `null` before the agent has sent one. */
+  usage: Usage | null;
+  /** What the task cost in agent sessions that have ended. The running one is in `usage`. */
+  spentBefore: number;
 };
+
+/** What a task has cost so far, in every session it has had. */
+export function spentOn(task: Task): number {
+  return task.spentBefore + (task.usage?.cost ?? 0);
+}
 
 type AppInfo = { version: string; platform: string; cwd: string | null; dataDir: string };
 
@@ -181,12 +208,16 @@ export function applyEvent(task: Task, event: any) {
   switch (event.type) {
     case 'state':
       task.info.state = event.state;
+      // Settings belong to a running agent: a sleeping task has none to show.
+      if (event.state === 'asleep') task.info.config = null;
       return;
     case 'agent_started':
       if (event.resumed) {
         feed.push({
           kind: 'notice',
-          text: 'The agent was started again and told what was said before.',
+          text: event.loaded
+            ? 'The agent was started again and picked its session up where it stopped.'
+            : 'The agent was started again and told what was said before.',
           tone: 'muted',
           at,
         });
@@ -243,6 +274,9 @@ export function applyEvent(task: Task, event: any) {
           if (item && item.kind === 'tool') {
             if (update.status) item.status = String(update.status);
             if (update.title) item.title = shortTitle(String(update.title), task.info.cwd);
+            // Real agents often name the kind and the file only once the call is under way.
+            if (update.kind) item.toolKind = String(update.kind);
+            item.path = firstPath(update, task.info.cwd) ?? item.path;
             const diff = firstDiff(update.content);
             if (diff) item.diff = diff;
           }
@@ -258,6 +292,20 @@ export function applyEvent(task: Task, event: any) {
           const existing = feed.findIndex((entry, index) => index > lastUser && entry.kind === 'plan');
           if (existing >= 0) feed[existing] = { kind: 'plan', entries, at };
           else feed.push({ kind: 'plan', entries, at });
+          return;
+        }
+        case 'usage_update': {
+          const used = Number(update.used);
+          const size = Number(update.size);
+          if (!Number.isFinite(used) || !Number.isFinite(size) || size <= 0) return;
+          // Agents send many of these in a turn and name the cost only in some: the last one named stands.
+          const amount = update.cost?.amount;
+          const before = task.usage?.cost ?? null;
+          const cost = typeof amount === 'number' && Number.isFinite(amount) ? amount : before;
+          // A new session counts its cost from zero again: what the last one cost is kept.
+          if (cost !== null && before !== null && cost < before) task.spentBefore += before;
+          const currency = String(update.cost?.currency ?? task.usage?.currency ?? 'USD');
+          task.usage = { used, size, cost, currency };
           return;
         }
         default:
@@ -309,7 +357,15 @@ const waitingForHistory = new Map<string, any[]>();
 function addTask(info: TaskInfo) {
   if (state.tasks[info.id]) return;
   waitingForHistory.set(info.id, []);
-  setState('tasks', info.id, { info, feed: [], lastSeq: -1, lastAt: info.createdAt, changed: [] });
+  setState('tasks', info.id, {
+    info,
+    feed: [],
+    lastSeq: -1,
+    lastAt: info.createdAt,
+    changed: [],
+    usage: null,
+    spentBefore: 0,
+  });
   void loadChanged(info.id);
 }
 
@@ -355,8 +411,13 @@ async function loadHistory(taskId: string, current: TaskState) {
     produce((task: Task) => {
       task.feed = [];
       task.lastSeq = -1;
+      task.usage = null;
+      task.spentBefore = 0;
+      // The state event of a past sleep must not hide what the running agent offers now.
+      const config = task.info.config;
       task.info.state = current;
       for (const event of history.events) applyEvent(task, event);
+      if (task.info.state !== 'asleep') task.info.config = config;
       for (const event of live) applyEvent(task, event);
     }),
   );
@@ -410,6 +471,9 @@ function onEvent(event: CoreEvent) {
       void loadHistory(info.id, info.state);
       return;
     }
+    case 'task.config':
+      if (state.tasks[event.data.taskId]) setState('tasks', event.data.taskId, 'info', 'config', event.data.config);
+      return;
     case 'task.archived':
       waitingForHistory.delete(event.data.taskId);
       setState('tasks', event.data.taskId, undefined!);
@@ -468,6 +532,12 @@ export function answerPermission(taskId: string, requestId: string, optionId: st
 
 export function cancelTurn(taskId: string) {
   return core.request('tasks.cancel', { taskId });
+}
+
+/** Changes one setting of a task's running agent, such as its model. */
+export async function setTaskOption(taskId: string, optionId: string, value: string) {
+  const result = await core.request<{ config: TaskConfig }>('tasks.setOption', { taskId, optionId, value });
+  if (state.tasks[taskId]) setState('tasks', taskId, 'info', 'config', result.config);
 }
 
 export function stopAgent(taskId: string) {

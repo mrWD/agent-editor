@@ -38,6 +38,9 @@ pub struct TaskRow {
     pub base_branch: Option<String>,
     /// The issue this task was started from, if any.
     pub issue: Option<TaskIssue>,
+    /// The id the agent gave its session, so the same session can be picked up after a restart.
+    #[serde(skip)]
+    pub agent_session: Option<String>,
     pub created_at: u64,
     /// The last event the user has seen, or -1.
     pub seen_seq: i64,
@@ -121,6 +124,9 @@ fn upgrade(conn: &Connection) -> Result<()> {
     };
     if !has_column("tasks", "base_branch")? {
         conn.execute_batch("ALTER TABLE tasks ADD COLUMN base_branch TEXT")?;
+    }
+    if !has_column("tasks", "agent_session")? {
+        conn.execute_batch("ALTER TABLE tasks ADD COLUMN agent_session TEXT")?;
     }
     if !has_column("tasks", "issue_key")? {
         conn.execute_batch(
@@ -212,6 +218,11 @@ impl Store {
             let of_project = "(SELECT id FROM tasks WHERE project_id = ?1)";
             conn.execute(&format!("DELETE FROM events WHERE task_id IN {of_project}"), [id])?;
             conn.execute(&format!("DELETE FROM file_marks WHERE task_id IN {of_project}"), [id])?;
+            conn.execute(
+                "DELETE FROM settings WHERE EXISTS (SELECT 1 FROM tasks WHERE project_id = ?1 \
+                 AND settings.key LIKE 'task.' || tasks.id || '.%')",
+                [id],
+            )?;
             conn.execute("DELETE FROM tasks WHERE project_id = ?1", [id])?;
             conn.execute("DELETE FROM settings WHERE key LIKE ?1", [format!("project.{id}.%")])?;
             conn.execute("DELETE FROM projects WHERE id = ?1", [id])?;
@@ -233,7 +244,7 @@ impl Store {
     pub fn tasks(&self) -> Result<Vec<TaskRow>> {
         let conn = self.conn.lock().unwrap();
         let mut statement = conn.prepare(
-            "SELECT id, project_id, title, agent_id, cwd, branch, created_at, seen_seq, base_branch, issue_key, issue_id, issue_url, issue_title, issue_source
+            "SELECT id, project_id, title, agent_id, cwd, branch, created_at, seen_seq, base_branch, issue_key, issue_id, issue_url, issue_title, issue_source, agent_session
              FROM tasks WHERE archived_at IS NULL ORDER BY created_at",
         )?;
         let rows = statement.query_map([], task_from_row)?;
@@ -243,7 +254,7 @@ impl Store {
     pub fn task(&self, id: &str) -> Result<TaskRow> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, project_id, title, agent_id, cwd, branch, created_at, seen_seq, base_branch, issue_key, issue_id, issue_url, issue_title, issue_source
+            "SELECT id, project_id, title, agent_id, cwd, branch, created_at, seen_seq, base_branch, issue_key, issue_id, issue_url, issue_title, issue_source, agent_session
              FROM tasks WHERE id = ?1 AND archived_at IS NULL",
             [id],
             task_from_row,
@@ -256,8 +267,8 @@ impl Store {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO tasks (id, project_id, title, agent_id, cwd, branch, created_at, seen_seq, base_branch,
-                                issue_key, issue_id, issue_url, issue_title, issue_source)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                                issue_key, issue_id, issue_url, issue_title, issue_source, agent_session)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 task.id,
                 task.project_id,
@@ -273,8 +284,16 @@ impl Store {
                 task.issue.as_ref().map(|issue| &issue.url),
                 task.issue.as_ref().map(|issue| &issue.title),
                 task.issue.as_ref().map(|issue| &issue.source),
+                task.agent_session,
             ],
         )?;
+        Ok(())
+    }
+
+    /// Remembers the id of the agent's session of a task.
+    pub fn set_agent_session(&self, id: &str, session: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("UPDATE tasks SET agent_session = ?2 WHERE id = ?1", params![id, session])?;
         Ok(())
     }
 
@@ -423,6 +442,7 @@ fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRow> {
             }),
             None => None,
         },
+        agent_session: row.get(14)?,
         created_at: row.get::<_, i64>(6)? as u64,
         seen_seq: row.get(7)?,
     })
@@ -447,6 +467,7 @@ mod tests {
             branch: None,
             base_branch: None,
             issue: None,
+            agent_session: None,
             created_at: 2,
             seen_seq: -1,
         }
