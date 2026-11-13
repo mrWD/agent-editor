@@ -21,6 +21,7 @@ import { teamOf, watchTeam } from '../core/team';
 import { clearPointed, pointedText } from '../core/previewState';
 import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
+import { PlanProposals } from '../screens/Plan';
 import { ago, Check, Chip, clock, money, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
 import {
@@ -604,6 +605,8 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           {(told) => <WhereStopped task={props.task} since={told()} onHide={() => hideSince(taskId())} />}
         </Show>
         <RuleOffer task={props.task} />
+        {/* A block the agent thinks is missing from the plan waits here for a yes or a no. */}
+        <PlanProposals task={props.task} />
         <Switch>
           <Match when={sessionState() === 'waiting_permission' && !props.task.info.race}>
             <section class="card pinned">

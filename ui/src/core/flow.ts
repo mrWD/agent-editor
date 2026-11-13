@@ -187,8 +187,9 @@ const ROW_GAP = 40;
 /** The room an arrowhead takes: a line stops this far before the box it points at. */
 const HEAD = 5;
 
-function sizeOf(node: FlowNode, column: number): { w: number; h: number } {
-  const long = node.text.length;
+function sizeOf(node: FlowNode, column: number, more = 0): { w: number; h: number } {
+  // A question with a line under its text needs the room of a longer question.
+  const long = node.kind === 'ask' && more > 0 ? Math.max(node.text.length, 29) : node.text.length;
   if (node.kind === 'ask') {
     // A diamond holds little text for its size; a long question gets a larger one.
     if (long <= 28) return { w: 220, h: 88 };
@@ -197,15 +198,18 @@ function sizeOf(node: FlowNode, column: number): { w: number; h: number } {
   // Beside the main column the design draws narrower steps, so two columns fit a card.
   const w = column === 0 ? 180 : 150;
   const perLine = column === 0 ? 23 : 19;
-  const rows = Math.ceil(long / perLine);
+  const rows = Math.ceil(long / perLine) + more;
+  // A step with a line of its own under its text, as the Plan view draws them, is given air around both.
+  if (more > 0) return { w, h: 22 + rows * 19 };
   return { w, h: rows <= 2 ? 44 : 26 + rows * 19 };
 }
 
 /**
  * Lays a flow out as the design draws it: the main path runs down the first
  * column, and each other answer of a question goes off to the right of it.
+ * `more` says how many lines a node shows under its text; the Map view shows none.
  */
-export function layoutFlow(flow: Flow): FlowLayout {
+export function layoutFlow(flow: Flow, more: (node: FlowNode) => number = () => 0): FlowLayout {
   const out = (id: string) => flow.arrows.filter((arrow) => arrow.from === id);
   const byId = new Map(flow.nodes.map((node) => [node.id, node]));
 
@@ -249,7 +253,7 @@ export function layoutFlow(flow: Flow): FlowLayout {
     if (!cells.has(node.id)) place(node.id, 0, spare++);
   }
 
-  const sizes = new Map(flow.nodes.map((node) => [node.id, sizeOf(node, cells.get(node.id)!.column)]));
+  const sizes = new Map(flow.nodes.map((node) => [node.id, sizeOf(node, cells.get(node.id)!.column, more(node))]));
   const columns: number[] = [];
   const rows: number[] = [];
   for (const node of flow.nodes) {

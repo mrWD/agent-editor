@@ -4473,3 +4473,408 @@ button.picked-source:hover {
 .race-pick .btn.primary.armed {
   color: var(--on-accent);
 }
+
+/* ---------- Plan ---------- */
+
+.plan-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.plan-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.plan-tools .btn {
+  font-weight: 500;
+}
+/* The switch and the button it goes with keep to the right, also when the line is full and they wrap. */
+.plan-go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  margin-left: auto;
+}
+.plan-only {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.plan-only input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.plan-tools .btn.plan-next {
+  height: 30px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.plan-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.plan-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The small square that stands for a state, in the legend and next to a state's word. */
+.plan-key {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1px dashed var(--text-3);
+  border-radius: 4px;
+}
+.plan-key.built {
+  border: 1px solid var(--green);
+  background: rgba(91, 208, 138, 0.12);
+}
+.plan-key.building {
+  border: 1px solid var(--text-2);
+  background: var(--raised);
+}
+.plan-key.proposed {
+  border-color: var(--accent);
+}
+.plan-key.before {
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+}
+.banner.plan-waits {
+  border-color: rgba(245, 181, 68, 0.45);
+}
+
+/* The chart and the panel of the chosen block stand side by side, and under each other when there is no room. */
+.plan-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 16px 20px;
+  padding: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.plan-chart {
+  flex: 999 1 540px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background-color: var(--ground-deep);
+  background-image: radial-gradient(var(--line-soft) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* A block of the plan is a step of the Map view's flow chart, drawn by how it stands. */
+.plan-block {
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+}
+.plan-block-name {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+.plan-block-name .glyph {
+  flex: none;
+}
+.plan-block-state {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.plan-block-state .glyph {
+  flex: none;
+}
+/* Whatever does not fit a box is cut short, never drawn over its edge. */
+.plan-block-state > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-block-state .chip.flat {
+  font-size: 10px;
+}
+.plan-block.before {
+  background: var(--panel);
+}
+.plan-block.built {
+  border-color: var(--green);
+  background: rgba(91, 208, 138, 0.12);
+  font-weight: 600;
+}
+.plan-block.building {
+  border-color: var(--text-2);
+}
+.plan-block.planned,
+.plan-block.yours {
+  border: 1px dashed var(--text-3);
+  background: transparent;
+}
+.plan-block.proposed {
+  border: 1px dashed var(--accent);
+  background: transparent;
+}
+.plan-block.proposed .plan-block-state {
+  color: var(--accent);
+}
+.plan-block[aria-pressed='true'] {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+/* A question is a diamond: its outline is drawn, so it can be dashed like a planned step. */
+.plan-block.ask {
+  border-color: transparent;
+  background: transparent;
+}
+.plan-diamond {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.plan-diamond polygon {
+  fill: var(--panel);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.plan-block.built .plan-diamond polygon {
+  fill: color-mix(in srgb, var(--green) 26%, var(--pressed));
+  stroke: none;
+}
+.plan-block.building .plan-diamond polygon {
+  fill: var(--raised);
+  stroke: var(--text-2);
+}
+.plan-block.planned .plan-diamond polygon,
+.plan-block.yours .plan-diamond polygon,
+.plan-block.proposed .plan-diamond polygon {
+  fill: transparent;
+  stroke: var(--text-3);
+  stroke-dasharray: 4 3;
+}
+.plan-block.proposed .plan-diamond polygon {
+  stroke: var(--accent);
+}
+/* A note is a remark at the side of the plan, not a box of it. */
+.plan-block.note {
+  align-items: flex-start;
+  padding: 4px 10px;
+  border: 0;
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+}
+.plan-block.note .plan-block-name {
+  justify-content: flex-start;
+}
+.plan-plus {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px dashed var(--line-dashed);
+  border-radius: 50%;
+  background: var(--ground-deep);
+  color: var(--text-2);
+}
+.plan-plus:hover {
+  color: var(--text);
+  border-color: var(--text-2);
+}
+.plan-plus svg {
+  width: 12px;
+  height: 12px;
+}
+/* An arrow to a block that waits for a yes is dashed, in the colour of what needs the user. */
+.plan-lines-proposed {
+  display: contents;
+}
+.plan-lines-proposed .map-lines {
+  stroke: var(--accent);
+  stroke-dasharray: 4 4;
+}
+.plan-lines-proposed .map-lines marker path {
+  fill: var(--accent);
+}
+
+/* The panel of the chosen block */
+.plan-detail {
+  flex: 1 1 280px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.plan-detail h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.plan-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.plan-detail-head h2 {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+.plan-state {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.plan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.plan-field > label,
+.plan-field-title {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.plan-field > .field,
+.plan-field > textarea {
+  width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--ground-deep);
+  color: var(--text);
+  font-size: 13px;
+}
+.plan-field > textarea {
+  padding: 8px 10px;
+  resize: vertical;
+}
+.plan-arrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+.plan-arrow > .grow {
+  flex: 1 1 100px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plan-arrow .field {
+  flex: 0 1 76px;
+  min-width: 0;
+  width: 76px;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--ground-deep);
+  font-size: 12px;
+}
+.plan-arrow .pick {
+  flex: 1 1 110px;
+  min-width: 0;
+  max-width: none;
+  height: 26px;
+}
+.plan-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.plan-facts dt {
+  color: var(--text-3);
+}
+.plan-facts dd {
+  min-width: 0;
+  margin: 0;
+}
+.plan-files {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.plan-file {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.plan-by {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.plan-actions .btn {
+  height: 30px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.plan-actions .btn.primary {
+  font-weight: 600;
+}
+
+/* The card in the conversation: blocks the agent proposed while it was building */
+.plan-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

@@ -1048,6 +1048,10 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             manager.line_remove(text_param(params, "taskId")?, text_param(params, "id")?)?;
             Ok(json!({}))
         }
+        "plan.get" | "plan.add" | "plan.edit" | "plan.connect" | "plan.disconnect" | "plan.remove" | "plan.take"
+        | "plan.accept" | "plan.decline" | "plan.only" | "plan.dismiss" | "plan.build" | "plan.draft" => {
+            manager.plan_command(method, params).await
+        }
         "overlaps.list" => {
             let task_id = text_param(params, "taskId")?.to_string();
             let manager = manager.clone();

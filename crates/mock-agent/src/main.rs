@@ -15,7 +15,12 @@
 //! - if the prompt says "leave a note", "read the notes", "list the tasks" or "report a problem": the
 //!   editor's own tool of that name is called and its answer said back;
 //! - if the prompt asks for a flow (it holds a ```flow block as the pattern to follow): a fixed
-//!   flow in that format, and nothing is edited;
+//!   flow in that format, and nothing is edited. A note from the editor in front of the message
+//!   may hold a ```flow block too, the task's plan; that is not a request for a flow;
+//! - if the prompt asks for one block of a plan to be built (it has a line that starts with
+//!   "Build only this block:"): the same edit as above, although the prompt holds the plan as a
+//!   ```flow block. The first time the block's name has the word "limit" in it, the answer ends
+//!   with a line "PROPOSE: …", as an agent does that thinks a block is missing from the plan;
 //! - a prompt that starts with "Explain" is a question, even when it has the word "changed" in it;
 //! - `session/cancel` stops the turn with the stop reason `cancelled`;
 //! - every turn ends with a note on how much of the context is used. It costs nothing.
@@ -79,6 +84,8 @@ struct Session {
     cost: f64,
     /// Where the editor's own tools are, when the editor named them at the start of the session.
     tools: Option<String>,
+    /// True once the session has proposed a block for a plan. It does so once.
+    proposed: bool,
 }
 
 impl Session {
@@ -86,7 +93,7 @@ impl Session {
         let folder = params.get("cwd").and_then(Value::as_str).map(PathBuf::from).unwrap_or_default();
         // The editor names its own tool server first.
         let tools = params.pointer("/mcpServers/0/url").and_then(Value::as_str).map(str::to_string);
-        Self { folder, mode: "ask".into(), model: "practice".into(), used: 0, cost: 0.0, tools }
+        Self { folder, mode: "ask".into(), model: "practice".into(), used: 0, cost: 0.0, tools, proposed: false }
     }
 
     /// The settings as the protocol describes them.
@@ -404,9 +411,19 @@ fn wants_edit(text: &str) -> bool {
 /// The editor's Map view asks for a flow by showing the format to answer in.
 /// A recap of an earlier conversation may hold such a request too; only the
 /// newest message counts, and the core puts it after "Now the user says:".
+///
+/// The editor may put a note in front of a message that shows the task's plan
+/// in the same format. That is something to keep to, not a request to draw.
 fn wants_flow(text: &str) -> bool {
     let newest = text.rsplit("Now the user says:").next().unwrap_or(text);
-    newest.contains("```flow")
+    newest.split("\n\n").any(|part| part.contains("```flow") && !part.trim_start().starts_with("Note from the editor:"))
+}
+
+/// The editor's Plan view asks for one block of a plan to be built, and names
+/// it on a line of its own. That line is returned.
+fn build_request(text: &str) -> Option<&str> {
+    let newest = text.rsplit("Now the user says:").next().unwrap_or(text);
+    newest.lines().find(|line| line.starts_with("Build only this block:"))
 }
 
 /// The flow the practice agent always draws: the one on the design's Map screen.
@@ -482,12 +499,15 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
 
     // A request for a commit message is answered with one, and changes no file.
     let wants_message = last_paragraph(&text).to_lowercase().contains("commit message");
-    let flow = wants_flow(&text);
+    // A request to build a block shows the plan as a flow, and is still a request to edit.
+    let build = build_request(&text);
+    let flow = build.is_none() && wants_flow(&text);
     // A reviewer is asked to end with a verdict, and changes nothing.
     let wants_verdict = last_paragraph(&text).contains("VERDICT:");
     // A message with pictures is answered by saying what arrived, and changes nothing.
     let pictures = pictures_of(params);
-    let edit = pictures.is_empty() && !flow && !wants_message && !wants_verdict && wants_edit(&text);
+    let edit =
+        pictures.is_empty() && !flow && !wants_message && !wants_verdict && (build.is_some() || wants_edit(&text));
     let known = agent.sessions.lock().unwrap().get(&session).cloned();
     let folder = known.as_ref().map(|s| s.folder.clone()).unwrap_or_default();
     let asks = known.as_ref().is_none_or(|s| s.mode != "auto");
@@ -630,7 +650,7 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         }
     });
 
-    let answer = if !pictures.is_empty() {
+    let mut answer = if !pictures.is_empty() {
         let what = if pictures.len() == 1 { "one picture".to_string() } else { format!("{} pictures", pictures.len()) };
         format!("I see {what}: {}. Nothing was changed.", pictures.join(", "))
     } else if let Some(said) = tool_said {
@@ -658,6 +678,14 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
     } else {
         "I left the file as it was, because the edit was not allowed.".to_string()
     };
+    // Building a block about a limit, the practice agent misses one block in the plan. It says so once.
+    if build.is_some_and(|line| line.to_lowercase().contains("limit")) {
+        let mut sessions = agent.sessions.lock().unwrap();
+        if let Some(known) = sessions.get_mut(&session).filter(|known| !known.proposed) {
+            known.proposed = true;
+            answer.push_str("\n\nPROPOSE: Reset the count after a correct password");
+        }
+    }
     for word in answer.split_inclusive(' ') {
         if stop(agent) {
             return;

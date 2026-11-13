@@ -1668,7 +1668,11 @@ mod tests {
         assert_eq!(flow.def("FlowNode").map(|def| def.kind), Some("type"));
         let at = flow.def("parseFlow").unwrap().line;
         let map = build(root, &lines("ui/src/core/flow.ts", &[(at, at)]), None);
-        assert_eq!(layer(&map.deps, -1), vec!["flow.test.ts", "Map.tsx"]);
+        // The Plan view lays its chart out with the same code, so its files need flow.ts too.
+        let users = layer(&map.deps, -1);
+        for file in ["flow.test.ts", "Map.tsx", "plan.ts"] {
+            assert!(users.contains(&file.to_string()), "{file} uses flow.ts: {users:?}");
+        }
         let callers = layer(&map.calls, -1);
         assert!(
             callers.contains(&"MapView()".to_string()) && callers.contains(&"flow.test.ts".to_string()),

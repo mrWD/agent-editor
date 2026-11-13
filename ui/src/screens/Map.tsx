@@ -67,7 +67,7 @@ function rememberCenter(taskId: string, center: Picked) {
 }
 
 /** The lines between the boxes of a picture, with an arrowhead at each end. */
-function Lines(props: { width: number; height: number; paths: string[] }): JSX.Element {
+export function Lines(props: { width: number; height: number; paths: string[] }): JSX.Element {
   const head = createUniqueId();
   return (
     <svg
@@ -92,7 +92,7 @@ function Lines(props: { width: number; height: number; paths: string[] }): JSX.E
  * fit; one that would get too small, or is very tall, is dragged instead. The
  * card never gets a scroll bar of its own.
  */
-function Stage(props: {
+export function Stage(props: {
   width: number;
   height: number;
   label: string;
