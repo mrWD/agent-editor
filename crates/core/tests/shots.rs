@@ -112,6 +112,7 @@ async fn core_with_browser(sandbox: &Sandbox, patience: Option<Duration>) -> (Ap
         xcrun: Some(missing.clone()),
         adb: Some(missing),
         patience,
+        ..Tools::default()
     }));
     let project = state.manager.add_project(&sandbox.project().to_string_lossy(), None).unwrap();
     let mut events = state.manager.subscribe();

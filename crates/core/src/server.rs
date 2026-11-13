@@ -1168,9 +1168,8 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             crate::preview::command(&state.previews, manager, method, params).await
         }
         "shots.state" | "shots.take" => crate::shots::command(&state.previews, manager, method, params).await,
-        "devices.list" | "devices.open" | "devices.screen" | "devices.front" | "devices.close" => {
-            crate::devices::command(&state.previews, manager, method, params).await
-        }
+        "devices.list" | "devices.open" | "devices.screen" | "devices.input" | "devices.scheme" | "devices.front"
+        | "devices.close" => crate::devices::command(&state.previews, manager, method, params).await,
 
         "search.files" | "search.text" => {
             let root = manager.cwd(text_param(params, "taskId")?)?;
