@@ -580,6 +580,7 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         | "agents.try"
         | "notifications.attention" => crate::settings::command(manager, method, params).await,
 
+        "ci.get" | "ci.act" => crate::ci::command(manager, method, params).await,
         "onboarding.get" | "onboarding.set" | "onboarding.project" => {
             crate::onboarding::command(manager, method, params).await
         }

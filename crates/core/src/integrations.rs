@@ -437,7 +437,13 @@ impl Manager {
     // ----- merge requests -----
 
     /// The working copy of a task, its branch and where its repository lives.
-    fn request_place(&self, task_id: &str) -> Result<(TaskRow, PathBuf, String, Remote)> {
+    /// The number of a task's merge request, when it was read not long ago. Nobody is asked for it here.
+    pub(crate) fn request_number(&self, task_id: &str) -> Option<u64> {
+        let known = self.remembered.requests.lock().unwrap();
+        known.get(task_id).and_then(|(_, request)| request.as_ref()).map(|request| request.number)
+    }
+
+    pub(crate) fn request_place(&self, task_id: &str) -> Result<(TaskRow, PathBuf, String, Remote)> {
         let task = self.store().task(task_id)?;
         let Some(branch) = task.branch.clone() else {
             bail!("This task works in a folder without git, so it has no branch to merge");

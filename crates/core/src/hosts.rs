@@ -516,7 +516,7 @@ impl Hosts {
 
     /// Runs one of the tools against one server and returns what it printed, or its complaint as the error. Without it `gh` asks github.com and `glab` asks gitlab.com,
     /// whatever server the project lives on: a company's own GitLab answers "not found" and "not signed in".
-    fn run_at(&self, kind: HostKind, host: Option<&str>, args: &[&str]) -> Result<String> {
+    pub(crate) fn run_at(&self, kind: HostKind, host: Option<&str>, args: &[&str]) -> Result<String> {
         let tool = self.tool(kind);
         let name = if kind == HostKind::GitHub { "gh" } else { "glab" };
         let mut command = Command::new(tool);
