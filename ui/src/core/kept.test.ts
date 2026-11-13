@@ -64,6 +64,7 @@ describe('what a screen read last', () => {
     const [held, setHeld] = createStore<{ use: { others: string[]; disk?: { images: number } } | null }>({
       use: { others: ['a'], disk: { images: 2 } },
     });
+    // eslint-disable-next-line solid/reactivity -- read once, as the Run tab does when an answer comes
     const next = { others: [], disk: held.use?.disk };
     expect(() => setHeld('use', rememberCopy('test.use', next))).not.toThrow();
     expect(recall('test.use')).toEqual({ others: [], disk: { images: 2 } });

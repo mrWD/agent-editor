@@ -824,7 +824,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     const keys = device.getByRole('group', { name: 'The buttons of iPhone 17 Pro' });
     await keys.getByRole('textbox', { name: 'Type on iPhone 17 Pro' }).fill('привет, it’s me');
     await keys.getByRole('button', { name: 'Type', exact: true }).click();
-    await expect.poll(() => core.calls('idb')).toContain(`ui text --udid ${PHONE} привет, it’s me`);
+    await expect.poll(() => core.calls('idb')).toContain(`ui text --udid ${PHONE} -- привет, it’s me`);
     await expect(keys.getByRole('textbox', { name: 'Type on iPhone 17 Pro' })).toHaveValue('');
     await keys.getByRole('button', { name: 'Home' }).click();
     await expect.poll(() => core.calls('idb')).toContain(`ui button --udid ${PHONE} HOME`);

@@ -74,7 +74,10 @@ export function Agents(): JSX.Element {
   // What was read last time is shown at once; it is read again behind that.
   const [summary, setSummary] = createKept<UsageSummary | null>('agents.summary', null);
   const [problem, setProblem] = createSignal<string | null>(null);
-  const [daily, setDaily] = createSignal('');
+  // The box starts with the budget that was read last time: the screen opens on what it showed, and a
+  // box that stood empty until the answer came would save "no budget" when it was only clicked through.
+  const kept = summary()?.budget.daily;
+  const [daily, setDaily] = createSignal(kept === null || kept === undefined ? '' : String(kept));
   const [rules, setRules] = createKept<{ scope: string; rules: Rule[] }[]>('agents.rules', []);
   const [ruleText, setRuleText] = createSignal('');
   const [ruleScope, setRuleScope] = createSignal(ALL_PROJECTS);

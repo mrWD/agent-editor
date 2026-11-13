@@ -174,12 +174,14 @@ export function DeviceView(props: {
     setProblem(null);
     try {
       const opened = await core.request<Shown>('devices.open', { taskId, kind, id: device.id, address });
-      if (gone) return;
+      // The tab was left, or "Another device" was pressed while this was on its way: the core lets the
+      // device go right after, so it is not put back on show.
+      if (gone || current !== device) return;
       if (shown()?.id !== opened.id) forgetPicture();
       setShown(opened);
       void watch();
     } catch (error) {
-      if (gone) return;
+      if (gone || current !== device) return;
       setProblem(message(error));
       // What it could not open it does not show; the list says what is there now.
       if (!shown()) void look();
@@ -194,6 +196,9 @@ export function DeviceView(props: {
     setShown(null);
     forgetPicture();
     current = null;
+    // What was typed and how the device was made to look were this device's: the next one starts clean.
+    setTyped('');
+    setDark(null);
     if (asked) await core.request('devices.close', { taskId }).catch(() => {});
   };
 
@@ -290,7 +295,10 @@ export function DeviceView(props: {
   createEffect(
     on(
       () => [props.reloads, props.address] as const,
-      () => {
+      (now, before) => {
+        // The address is worked out anew each time the state of what runs is read, and mostly comes out
+        // the same: only a press on Reload or another address opens it on the device again.
+        if (before && now[0] === before[0] && now[1] === before[1]) return;
         if (!shown()) return;
         // The app is gone: there is nothing to show on the device, so it is let go.
         if (!props.address) void leave();

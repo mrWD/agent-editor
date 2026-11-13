@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { go, route, taskHref, VIEWS } from '../app/router';
 import { showCommit } from '../core/commits';
+import { onboardingOpen } from '../core/onboarding';
 import {
   agentOf,
   projectName,
@@ -639,6 +640,8 @@ export function SearchPalette(): JSX.Element {
     const onGlobalKey = (event: KeyboardEvent) => {
       // The editor takes the key first when code is selected; then it is not ours.
       if (event.defaultPrevented) return;
+      // The first run covers the page: a search opened under it would take the keyboard unseen.
+      if (onboardingOpen()) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setOpen(!open());

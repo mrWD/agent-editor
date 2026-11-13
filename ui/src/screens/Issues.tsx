@@ -58,8 +58,15 @@ export function Issues(): JSX.Element {
   const agents = () => state.agents.filter((agent) => agent.available);
   const chosenAgent = () => agentId() || defaultAgentId();
 
+  // One reading at a time. A reading asked for while one is on its way is not dropped: what the one
+  // on its way brings may be older than what it was asked for (a key that was just saved), so another
+  // follows it.
+  let again = false;
   const sync = async () => {
-    if (syncing()) return;
+    if (syncing()) {
+      again = true;
+      return;
+    }
     setSyncing(true);
     setProblem(null);
     try {
@@ -85,6 +92,10 @@ export function Issues(): JSX.Element {
       setProblem(message(error));
     } finally {
       setSyncing(false);
+      if (again) {
+        again = false;
+        void sync();
+      }
     }
   };
 

@@ -84,12 +84,19 @@ export function Tour(props: { name: string; steps: TourStep[]; lastLabel: string
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
     document.addEventListener('click', pressed, true);
+    // A press on a shade leaves the keyboard on nothing at all: Escape and Tab still mean the tour.
+    const outside = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !card || card.contains(event.target as Node)) return;
+      onKeyDown(event);
+    };
+    document.addEventListener('keydown', outside);
     onCleanup(() => {
       clearInterval(follow);
       clearInterval(waiting);
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
       document.removeEventListener('click', pressed, true);
+      document.removeEventListener('keydown', outside);
     });
   });
 
