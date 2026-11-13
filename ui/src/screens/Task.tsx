@@ -61,6 +61,7 @@ import { ChangesView } from './Changes';
 import { ChecksView } from './Checks';
 import { LookBackView } from './LookBack';
 import { SpanView } from './Span';
+import { MapView } from './Map';
 import { languageOf } from '../editor/languages';
 
 // The terminal is fetched the first time it is opened.
@@ -1033,7 +1034,18 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
       <Show when={props.view === 'checks' && !lookingBack()}>
         <ChecksView task={props.task} />
       </Show>
-      <Show when={props.view !== 'code' && props.view !== 'changes' && props.view !== 'checks' && !lookingBack()}>
+      <Show when={props.view === 'map' && !lookingBack()}>
+        <MapView task={props.task} />
+      </Show>
+      <Show
+        when={
+          props.view !== 'code' &&
+          props.view !== 'changes' &&
+          props.view !== 'checks' &&
+          props.view !== 'map' &&
+          !lookingBack()
+        }
+      >
         <section class="center">
           <div class="center-note">
             <h2>{viewNames[props.view]} is not built yet</h2>
