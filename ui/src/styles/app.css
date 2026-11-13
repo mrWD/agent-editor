@@ -6177,6 +6177,22 @@ button.picked-source:hover {
   flex: 1 1 auto;
 }
 /* Where a job stands, as a dot: the colours of good and bad news, the accent for what is going on. */
+/* How the pipeline stands, in one line at the head of the column: a press goes down to its card. */
+.pipe-brief {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: left;
+}
+.pipe-brief:hover {
+  color: var(--text);
+}
 .pipe-dot {
   flex: 0 0 auto;
   width: 8px;

@@ -4,7 +4,8 @@ import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, Chip } from '../components/bits';
 import { RequestCard } from '../components/RequestCard';
-import { PipelineCard } from '../components/PipelineCard';
+import { PipelineCard, type PipelineBrief } from '../components/PipelineCard';
+import { CI_WORDS } from '../core/ci';
 import { core } from '../core/client';
 import type { GitWatch } from '../core/gitstate';
 import {
@@ -126,6 +127,9 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
   const [amend, setAmend] = createSignal(false);
   const [busy, setBusy] = createSignal<string | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
+  /** How the pipeline of the branch stands, as its card at the foot of the column tells it. */
+  const [pipeBrief, setPipeBrief] = createSignal<PipelineBrief | null>(null);
+  let column: HTMLElement | undefined;
 
   const files = createMemo<GitFile[]>((before) => steady(before, git()?.files ?? []), []);
   const commits = createMemo<GitCommit[]>((before) => steady(before, git()?.commits ?? []), []);
@@ -408,7 +412,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
     >
       {(state) => (
         <>
-          <section class="git" aria-label="Git: what goes in, commit, push">
+          <section class="git" aria-label="Git: what goes in, commit, push" ref={column}>
             <ChangesMode taskId={taskId} />
             <For each={overlaps()}>
               {(overlap) => (
@@ -473,6 +477,24 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
                 </button>
               </Show>
             </div>
+            {/* How the pipeline stands, said here because its card is at the foot of the column. */}
+            <Show when={pipeBrief()}>
+              {(brief) => (
+                <button
+                  type="button"
+                  class="pipe-brief"
+                  title="Show the pipeline"
+                  onClick={() =>
+                    column?.querySelector('section.pipeline')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                  }
+                >
+                  <span class={`pipe-dot ${brief().state}`} aria-hidden="true" />
+                  <span>
+                    Pipeline {CI_WORDS[brief().state]}: {brief().words}
+                  </span>
+                </button>
+              )}
+            </Show>
 
             <Show when={problem()}>
               <p class="banner danger flush" role="alert">
@@ -700,7 +722,11 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
               overlaps={overlaps().length}
               onChanged={() => void props.git.reload()}
             />
-            <PipelineCard task={props.task} pushes={`${state().commits.length}:${state().notPushed}`} />
+            <PipelineCard
+              task={props.task}
+              pushes={`${state().commits.length}:${state().notPushed}`}
+              onBrief={setPipeBrief}
+            />
           </section>
 
           <section class="center">

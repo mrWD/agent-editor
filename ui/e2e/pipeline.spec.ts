@@ -47,6 +47,12 @@ test.describe('The pipeline of a task’s branch', () => {
 
     await expect(card(app).getByRole('heading', { name: 'Pipeline' })).toBeVisible();
     await expect(card(app)).toContainText('failed · commit 01234567');
+    // CI-17: the card stands at the foot of a long column, so the head of the column says how the
+    // pipeline stands, over all its runs, and a press goes down to the card.
+    const brief = app.git.getByRole('button', { name: 'Pipeline failed: 1 failed, 2 passed, 1 skipped' });
+    await expect(brief).toBeVisible();
+    await brief.click();
+    await expect(card(app)).toBeInViewport();
     const ci = run(app, 'CI');
     await expect(ci).toContainText('1 failed, 1 passed, 1 skipped');
     await expect(ci.getByRole('link', { name: 'CI' })).toHaveAttribute(

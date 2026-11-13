@@ -11,6 +11,7 @@ import {
   summary,
   type CiAct,
   type CiInfo,
+  type CiPipeline,
   type CiJob,
   type CiRun,
 } from '../core/ci';
@@ -28,6 +29,9 @@ const ARMED_FOR = 4_000;
 
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+/** How a pipeline stands, in a few words: for a line at the head of the view. */
+export type PipelineBrief = { state: CiPipeline['state']; words: string };
+
 /**
  * The pipeline of the task's branch, under its merge request: where it
  * stands, job by job, and what a person does to it without opening the host:
@@ -39,6 +43,11 @@ export function PipelineCard(props: {
   task: Task;
   /** Changes whenever the branch gets a commit or is pushed: the host may start a pipeline for it then. */
   pushes: string;
+  /**
+   * Told how the pipeline stands in a few words, or `null` when there is none to speak of. The card
+   * is at the foot of a long column; the view says this at its head, where it is seen without scrolling.
+   */
+  onBrief?: (brief: PipelineBrief | null) => void;
 }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task, so the id never changes under it
   const taskId = props.task.info.id;
@@ -88,6 +97,14 @@ export function PipelineCard(props: {
       else setProblem(why);
     }
   };
+
+  createEffect(() => {
+    const pipeline = nowhere() ? null : info()?.pipeline;
+    props.onBrief?.(
+      pipeline ? { state: pipeline.state, words: summary(pipeline.runs.flatMap((one) => one.jobs)) } : null,
+    );
+  });
+  onCleanup(() => props.onBrief?.(null));
 
   let lookedAt = Date.now();
   let pushedAt = 0;
