@@ -26,6 +26,13 @@ async fn the_first_run_is_ahead_until_it_is_done_and_stays_done_after_a_restart(
         assert!(found.is_null() || found.is_string(), "{name}: {found}");
     }
 
+    // The interface names the programs it knows; only names are taken, never a path.
+    let named =
+        asked(&state, "onboarding.get", json!({ "programs": ["cursor-agent", "agy", "no-such-agent-xyz"] })).await;
+    assert_eq!(named["programs"].as_object().unwrap().len(), 3);
+    assert!(named["programs"]["no-such-agent-xyz"].is_null());
+    assert!(dispatch(&state, "onboarding.get", &json!({ "programs": ["/bin/sh"] })).await.is_err());
+
     asked(&state, "onboarding.set", json!({ "done": true })).await;
     let told = events.recv().await.unwrap();
     assert_eq!((told["event"].clone(), told["data"]["done"].clone()), (json!("onboarding.changed"), json!(true)));

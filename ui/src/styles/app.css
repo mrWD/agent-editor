@@ -5921,6 +5921,9 @@ button.picked-source:hover {
   font-weight: 600;
   color: var(--text-2);
 }
+.first-about {
+  margin: 0 0 -4px;
+}
 .first-list {
   display: flex;
   flex-direction: column;

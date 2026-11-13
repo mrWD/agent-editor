@@ -34,11 +34,28 @@ import {
 import { Chip } from '../components/bits';
 
 const STEPS = ['Agents', 'Services', 'A project', 'Ready'] as const;
-const GROUPS: { id: Offer['preset']['group']; title: string }[] = [
-  { id: 'terminal', title: 'Programs found on this computer' },
+const GROUPS: { id: Offer['preset']['group']; title: string; about?: string }[] = [
+  {
+    id: 'terminal',
+    title: 'Programs found on this computer',
+    about: 'Command-line agents you already have. Each runs in a terminal inside the task, as you use it yourself.',
+  },
+  {
+    id: 'protocol',
+    title: 'More agents that speak the protocol',
+    about:
+      'Their edits, questions and cost show in the conversation, as with the agents above. From the registry of the Agent Client Protocol.',
+  },
   { id: 'key', title: 'With an API key' },
+  {
+    id: 'models',
+    title: 'Models of other makers',
+    about: 'DeepSeek, Kimi, GLM, Qwen, MiniMax and whatever OpenRouter passes on to, each with a key of yours.',
+  },
   { id: 'local', title: 'A model of your own' },
 ];
+/** How many agents of a group are listed before "Show all". */
+const SHOWN_AT_FIRST = 4;
 
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -99,6 +116,18 @@ export function Onboarding(): JSX.Element {
   /** The agents added here, by the ready-made one they came from. */
   const [added, setAdded] = createSignal<Record<string, string>>({});
   const offers = () => (found() ? offersFor(found()!) : []);
+  /** The groups whose every agent is listed, not only the first few. */
+  const [unfolded, setUnfolded] = createSignal<string[]>([]);
+  const inGroup = (group: string) => offers().filter((offer) => offer.preset.group === group);
+  const listed = (group: string) => {
+    const all = inGroup(group);
+    // One that was added, or whose form is open, stays in view whatever the fold.
+    return unfolded().includes(group)
+      ? all
+      : all.filter(
+          (offer, index) => index < SHOWN_AT_FIRST || added()[offer.preset.id] || adding() === offer.preset.id,
+        );
+  };
   /** Only agents with a model behind them are worth trying: the practice agent always starts. */
   const agents = () => state.agents;
 
@@ -111,7 +140,7 @@ export function Onboarding(): JSX.Element {
   const add = (offer: Offer) =>
     // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
     act(async () => {
-      const made = agentFrom(offer.preset, typed());
+      const made = agentFrom(offer.preset, typed(), offer.program ?? undefined);
       if ('problem' in made) throw new Error(made.problem);
       const saved = await saveAgent(made.agent);
       await reloadAgents();
@@ -401,10 +430,13 @@ export function Onboarding(): JSX.Element {
 
               <For each={GROUPS}>
                 {(group) => (
-                  <Show when={offers().some((offer) => offer.preset.group === group.id)}>
+                  <Show when={inGroup(group.id).length > 0}>
                     <h3 class="first-group">{group.title}</h3>
-                    <div class="first-list">
-                      <For each={offers().filter((offer) => offer.preset.group === group.id)}>
+                    <Show when={group.about}>
+                      <p class="fine first-about">{group.about}</p>
+                    </Show>
+                    <div class="first-list" role="group" aria-label={group.title}>
+                      <For each={listed(group.id)}>
                         {(offer) => (
                           <div class="first-row" role="group" aria-label={offer.preset.title}>
                             <div class="first-what">
@@ -474,6 +506,17 @@ export function Onboarding(): JSX.Element {
                           </div>
                         )}
                       </For>
+                      <Show when={inGroup(group.id).length > listed(group.id).length}>
+                        <div class="first-row">
+                          <button
+                            type="button"
+                            class="btn small ghost"
+                            onClick={() => setUnfolded((now) => [...now, group.id])}
+                          >
+                            Show all {inGroup(group.id).length}
+                          </button>
+                        </div>
+                      </Show>
                     </div>
                   </Show>
                 )}

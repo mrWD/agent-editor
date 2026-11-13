@@ -42,6 +42,19 @@ test.describe('The first run', () => {
     await expect(withKey.getByRole('button', { name: 'Set up' })).toBeDisabled();
     // Programs that are not here are not offered at all.
     await expect(dialog(app).getByRole('group', { name: 'aider in a terminal' })).toHaveCount(0);
+    await expect(dialog(app).getByRole('group', { name: 'Cursor', exact: true })).toHaveCount(0);
+
+    // The long lists show their first few; the rest is one press away. Agents from China are among them.
+    const more = dialog(app).getByRole('group', { name: 'More agents that speak the protocol' });
+    await expect(more.getByRole('group', { name: 'GitHub Copilot' })).toBeVisible();
+    await expect(more.getByRole('group', { name: 'MiniMax Code' })).toHaveCount(0);
+    await more.getByRole('button', { name: /^Show all \d+$/ }).click();
+    await expect(more.getByRole('group', { name: 'MiniMax Code' })).toContainText('Needs Node.js');
+    await expect(more.getByRole('group', { name: 'CodeBuddy Code' })).toBeVisible();
+    const models = dialog(app).getByRole('group', { name: 'Models of other makers' });
+    await expect(models.getByRole('group', { name: 'DeepSeek models' })).toBeVisible();
+    await models.getByRole('button', { name: /^Show all \d+$/ }).click();
+    await expect(models.getByRole('group', { name: 'OpenRouter models' })).toBeVisible();
 
     // Before anything is connected, the user is told what the practice agent is good for.
     await expect(have(app, 'What your agents give you')).toContainText('The practice agent');
