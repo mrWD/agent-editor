@@ -13,18 +13,21 @@
 use crate::marks::Author;
 use crate::runner::Runner;
 use crate::search::Search;
+use crate::startup::Desktop;
 use crate::tasks::Manager;
 use crate::terminals::{TermEvent, Terminals};
 use anyhow::{Result, anyhow, bail};
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::response::IntoResponse;
+use axum::http::HeaderValue;
+use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
@@ -37,6 +40,8 @@ pub struct AppState {
     pub terminals: Arc<Terminals>,
     pub search: Arc<Search>,
     pub runner: Arc<Runner>,
+    /// What the desktop app lends to the core. `None` when the core runs on its own.
+    pub desktop: Option<Desktop>,
 }
 
 impl AppState {
@@ -55,7 +60,16 @@ impl AppState {
         }
         let terminals = Arc::new(Terminals::without(own));
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
-        Self { manager, terminals, search: Arc::new(Search::new()), runner }
+        Self { manager, terminals, search: Arc::new(Search::new()), runner, desktop: None }
+    }
+
+    /// The desktop app, when the one who asks is the app's own window.
+    fn desktop_for(&self, params: &Value) -> Result<&Desktop> {
+        let key = params.get("key").and_then(Value::as_str);
+        self.desktop
+            .as_ref()
+            .filter(|desktop| key == Some(desktop.key.as_str()))
+            .ok_or_else(|| anyhow!("Only the desktop app can show a folder dialog. Type the path instead."))
     }
 
     /// The task's project name and folder, which is what running it needs.
@@ -103,22 +117,40 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
             // Unknown paths fall back to index.html so links inside the interface survive a reload.
             let index = ServeFile::new(dir.join("index.html"));
             api.fallback_service(ServeDir::new(dir).fallback(index))
+                .layer(axum::middleware::map_response(never_keep_pages))
         }
         None => api,
     }
 }
 
-/// Listens on `addr` until the process is asked to stop.
-pub async fn serve(state: AppState, addr: SocketAddr, ui_dir: Option<PathBuf>) -> Result<()> {
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!("Core is listening on http://{}", listener.local_addr()?);
+/// Tells the browser not to keep the page that starts the interface.
+///
+/// That page names the script files of one build. A kept copy of it, shown
+/// after the interface was built anew or the app was updated, would ask for
+/// files that are gone and leave an empty window. The script files themselves
+/// may be kept: a new build gives them new names.
+async fn never_keep_pages(mut response: Response) -> Response {
+    let is_page = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|kind| kind.to_str().ok())
+        .is_some_and(|kind| kind.starts_with("text/html"));
+    if is_page {
+        response.headers_mut().insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    response
+}
+
+/// Serves on `listener` until `stop` is done, then stops every terminal and every agent.
+pub async fn serve_until(
+    listener: tokio::net::TcpListener,
+    state: AppState,
+    ui_dir: Option<PathBuf>,
+    stop: impl Future<Output = ()> + Send + 'static,
+) -> Result<()> {
     let manager = state.manager.clone();
     let terminals = state.terminals.clone();
-    axum::serve(listener, router(state, ui_dir))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+    axum::serve(listener, router(state, ui_dir)).with_graceful_shutdown(stop).await?;
     terminals.close_all();
     manager.stop_all().await;
     Ok(())
@@ -133,6 +165,14 @@ async fn upgrade(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl In
 }
 
 async fn connection(socket: WebSocket, state: AppState) {
+    // Quiet unless asked for (`RUST_LOG=ae_core=debug`): it answers "did the window ever reach the core?".
+    tracing::debug!("An interface connected");
+    converse(socket, state).await;
+    tracing::debug!("An interface disconnected");
+}
+
+/// Talks to one interface until it goes away.
+async fn converse(socket: WebSocket, state: AppState) {
     let (mut sink, mut stream) = socket.split();
     let mut events = state.manager.subscribe();
     let mut term_events = state.terminals.subscribe();
@@ -236,6 +276,7 @@ async fn answer(state: &AppState, attached: &mut Attached, text: &str) -> (Value
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     let method = request.get("method").and_then(Value::as_str).unwrap_or_default();
     let params = request.get("params").cloned().unwrap_or(json!({}));
+    tracing::trace!("Command {method}");
     let mut frames = Vec::new();
     let outcome = if method.starts_with("terminal.") {
         terminal_command(state, attached, &mut frames, method, &params)
@@ -620,6 +661,13 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             .await?;
             Ok(json!({ "hits": hits }))
         }
+        "dialogs.pickFolder" => {
+            let pick = state.desktop_for(params)?.pick_folder.clone();
+            // The dialog stays open for as long as the user likes; that must not hold a worker of the event loop.
+            let picked = tokio::task::spawn_blocking(move || pick()).await?;
+            Ok(json!({ "path": picked.map(|path| path.to_string_lossy().into_owned()) }))
+        }
+
         "search.chats" => {
             let query = text_param(params, "query")?.to_string();
             let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(20).min(200) as usize;

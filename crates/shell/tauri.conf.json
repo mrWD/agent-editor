@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Agent Editor",
+  "identifier": "dev.agent-editor.desktop",
+  "build": {
+    "beforeDevCommand": { "script": "node prepare.mjs", "cwd": "." },
+    "beforeBuildCommand": { "script": "node prepare.mjs", "cwd": "." }
+  },
+  "app": {
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "nsis", "deb", "appimage"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
+    "resources": { "ui": "ui" },
+    "externalBin": ["binaries/ae-mock-agent"],
+    "category": "DeveloperTool",
+    "shortDescription": "A code editor in which coding agents work on tasks",
+    "longDescription": "Agent Editor is a code editor in which agents from different vendors work on the same tasks. Each task gets its own working copy; you review, edit and merge what the agents wrote.",
+    "windows": {
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
+}

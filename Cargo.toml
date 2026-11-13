@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/core", "crates/mock-agent"]
+# The desktop app is a workspace of its own: see crates/shell/Cargo.toml for why.
+exclude = ["crates/shell"]
 
 [workspace.package]
 version = "0.1.0"

@@ -17,6 +17,9 @@ pub mod review;
 pub mod runner;
 pub mod search;
 pub mod server;
+pub mod startup;
 pub mod store;
 pub mod tasks;
 pub mod terminals;
+
+pub use startup::{Core, DEFAULT_PORT, Desktop, Options, Port, default_data_dir, log_to_stdout, run, start};

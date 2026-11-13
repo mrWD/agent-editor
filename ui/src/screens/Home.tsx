@@ -2,6 +2,7 @@ import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'sol
 import { go, taskHref } from '../app/router';
 import { ago, Chip } from '../components/bits';
 import { refreshRequests, requests, stageOfTask } from '../core/requests';
+import { chooseFolder, shellMark } from '../core/shell';
 import {
   addProject,
   agentOf,
@@ -80,6 +81,26 @@ function NewTask(): JSX.Element {
   const chosen = () => state.agents.find((agent) => agent.id === agentId());
   const addingFolder = () => projectId() === NEW_FOLDER;
 
+  // Only the desktop app has a folder dialog. In a browser the path is typed, and typing works in the app too.
+  const hasFolderDialog = shellMark() !== null;
+  const [choosing, setChoosing] = createSignal(false);
+  const choose = async () => {
+    if (choosing()) return;
+    setChoosing(true);
+    try {
+      const picked = await chooseFolder();
+      // Closing the dialog changes nothing: what was typed stays.
+      if (picked) {
+        setFolder(picked);
+        setProblem(null);
+      }
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setChoosing(false);
+    }
+  };
+
   const submit = async (event: Event) => {
     event.preventDefault();
     if (busy()) return;
@@ -145,6 +166,11 @@ function NewTask(): JSX.Element {
           value={folder()}
           onInput={(event) => setFolder(event.currentTarget.value)}
         />
+        <Show when={hasFolderDialog}>
+          <button type="button" class="btn tall" disabled={choosing()} onClick={() => void choose()}>
+            Choose folder
+          </button>
+        </Show>
       </Show>
       <select
         class="select-button"
