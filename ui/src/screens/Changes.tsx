@@ -700,7 +700,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
               overlaps={overlaps().length}
               onChanged={() => void props.git.reload()}
             />
-            <PipelineCard task={props.task} />
+            <PipelineCard task={props.task} pushes={`${state().commits.length}:${state().notPushed}`} />
           </section>
 
           <section class="center">

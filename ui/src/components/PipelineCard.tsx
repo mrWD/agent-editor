@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import {
   actOnPipeline,
@@ -35,7 +35,11 @@ const said = (error: unknown) => (error instanceof Error ? error.message : Strin
  * again, start a new one. A long pipeline is told by its stages; the jobs that
  * went well are folded away.
  */
-export function PipelineCard(props: { task: Task }): JSX.Element {
+export function PipelineCard(props: {
+  task: Task;
+  /** Changes whenever the branch gets a commit or is pushed: the host may start a pipeline for it then. */
+  pushes: string;
+}): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task, so the id never changes under it
   const taskId = props.task.info.id;
   // Kept in a store and brought in line run by run and job by job: a row stays the same row while
@@ -85,10 +89,19 @@ export function PipelineCard(props: { task: Task }): JSX.Element {
     }
   };
 
+  let lookedAt = Date.now();
+  let pushedAt = 0;
+  /** The host makes a pipeline a moment after it is pushed to: from now on it is looked for more often, for a while. */
+  const expectOne = () => {
+    pushedAt = Date.now();
+    lookedAt = Date.now();
+    void look();
+  };
+  // Not every change to the files (an agent at work makes many): only a commit or a push.
+  createEffect(on(() => props.pushes, expectOne, { defer: true }));
+
   onMount(() => {
     void look();
-    let lookedAt = Date.now();
-    let pushedAt = 0;
     const again = setInterval(() => {
       if (document.hidden) return;
       const going = stillGoing(info()?.pipeline?.state);
@@ -99,13 +112,9 @@ export function PipelineCard(props: { task: Task }): JSX.Element {
         void look();
       }
     }, 1000);
-    // A commit, a push or a change to the request: the host may start a pipeline for it any moment now.
+    // A request that was opened or changed may get a pipeline of its own.
     const stop = core.onEvent((event) => {
-      const mine = (event.event === 'git.changed' || event.event === 'mr.changed') && event.data.taskId === taskId;
-      if (!mine) return;
-      pushedAt = Date.now();
-      lookedAt = Date.now();
-      void look();
+      if (event.event === 'mr.changed' && event.data.taskId === taskId) expectOne();
     });
     onCleanup(() => {
       clearInterval(again);
