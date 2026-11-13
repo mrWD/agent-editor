@@ -549,6 +549,14 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           </p>
         )}
       </Match>
+      {/* What the editor did outside the conversation, or learned there: an issue moved, a job started again. */}
+      <Match when={entry.kind === 'tracker' && entry}>
+        {(said) => (
+          <p class="notice" classList={{ danger: said().failed }}>
+            {said().text}
+          </p>
+        )}
+      </Match>
     </Switch>
   );
 
