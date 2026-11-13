@@ -21,50 +21,56 @@ async function problemsOn(page: Page): Promise<string[]> {
 }
 
 test.describe('Every screen can be read and used without a mouse', () => {
-  test('T-01 T-02 T-03 the sections and the views of a task pass the accessibility rules', async ({
-    app,
-    project,
-    browserName,
-  }) => {
-    // axe reads the page's own markup and the styles it computes, which every engine builds the same way
-    // from the same code. Reading all eleven screens three times over buys minutes and tells nothing new.
-    test.skip(browserName !== 'chromium', 'the markup is the same in every engine');
-    test.slow();
-    const shop = await project();
-    await app.openHome();
-    expect.soft(await problemsOn(app.page), 'Home').toEqual([]);
+  // Both themes are read: the same markup in other colours is another answer to "can this be read?".
+  for (const theme of ['dark', 'light'] as const) {
+    test(`T-01 T-02 T-03 the sections and the views of a task pass the accessibility rules, in the ${theme} theme`, async ({
+      app,
+      project,
+      browserName,
+    }) => {
+      // axe reads the page's own markup and the styles it computes, which every engine builds the same way
+      // from the same code. Reading all eleven screens three times over buys minutes and tells nothing new.
+      test.skip(browserName !== 'chromium', 'the markup is the same in every engine');
+      test.slow();
+      // The choice of a theme is this browser's own: it is there before the page is.
+      if (theme === 'light') await app.page.addInitScript(() => localStorage.setItem('ae.theme', 'light'));
+      const shop = await project();
+      await app.openHome();
+      await expect(app.page.locator('html')).toHaveAttribute('data-theme', theme);
+      expect.soft(await problemsOn(app.page), 'Home').toEqual([]);
 
-    const taskId = await app.createTask({ text: unique('Change the limit'), folder: shop.dir, until: 'question' });
-    // The conversation with a question in it, next to the code.
-    await app.openFile(DEMO_FILE);
-    expect.soft(await problemsOn(app.page), 'Code, with a question from the agent').toEqual([]);
-    await app.answer('Allow this edit');
-    await app.turnEnds();
+      const taskId = await app.createTask({ text: unique('Change the limit'), folder: shop.dir, until: 'question' });
+      // The conversation with a question in it, next to the code.
+      await app.openFile(DEMO_FILE);
+      expect.soft(await problemsOn(app.page), 'Code, with a question from the agent').toEqual([]);
+      await app.answer('Allow this edit');
+      await app.turnEnds();
 
-    for (const view of ['Changes', 'Plan', 'Preview', 'Map', 'Checks'] as const) {
-      await app.showView(view);
-      // A view reads its data after it is shown: give what it shows a moment to settle.
-      await app.page.waitForTimeout(400);
-      expect.soft(await problemsOn(app.page), view).toEqual([]);
-    }
+      for (const view of ['Changes', 'Plan', 'Preview', 'Map', 'Checks'] as const) {
+        await app.showView(view);
+        // A view reads its data after it is shown: give what it shows a moment to settle.
+        await app.page.waitForTimeout(400);
+        expect.soft(await problemsOn(app.page), view).toEqual([]);
+      }
 
-    for (const section of ['Issues', 'Health', 'Automations', 'Agents'] as const) {
-      await app.page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: section }).click();
-      await expect(app.page.getByRole('heading', { level: 1 })).toBeVisible();
-      await app.page.waitForTimeout(400);
-      expect.soft(await problemsOn(app.page), section).toEqual([]);
-    }
+      for (const section of ['Issues', 'Health', 'Automations', 'Agents'] as const) {
+        await app.page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: section }).click();
+        await expect(app.page.getByRole('heading', { level: 1 })).toBeVisible();
+        await app.page.waitForTimeout(400);
+        expect.soft(await problemsOn(app.page), section).toEqual([]);
+      }
 
-    // The open dock and the search over everything.
-    await app.openTask(taskId);
-    await app.rail.getByRole('button', { name: 'Expand' }).click();
-    await expect(app.dock).toBeVisible();
-    expect.soft(await problemsOn(app.page), 'The open dock').toEqual([]);
-    await app.dock.getByRole('button', { name: 'Collapse' }).click();
-    await app.page.getByRole('button', { name: /^Search/ }).click();
-    await expect(app.page.getByRole('dialog')).toBeVisible();
-    expect.soft(await problemsOn(app.page), 'The search').toEqual([]);
-  });
+      // The open dock and the search over everything.
+      await app.openTask(taskId);
+      await app.rail.getByRole('button', { name: 'Expand' }).click();
+      await expect(app.dock).toBeVisible();
+      expect.soft(await problemsOn(app.page), 'The open dock').toEqual([]);
+      await app.dock.getByRole('button', { name: 'Collapse' }).click();
+      await app.page.getByRole('button', { name: /^Search/ }).click();
+      await expect(app.page.getByRole('dialog')).toBeVisible();
+      expect.soft(await problemsOn(app.page), 'The search').toEqual([]);
+    });
+  }
 
   test('T-01 every control of a task is reached with Tab, and the one in focus is marked', async ({
     app,

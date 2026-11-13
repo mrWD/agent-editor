@@ -1,4 +1,5 @@
-/* Design tokens: "A · Dark graphite". The values come straight from the design canvas. */
+/* Design tokens: "A · Dark graphite". The values come straight from the design canvas.
+   The light theme, at the end of this file, gives the same names other values. */
 :root {
   --ground: #0f1115;
   --ground-deep: #0b0d10;
@@ -29,6 +30,42 @@
   --green-bg: rgba(91, 208, 138, 0.1);
   --red: #ff8a8a;
   --red-bg: rgba(255, 122, 122, 0.1);
+
+  /* A veil over whatever is under it: lighter on a dark ground, darker on a light one. */
+  --veil-1: rgba(255, 255, 255, 0.025);
+  --veil-2: rgba(255, 255, 255, 0.05);
+  --veil-3: rgba(255, 255, 255, 0.08);
+  --veil-4: rgba(255, 255, 255, 0.1);
+  --selection: rgba(245, 181, 68, 0.22);
+  --scrim: rgba(8, 10, 13, 0.68);
+
+  /* Code: four colours and two greys. */
+  --syn-keyword: #e38bb7;
+  --syn-string: #9fd59a;
+  --syn-number: #e0b872;
+  --syn-comment: #8b93a1;
+  --syn-meta: #a9b0bc;
+  --syn-invalid: #ff8a8a;
+
+  /* The terminal: its ground, its text, and the sixteen colours programs print in. */
+  --term-bg: #0b0d10;
+  --term-fg: #e7e9ed;
+  --ansi-0: #1c2028;
+  --ansi-1: #ff8a8a;
+  --ansi-2: #5bd08a;
+  --ansi-3: #f5b544;
+  --ansi-4: #6fb1ff;
+  --ansi-5: #b8a1ff;
+  --ansi-6: #56d4c4;
+  --ansi-7: #a9b0bc;
+  --ansi-8: #8b93a1;
+  --ansi-9: #ffa3a3;
+  --ansi-10: #7fe0a6;
+  --ansi-11: #f8c76e;
+  --ansi-12: #93c5ff;
+  --ansi-13: #cbbbff;
+  --ansi-14: #7fe2d5;
+  --ansi-15: #e7e9ed;
 
   --sans: 'Inter Variable', Inter, system-ui, sans-serif;
   --mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
@@ -1320,7 +1357,7 @@ textarea::placeholder {
 .tone-plain {
   --agent-color: var(--text-2);
   --agent-soft: var(--pressed);
-  --agent-tint: rgba(255, 255, 255, 0.05);
+  --agent-tint: var(--veil-2);
   --agent-line: var(--line-strong);
 }
 
@@ -1544,7 +1581,7 @@ textarea::placeholder {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(8, 10, 13, 0.68);
+  background: var(--scrim);
 }
 .palette {
   position: fixed;
@@ -4579,7 +4616,7 @@ button.picked-source:hover {
   --race-tint: rgba(86, 212, 196, 0.1);
 }
 .race-agent.tone-plain {
-  --race-tint: rgba(255, 255, 255, 0.05);
+  --race-tint: var(--veil-2);
 }
 .race-agent[aria-pressed='true'] {
   width: auto;
@@ -5972,4 +6009,109 @@ button.picked-source:hover {
   gap: 4px;
   margin: 0;
   padding-left: 18px;
+}
+
+/* ---------- The light theme ---------- */
+
+/* The same names as the dark tokens at the top, for a light ground. Every colour of text keeps
+   at least 4.5 to 1 against every ground it is set on; the tints of agents and of good and bad
+   news stay the pale colours they are, with darker words on them. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --ground: #f6f6f3;
+  --ground-deep: #eeeeea;
+  --panel: #ffffff;
+  --raised: #efefec;
+  --pressed: #e2e3df;
+
+  --line: #dedfdb;
+  --line-soft: #e8e9e5;
+  --line-strong: #c4c6c1;
+  --line-dashed: #a3a6a1;
+
+  --text: #1b1d21;
+  --text-2: #474d57;
+  --text-3: #5d636e;
+
+  --accent: #8f4e00;
+  --on-accent: #ffffff;
+
+  --claude: #5b40c4;
+  --claude-bg: rgba(91, 64, 196, 0.12);
+  --codex: #125bb5;
+  --codex-bg: rgba(18, 91, 181, 0.12);
+  --gemini: #086f63;
+  --gemini-bg: rgba(8, 111, 99, 0.12);
+
+  --green: #136b38;
+  --green-bg: rgba(19, 107, 56, 0.09);
+  --red: #b3262f;
+  --red-bg: rgba(179, 38, 47, 0.07);
+
+  --veil-1: rgba(0, 0, 0, 0.025);
+  --veil-2: rgba(0, 0, 0, 0.04);
+  --veil-3: rgba(0, 0, 0, 0.07);
+  --veil-4: rgba(0, 0, 0, 0.1);
+  --selection: rgba(200, 130, 20, 0.26);
+  --scrim: rgba(40, 42, 46, 0.45);
+
+  --syn-keyword: #a8327a;
+  --syn-string: #2f7a2a;
+  --syn-number: #8a5a00;
+  --syn-comment: #5d636e;
+  --syn-meta: #474d57;
+  --syn-invalid: #b3262f;
+
+  --term-bg: #eeeeea;
+  --term-fg: #1b1d21;
+  --ansi-0: #2a2e35;
+  --ansi-1: #b3262f;
+  --ansi-2: #136b38;
+  --ansi-3: #8a5a00;
+  --ansi-4: #125bb5;
+  --ansi-5: #5b40c4;
+  --ansi-6: #086f63;
+  --ansi-7: #474d57;
+  --ansi-8: #5d636e;
+  --ansi-9: #cf3b45;
+  --ansi-10: #1d8a4b;
+  --ansi-11: #a56d00;
+  --ansi-12: #1f74d6;
+  --ansi-13: #7257e0;
+  --ansi-14: #0f8f80;
+  --ansi-15: #1b1d21;
+
+  /* The marks of files are drawn for a dark ground; here each is the same colour, darker. */
+  --icon-folder: color-mix(in srgb, #8b93a1 55%, #000);
+  --icon-muted: color-mix(in srgb, #7b8392 55%, #000);
+  --icon-ts: color-mix(in srgb, #6fb1ff 55%, #000);
+  --icon-js: color-mix(in srgb, #e3c05f 55%, #000);
+  --icon-data: color-mix(in srgb, #c8a35a 55%, #000);
+  --icon-env: color-mix(in srgb, #9fb87a 55%, #000);
+  --icon-npm: color-mix(in srgb, #e0705f 55%, #000);
+  --icon-words: color-mix(in srgb, #9aa6b8 55%, #000);
+  --icon-css: color-mix(in srgb, #56d4c4 55%, #000);
+  --icon-html: color-mix(in srgb, #ff9a6c 55%, #000);
+  --icon-rust: color-mix(in srgb, #e08a5f 55%, #000);
+  --icon-python: color-mix(in srgb, #7fb2e0 55%, #000);
+  --icon-go: color-mix(in srgb, #6fd3ea 55%, #000);
+  --icon-ruby: color-mix(in srgb, #e07a7a 55%, #000);
+  --icon-php: color-mix(in srgb, #9b94e8 55%, #000);
+  --icon-java: color-mix(in srgb, #d98d55 55%, #000);
+  --icon-swift: color-mix(in srgb, #ff8f6b 55%, #000);
+  --icon-c: color-mix(in srgb, #8fa7c7 55%, #000);
+  --icon-csharp: color-mix(in srgb, #a98ce0 55%, #000);
+  --icon-vue: color-mix(in srgb, #63d49a 55%, #000);
+  --icon-svelte: color-mix(in srgb, #ff7a56 55%, #000);
+  --icon-sql: color-mix(in srgb, #8fc4d8 55%, #000);
+  --icon-image: color-mix(in srgb, #c99ae0 55%, #000);
+  --icon-svg: color-mix(in srgb, #d9a05f 55%, #000);
+  --icon-pdf: color-mix(in srgb, #e07a7a 55%, #000);
+  --icon-shell: color-mix(in srgb, #8fd08a 55%, #000);
+  --icon-docker: color-mix(in srgb, #6fb1ff 55%, #000);
+  --icon-git: color-mix(in srgb, #e07a5f 55%, #000);
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }

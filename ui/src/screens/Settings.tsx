@@ -4,6 +4,7 @@ import { Chip } from '../components/bits';
 import { core } from '../core/client';
 import { askPermission, permission, refusal, type Permission } from '../core/notify';
 import { showOnboardingAgain } from '../core/onboarding';
+import { chooseTheme, themeChoice, type ThemeChoice } from '../core/theme';
 import {
   commandLine,
   envText,
@@ -40,6 +41,12 @@ function originOf(agent: Pick<AgentSetting, 'own' | 'changed'>): string {
   if (agent.own) return 'Yours';
   return agent.changed ? 'Command changed' : 'Built in';
 }
+
+const THEMES: { value: ThemeChoice; name: string }[] = [
+  { value: 'dark', name: 'Dark' },
+  { value: 'light', name: 'Light' },
+  { value: 'system', name: 'As the computer' },
+];
 
 /** The value of `editing` that means "the form for a new agent is open". */
 const NEW = '__new__';
@@ -522,6 +529,30 @@ export function Settings(): JSX.Element {
               <section class="stage" aria-label="The editor">
                 <div class="stage-head">
                   <h2 class="stage-title">The editor</h2>
+                </div>
+                <div class="stage-row setting-row">
+                  <div class="setting-what">
+                    <label class="name" for="theme-choice">
+                      Theme
+                    </label>
+                    <span class="soft">
+                      Dark is the editor as it was designed. "As the computer" follows the system and changes with it.
+                      This is kept in this browser, so another browser, or the app, has a choice of its own.
+                    </span>
+                  </div>
+                  <select
+                    id="theme-choice"
+                    class="select-button"
+                    onChange={(event) => chooseTheme(event.currentTarget.value as ThemeChoice)}
+                  >
+                    <For each={THEMES}>
+                      {(theme) => (
+                        <option value={theme.value} selected={themeChoice() === theme.value}>
+                          {theme.name}
+                        </option>
+                      )}
+                    </For>
+                  </select>
                 </div>
                 <div class="stage-row setting-row">
                   <div class="setting-what">

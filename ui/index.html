@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>Agent Editor</title>
+    <script>
+      // The theme is set before anything is drawn, so a light editor never flashes dark first.
+      // The same choice is read again, and kept current, by src/core/theme.ts.
+      try {
+        var chosen = localStorage.getItem('ae.theme');
+        var light = chosen === 'light' || (chosen === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+        document.documentElement.dataset.theme = light ? 'light' : 'dark';
+      } catch (refused) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
