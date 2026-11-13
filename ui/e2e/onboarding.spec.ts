@@ -222,6 +222,24 @@ test.describe('The first run', () => {
     await nextHint(app);
     // GitHub is connected, so its issues are worth a hint.
     await expect(hint(app)).toContainText('Issues from GitHub');
+    // The last hint has the longest button; nothing on its card is squeezed into a column of words.
+    const lines = await hint(app).evaluate((card) =>
+      [...card.querySelectorAll('.tour-count, .tour-foot .btn')].map((piece) => {
+        const height = piece.getBoundingClientRect().height;
+        return Math.round(height / Number.parseFloat(getComputedStyle(piece).lineHeight));
+      }),
+    );
+    expect(lines.every((count) => count <= 2 && count >= 1)).toBe(true);
+    expect(
+      await hint(app)
+        .locator('.tour-count')
+        .evaluate((count) => count.getBoundingClientRect().height),
+    ).toBeLessThan(24);
+    // And the buttons stand in one row.
+    const tops = await hint(app).evaluate((card) =>
+      [...card.querySelectorAll('.tour-foot .btn')].map((button) => Math.round(button.getBoundingClientRect().top)),
+    );
+    expect(new Set(tops).size).toBe(1);
 
     // The last button of the last tour ends the first run: the editor is there to work in.
     await hint(app).getByRole('button', { name: 'Start using the editor' }).click();

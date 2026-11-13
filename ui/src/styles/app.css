@@ -6046,7 +6046,7 @@ button.picked-source:hover {
 }
 .tour-card {
   position: fixed;
-  width: min(360px, calc(100% - 16px));
+  width: min(392px, calc(100% - 16px));
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -6061,7 +6061,18 @@ button.picked-source:hover {
   margin: 0;
   color: var(--text-2);
 }
+.tour-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.tour-count {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .tour-title {
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0;
   font-family: var(--display);
   font-weight: 600;
@@ -6077,11 +6088,17 @@ button.picked-source:hover {
   font-size: 13px;
   color: var(--text-2);
 }
+/* The last button of a tour has more words than "Next": the row gives way before any of them breaks. */
 .tour-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+}
+.tour-foot .btn {
+  white-space: nowrap;
 }
 
 /* ---------- The light theme ---------- */

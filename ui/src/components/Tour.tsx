@@ -161,7 +161,13 @@ export function Tour(props: { name: string; steps: TourStep[]; lastLabel: string
         style={{ top: `${placed().top}px`, left: `${placed().left}px` }}
         onKeyDown={onKeyDown}
       >
-        <h2 class="tour-title">{step().title}</h2>
+        <header class="tour-head">
+          <h2 class="tour-title">{step().title}</h2>
+          {/* Said to a screen reader by the card's own name; here it is for the eye. */}
+          <span class="fine tour-count" aria-hidden="true">
+            {at() + 1} of {props.steps.length}
+          </span>
+        </header>
         <p>{step().text}</p>
         <Show when={step().lines?.length}>
           <ul class="tour-lines">
@@ -172,9 +178,7 @@ export function Tour(props: { name: string; steps: TourStep[]; lastLabel: string
           <button type="button" class="btn small ghost" onClick={() => props.onDone()}>
             Skip these hints
           </button>
-          <span class="grow fine" aria-hidden="true">
-            {at() + 1} of {props.steps.length}
-          </span>
+          <span class="grow" />
           <Show when={at() > 0}>
             <button type="button" class="btn small" onClick={back}>
               Back
