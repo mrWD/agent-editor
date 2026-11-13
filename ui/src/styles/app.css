@@ -5782,3 +5782,194 @@ button.picked-source:hover {
   align-items: center;
   gap: 8px;
 }
+
+/* ---------- The first run ---------- */
+
+.first-scrim {
+  z-index: 60;
+}
+.first-run {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 61;
+  transform: translate(-50%, -50%);
+  width: min(760px, calc(100% - 32px));
+  max-height: calc(100% - 48px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+.first-head,
+.first-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.first-head {
+  border-bottom: 1px solid var(--line);
+}
+.first-foot {
+  border-top: 1px solid var(--line);
+}
+.first-steps {
+  flex: 1 1 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.first-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.first-steps li.on {
+  color: var(--text);
+  font-weight: 600;
+}
+.first-steps li.done {
+  color: var(--text-2);
+}
+.first-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 500;
+}
+.first-steps li.on .first-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.first-steps li.done .first-dot {
+  border-color: var(--green);
+  color: var(--green);
+}
+.first-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.first-body .banner {
+  margin: 0;
+}
+.first-title {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.25;
+  outline: none;
+}
+.first-group {
+  margin: 4px 0 -4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.first-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ground);
+}
+.first-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+}
+.first-list > .first-row + .first-row {
+  border-top: 1px solid var(--line);
+}
+.first-body > .first-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ground);
+}
+.first-what {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.first-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.first-name .name {
+  font-weight: 500;
+}
+.tag.good {
+  border-color: var(--green);
+  color: var(--green);
+}
+.first-form {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.first-form.plain {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.first-form label {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.first-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.first-inline .field {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.first-have {
+  padding: 12px 14px;
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  background: var(--green-bg);
+}
+.first-have h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green);
+}
+.first-have ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}

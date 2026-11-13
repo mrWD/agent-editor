@@ -3,6 +3,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import { Chip } from '../components/bits';
 import { core } from '../core/client';
 import { askPermission, permission, refusal, type Permission } from '../core/notify';
+import { showOnboardingAgain } from '../core/onboarding';
 import {
   commandLine,
   envText,
@@ -561,6 +562,17 @@ export function Settings(): JSX.Element {
                 <div class="stage-row setting-row">
                   <span class="setting-what">Agent Editor</span>
                   <span class="mono">version {state.app?.version ?? 'unknown'}</span>
+                </div>
+                <div class="stage-row setting-row">
+                  <div class="setting-what">
+                    <span class="name">The first-run setup</span>
+                    <span class="soft">
+                      Connecting agents and services and adding a project, step by step, as on the first day.
+                    </span>
+                  </div>
+                  <button type="button" class="btn small" onClick={() => void showOnboardingAgain()}>
+                    Open it again
+                  </button>
                 </div>
                 <div class="stage-row setting-row">
                   <div class="setting-what">

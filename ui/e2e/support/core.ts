@@ -48,6 +48,8 @@ export type CoreOptions = {
   twoAgents?: boolean;
   /** Let the practice language server stand in for the TypeScript one, which the tests never have. */
   practiceLspForTs?: boolean;
+  /** Leave the first run ahead, so the editor greets the user with its setup. */
+  firstRun?: boolean;
 };
 
 export type TaskInfo = {
@@ -138,6 +140,9 @@ export class Core {
     const core = new Core(options);
     core.portNumber = await freePort();
     await core.launch();
+    // Every test but the ones about the first run starts with the first run behind it:
+    // its dialog would stand in front of everything else.
+    if (!options.firstRun) await core.request('onboarding.set', { done: true });
     return core;
   }
 

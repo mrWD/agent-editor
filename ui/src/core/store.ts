@@ -187,7 +187,14 @@ export function spentOn(task: Task): number {
   return task.spentBefore + (task.usage?.cost ?? 0);
 }
 
-type AppInfo = { version: string; platform: string; cwd: string | null; dataDir: string };
+type AppInfo = {
+  version: string;
+  platform: string;
+  cwd: string | null;
+  dataDir: string;
+  /** False until the user has been through the first run, or has put it aside. */
+  onboarded?: boolean;
+};
 
 const [state, setState] = createStore<{
   ready: boolean;
