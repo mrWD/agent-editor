@@ -115,37 +115,75 @@ scripts/sonar-local.sh
 
 ## Where it stands
 
-Milestones are listed in PLAN.md under "План разработки по вехам". Built so far:
+Milestones are listed in PLAN.md under "План разработки по вехам"; the state
+in detail is in the same file under "Состояние на 13.11.2026". Built so far:
 
 - **M0, the skeleton.** A task is started from the first screen, the agent's
   answer streams in, tool calls and permission questions are shown and answered.
 - **M1, tasks and projects.** Projects, tasks and every event are kept in
   SQLite. A task survives a restart of the core. In a git project each task
-  works in its own working copy on its own branch.
+  works in its own working copy on its own branch. The rail at the bottom of
+  every screen shows every project and the state of each task; projects go
+  into folders, and the ones that do not fit fold into one item, never one
+  that needs you.
+- **M2, agents.** The model, the mode and the agent's other settings are in the
+  head of the conversation and are remembered. An agent that can load a session
+  picks its own up after sleep or a restart; one that cannot is told what was
+  said. The head shows how full the context is and what the task has cost.
+  Answers in Markdown are shown as meant. A picture is attached, pasted or
+  dropped into a message and goes to agents that take images. Checked with the
+  real Claude on its cheapest model; Codex and Gemini have not been started.
 - **M3, code.** Files open in an editor (CodeMirror) and are saved with
   Cmd/Ctrl+S. Lines are marked by who wrote them since the last review, the
   agent or you; "Keep" accepts the agent's lines, "Undo" takes them back and
   leaves yours. The agent is told what you changed by hand, and its turn stops
-  when you start typing in the code. A real terminal runs in the task's folder.
-  Cmd/Ctrl+K searches tasks, files, conversations, commands and the text of
-  the code; with code selected it attaches that code to your next message.
-
+  when you start typing in the code. Files and folders are made, renamed and
+  deleted from the tree; a deleted one can be put back. A real terminal runs in
+  the task's folder. Cmd/Ctrl+K searches tasks, files, conversations, commands
+  and the text of the code; with code selected it attaches that code to your
+  next message.
 - **M4, git.** The Changes view: what differs from the last commit, ticks on
   files and on single changes, commit, push, "add to the last commit", the
   branch's commits with Undo and Revert, updating from the base branch. A pull
-  or merge request is opened from there, and "Merge now" merges it, deletes the
-  branch and the working copy and archives the task.
-- **Issues.** Open issues of every project from GitHub, GitLab or a Linear
-  team; "Start" turns one into a task.
-- **Run.** Dev scripts from `package.json` and services from a compose file,
-  each task in a compose project of its own, with taken ports moved to free ones.
+  or merge request is opened from there with its review comments, which go to
+  the agent or get a reply; "Merge now" merges it, deletes the branch and the
+  working copy and archives the task, and "Merge by itself" does that once the
+  checks are green. A checkpoint is taken before every message: "Look back"
+  shows any earlier moment and rewinds to it, keeping your own lines. Coming
+  back to a task says where you stopped and what happened since. Two open
+  tasks that change the same lines are shown to each other.
+- **M5, checks and running.** The Checks view runs the project's own lint,
+  tests and build, reads the places they name and stands in the way of a merge
+  when one fails. Problems lists them. Language servers give completions,
+  problems, "go to definition" and formatting on save. The Run tab starts dev
+  scripts from `package.json` and services from a compose file, each task in a
+  compose project of its own, with taken ports moved to free ones.
+- **M6, together.** A team: a planner, a builder and a reviewer take one task
+  in turn, then the checks run. A race: the same task goes to two or more
+  agents, each in a working copy of its own, and one result is kept. The Plan
+  view: the work as blocks the agent keeps to. Rules of a project are told to
+  every agent, and rewriting an agent's line offers to make a rule of it. The
+  core is a tool server for its agents: they see the other tasks, leave notes
+  for the next agent and report what they noticed.
+- **M7, Preview and Map.** Preview shows the running app at several widths at
+  once, in light and dark, lets you pick an element or draw on the page, and
+  sends that to the agent in words. Map shows the files the task changed, what
+  they define, who needs them and what they call, and draws a flow the agent
+  describes.
+- **M8, the sections.** Issues from GitHub, GitLab or a Linear team; "Start"
+  turns one into a task. Agents: who is doing what, cost by agent and by task,
+  limits, a daily budget, handing a task to another agent. Automations: clean
+  up after a merge, run checks, start a task every day at a time. Health: what
+  each project is missing, read from its files.
 - **M9, the desktop app.** The core and the interface in one app (Tauri 2) for
   macOS, Windows and Linux: a folder dialog for "Another folder", links that
   open in the system's browser, a window that remembers its size and place, a
   menu, one running copy at a time. Not signed, no auto-update.
 
-Not built yet: real agents have never been started (M2); points to go back to,
-"since your last visit" and tasks that touch the same lines (M4); checks and
-language servers (M5); teams, races and the Plan view (M6); Preview and Map
-(M7); Health, Automations and usage (M8). Views that are not built say so on
-screen.
+Not built: a screenshot in Preview and the iOS and Android tabs there (they say
+so); a settings window; notifications.
+
+Not checked: anything on Windows or Linux (the CI is written and has never
+run); GitLab and Linear against the real services; Codex and Gemini; the
+real language servers for Rust, Go and Python (the one for TypeScript and
+JavaScript was tried by hand; the tests use a practice server).
