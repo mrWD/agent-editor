@@ -16,7 +16,7 @@
 //! itself and has no way to bring it back.
 
 use crate::acp::{Connection, RpcError};
-use crate::agents::{AgentDef, Registry, find_program};
+use crate::agents::{AgentDef, Registry, Speaks, find_program};
 use crate::store::Store;
 use crate::tasks::Manager;
 use anyhow::{Result, anyhow, bail};
@@ -102,6 +102,9 @@ struct OwnAgent {
     id: String,
     name: String,
     short: String,
+    /// True for a program that does not speak the protocol and runs in a terminal.
+    #[serde(default)]
+    terminal: bool,
     #[serde(flatten)]
     command: Command,
 }
@@ -120,6 +123,7 @@ impl OwnAgent {
             note: None,
             // Nobody knows what an agent of the user's own costs; saying "it may cost" is the safe side.
             spends_tokens: true,
+            speaks: if self.terminal { Speaks::Terminal } else { Speaks::Acp },
         };
         with_command(blank, &self.command)
     }
@@ -272,6 +276,35 @@ pub async fn try_agent(agent: &AgentDef, cwd: &Path, patience: Duration) -> Valu
     }
 }
 
+/// "Try it" for an agent that runs in a terminal. There is nothing to ask it:
+/// all that can be said without a task is whether its program is there.
+fn try_in_terminal(agent: &AgentDef) -> Value {
+    match find_program(&agent.program) {
+        Some(path) => json!({
+            "ok": true,
+            "name": Value::Null,
+            "version": Value::Null,
+            "continues": false,
+            "pictures": false,
+            "tools": false,
+            "says": format!(
+                "{} runs in a terminal: its program was found at {}. In a task the editor starts it in the \
+                 task's folder and types your messages into it. Whether it answers is seen there, not here. \
+                 It takes no pictures and cannot use the editor's own tools.",
+                agent.name,
+                path.display()
+            )
+        }),
+        None => json!({
+            "ok": false,
+            "problem": format!(
+                "The program \"{}\" was not found. Check how it is spelled, or give its full path.",
+                agent.program
+            )
+        }),
+    }
+}
+
 impl Manager {
     fn changed_commands(&self) -> BTreeMap<String, Command> {
         read_json(self.store(), CHANGED)
@@ -339,6 +372,7 @@ impl Manager {
                     "available": agent.available,
                     "note": agent.note,
                     "spendsTokens": agent.spends_tokens,
+                    "speaks": agent.speaks,
                     "isDefault": default.as_deref() == Some(agent.id.as_str()),
                     // Open tasks that have this agent: one of the user's own cannot be removed while there are any.
                     "tasks": tasks.iter().filter(|task| task.agent_id == agent.id).count()
@@ -353,6 +387,8 @@ impl Manager {
     pub fn agent_save(&self, params: &Value) -> Result<String> {
         let command = Command::read(params)?;
         let text = |name: &str| params.get(name).and_then(Value::as_str).map(str::trim).unwrap_or_default();
+        // Only said of an agent of the user's own: the ones the editor comes with speak the protocol.
+        let terminal = params.get("terminal").and_then(Value::as_bool).unwrap_or(false);
         let mut own = self.own_agents();
 
         let id = match params.get("id").and_then(Value::as_str) {
@@ -393,6 +429,7 @@ impl Manager {
                             bail!("No such agent: {id}")
                         };
                         (mine.name, mine.short, mine.command) = (name.to_string(), short.to_string(), command);
+                        mine.terminal = terminal;
                         id.to_string()
                     }
                     None => {
@@ -407,6 +444,7 @@ impl Manager {
                             id: id.clone(),
                             name: name.to_string(),
                             short: short.to_string(),
+                            terminal,
                             command,
                         });
                         id
@@ -461,6 +499,9 @@ impl Manager {
     /// "Try it": starts the agent as a task would, reads how it introduces itself and stops it.
     pub async fn agent_try(&self, id: &str) -> Result<Value> {
         let agent = self.registry().get(id).cloned().ok_or_else(|| anyhow!("No such agent: {id}"))?;
+        if agent.speaks == Speaks::Terminal {
+            return Ok(try_in_terminal(&agent));
+        }
         Ok(try_agent(&agent, self.data_dir(), try_patience()).await)
     }
 
@@ -586,6 +627,7 @@ mod tests {
             id: "own-x".into(),
             name: "X".into(),
             short: "X".into(),
+            terminal: false,
             command: Command { program: "/nonexistent/ae-test/x".into(), args: vec![], env: vec![] },
         }
         .def();

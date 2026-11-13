@@ -126,6 +126,8 @@ impl AppState {
             manager.set_mcp_base(format!("http://127.0.0.1:{port}"));
         }
         let terminals = Arc::new(Terminals::without(own));
+        // An agent that does not speak the protocol runs in one of them.
+        manager.lend_terminals(terminals.clone());
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
         let lsp = Arc::new(Lsp::new(manager.clone()));
         let previews = Arc::new(crate::preview::Previews::new());
@@ -376,6 +378,8 @@ async fn converse(socket: WebSocket, state: AppState) {
                             let term_id = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
                             if attached.contains_key(&term_id) {
                                 let _ = state.terminals.input(term_id, &bytes[5..]);
+                                // In an agent's terminal a line the user ends is a message to the agent.
+                                state.manager.typed_into(term_id, &bytes[5..]);
                             }
                         }
                     }
@@ -531,7 +535,9 @@ fn terminal_command(
         }
         "terminal.resize" => {
             let (cols, rows) = size_params(params);
-            terminals.resize(number_param(params, "termId")? as u32, cols, rows)?;
+            let term_id = number_param(params, "termId")? as u32;
+            terminals.resize(term_id, cols, rows)?;
+            state.manager.terminal_resized(term_id);
             Ok(json!({}))
         }
         "terminal.close" => {

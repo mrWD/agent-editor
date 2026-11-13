@@ -249,6 +249,7 @@ async fn an_agent_that_does_not_start_leaves_nothing_behind() {
         available: true,
         note: None,
         spends_tokens: false,
+        speaks: Default::default(),
     };
     let store = ae_core::store::Store::open(&sandbox.data().join("test.db")).unwrap();
     let manager = ae_core::tasks::Manager::with_hosts(

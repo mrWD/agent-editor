@@ -33,6 +33,8 @@ const MAX_COMMAND_CHARS: usize = 120;
 
 /// What a terminal is for. The interface shows each kind in its own place.
 pub const SHELL: &str = "shell";
+/// The terminal an agent runs in when it does not speak the protocol. A task has at most one.
+pub const AGENT: &str = "agent";
 
 /// Something a terminal did.
 #[derive(Debug, Clone)]
@@ -51,7 +53,8 @@ pub struct TermInfo {
     pub term_id: u32,
     pub task_id: String,
     pub title: String,
-    /// "shell" for the user's terminal; "run:web", "logs:db" and the like for what the Run tab starts.
+    /// "shell" for the user's terminal; "run:web", "logs:db" and the like for what the Run tab starts;
+    /// "agent" for an agent that runs in a terminal.
     pub purpose: String,
     /// Which of the task's shells this is, from 1. `None` for what the Run tab starts.
     pub number: Option<u32>,
@@ -339,6 +342,28 @@ impl Terminals {
             command.env(name, value);
         }
         self.start(task_id, cwd, command, command_line, purpose, None, 120, 30)
+    }
+
+    /// Starts one program in `cwd` with the arguments as they are, not through
+    /// a shell. `env` is added to the environment.
+    #[allow(clippy::too_many_arguments)]
+    pub fn program(
+        self: &Arc<Self>,
+        task_id: &str,
+        cwd: &Path,
+        program: &str,
+        args: &[String],
+        env: &[(String, String)],
+        title: &str,
+        purpose: &str,
+    ) -> Result<TermInfo> {
+        let mut command = CommandBuilder::new(program);
+        command.args(args);
+        self.scrub_env(&mut command);
+        for (name, value) in env {
+            command.env(name, value);
+        }
+        self.start(task_id, cwd, command, title, purpose, None, 100, 30)
     }
 
     #[allow(clippy::too_many_arguments)]

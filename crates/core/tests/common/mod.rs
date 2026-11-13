@@ -1,7 +1,7 @@
 //! What the end-to-end tests share: the practice agent, a sandbox and ways to wait for events.
 #![allow(dead_code)]
 
-use ae_core::agents::{AgentDef, Registry};
+use ae_core::agents::{AgentDef, Registry, Speaks};
 use ae_core::hosts::Hosts;
 use ae_core::store::Store;
 use ae_core::tasks::Manager;
@@ -62,6 +62,7 @@ pub fn registry() -> Registry {
             available: true,
             note: None,
             spends_tokens: false,
+            speaks: Default::default(),
         }
     };
     // The practice agent behind a launcher, the way `npx` starts real agents: the
@@ -80,9 +81,21 @@ pub fn registry() -> Registry {
     let mut missing = practice("mock-missing", None);
     missing.available = false;
     missing.note = Some("Install it first".into());
+    // The practice agent as a program in a terminal, for the way without the protocol:
+    // one that reads lines, and one that takes pasted text whole.
+    let in_terminal = |id: &str, switch: Option<&str>| {
+        let mut agent = practice(id, switch);
+        agent.name = "Practice agent in a terminal".into();
+        agent.short = "Pt".into();
+        agent.args = vec!["--terminal".into()];
+        agent.speaks = Speaks::Terminal;
+        agent
+    };
     Registry::with(vec![
         paid,
         missing,
+        in_terminal("mock-terminal", None),
+        in_terminal("mock-terminal-paste", Some("AE_MOCK_PASTE")),
         practice("mock", None),
         practice("mock-load", Some("AE_MOCK_LOAD")),
         practice("mock-modes", Some("AE_MOCK_MODES")),

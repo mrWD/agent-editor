@@ -8,9 +8,14 @@
 //!
 //! Everything that happens in a task becomes an event. Events are written to
 //! the store and sent to every connected interface at the same time.
+//!
+//! An agent speaks ACP, and what follows here is about that. One that does
+//! not runs in a terminal instead: see `terminal`.
+
+mod terminal;
 
 use crate::acp::{Connection, Incoming, RpcError};
-use crate::agents::{AgentDef, Registry};
+use crate::agents::{AgentDef, Registry, Speaks};
 use crate::git;
 use crate::hosts::Hosts;
 use crate::marks::Author;
@@ -21,7 +26,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc};
 
@@ -183,6 +188,13 @@ pub struct Manager {
     store: Store,
     data_dir: PathBuf,
     live: RwLock<HashMap<String, Arc<Live>>>,
+    /// The agents that run in a terminal because they do not speak the protocol, by task.
+    seated: RwLock<HashMap<String, Arc<terminal::Seat>>>,
+    /// The terminals such agents run in, lent by the server once it has them.
+    terminals: OnceLock<Arc<crate::terminals::Terminals>>,
+    /// How long such an agent must print nothing for its turn to be over, in
+    /// milliseconds. Zero: as long as the core was started to wait.
+    terminal_quiet_ms: std::sync::atomic::AtomicU64,
     /// The number the next event of each task gets.
     seqs: Mutex<HashMap<String, u64>>,
     /// Files the user changed by hand that the task's agent has not been told about yet.
@@ -237,6 +249,9 @@ impl Manager {
             store,
             data_dir,
             live: RwLock::new(HashMap::new()),
+            seated: RwLock::new(HashMap::new()),
+            terminals: OnceLock::new(),
+            terminal_quiet_ms: Default::default(),
             seqs: Mutex::new(HashMap::new()),
             manual: Mutex::new(HashMap::new()),
             hand_edits: Mutex::new(Default::default()),
@@ -388,12 +403,16 @@ impl Manager {
     }
 
     pub(crate) fn state_of(&self, task_id: &str) -> TaskState {
-        self.live_of(task_id).map(|live| *live.state.lock().unwrap()).unwrap_or(TaskState::Asleep)
+        self.live_of(task_id)
+            .map(|live| *live.state.lock().unwrap())
+            .or_else(|| self.seat_of(task_id).map(|seat| seat.state()))
+            .unwrap_or(TaskState::Asleep)
     }
 
     fn info(&self, row: TaskRow) -> TaskInfo {
         let state = self.state_of(&row.id);
-        let config = self.live_of(&row.id).map(|live| live.config());
+        let config =
+            self.live_of(&row.id).map(|live| live.config()).or_else(|| self.seat_of(&row.id).map(|seat| seat.config()));
         let race = self.race_ref(&row.id);
         TaskInfo { row, state, config, race }
     }
@@ -722,6 +741,9 @@ impl Manager {
         }
         let project = self.store.project(project_id)?;
         let agent = self.agent(agent_id)?;
+        if agent.speaks == Speaks::Terminal {
+            return self.create_seated(project, agent, text, issue).await;
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let title = match &issue {
             Some(issue) => title_from(&issue.title),
@@ -899,6 +921,16 @@ impl Manager {
             bail!("The message is empty");
         }
         let row = self.store.task(task_id)?;
+        if self.in_terminal(&row) {
+            if !pictures.is_empty() {
+                let name =
+                    self.registry().get(&row.agent_id).map(|agent| agent.name.clone()).unwrap_or(row.agent_id.clone());
+                bail!(
+                    "{name} runs in a terminal and takes no pictures. Say it in words, or hand the task to an agent that does."
+                );
+            }
+            return self.prompt_seated(row, text, shown).await;
+        }
         // An agent that was started afresh knows nothing of the task, unless it picked up its old session.
         let (live, needs_recap) = match self.live_of(task_id) {
             Some(live) => (live, false),
@@ -1083,6 +1115,9 @@ impl Manager {
 
     /// Asks the agent to stop the current turn.
     pub fn cancel(&self, task_id: &str) -> Result<()> {
+        if let Some(seat) = self.seat_of(task_id) {
+            return self.cancel_seated(&seat);
+        }
         let live = self.live_or_asleep(task_id)?;
         // The protocol wants every open permission request answered with "cancelled".
         let open: Vec<(String, Value)> = live.permissions.lock().unwrap().drain().collect();
@@ -1103,6 +1138,9 @@ impl Manager {
         if let Some(live) = self.live_of(task_id) {
             live.conn.kill().await;
         }
+        if let Some(seat) = self.seat_of(task_id) {
+            self.stop_seated(&seat);
+        }
         Ok(())
     }
 
@@ -1111,7 +1149,7 @@ impl Manager {
     pub async fn stop_agent_and_wait(&self, task_id: &str) -> Result<()> {
         self.stop_agent(task_id).await?;
         for _ in 0..200 {
-            if self.live_of(task_id).is_none() {
+            if self.live_of(task_id).is_none() && self.seat_of(task_id).is_none() {
                 return Ok(());
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
@@ -1137,6 +1175,7 @@ impl Manager {
         for live in all {
             live.conn.kill().await;
         }
+        self.stop_all_seated();
     }
 }
 
