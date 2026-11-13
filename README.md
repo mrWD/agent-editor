@@ -10,6 +10,7 @@ drawn screens are in [design/](design/).
 |---|---|
 | `crates/core` | The core: one process that starts agents, keeps sessions and does everything heavy. |
 | `crates/mock-agent` | A practice agent. It speaks the agent protocol, calls no model and spends nothing. |
+| `crates/shell` | The desktop app: a window (Tauri 2) with the core running inside it. A workspace of its own. |
 | `ui` | The interface: TypeScript and Solid. It talks to the core over one WebSocket. |
 | `design` | The design mockups the interface is built from. |
 
@@ -35,6 +36,46 @@ dev server next to it:
 ```bash
 cd ui && npm run dev
 ```
+
+## The desktop app
+
+`crates/shell` puts the same core and the same interface into an app for macOS,
+Windows and Linux. The core runs inside the app's own process, on a free port
+of this computer; the window shows what the core serves. Quitting the app stops
+every agent and terminal. On a Mac, closing the window does not quit: the
+agents go on working, and the Dock icon brings the window back.
+
+Besides Rust and Node, Linux needs the libraries Tauri lists (WebKitGTK 4.1 and
+a few more; the `shell` job in `.github/workflows/ci.yml` installs them).
+
+```bash
+cd ui && npm ci && cd ../crates/shell && npm ci
+```
+
+```bash
+npm run dev      # builds the interface and the practice agent, then opens the app
+npm run build    # the bundles for this system, in crates/shell/target/release/bundle
+```
+
+`npm run build` makes a `.app` and a `.dmg` on macOS, an installer on Windows,
+a `.deb` and an `.AppImage` on Linux. Nothing is signed. If you have Tauri's
+own tool installed, `cargo tauri dev` and `cargo tauri build` do the same.
+
+The app keeps its data where `ae-core` keeps it by default, so both see the
+same projects and tasks; do not run both on the same data at once. Another
+folder: `--data-dir <folder>` or `AE_DATA_DIR`. To show a built interface from
+disk instead of the one inside the app: `--ui-dir ../../ui/dist` or `AE_UI_DIR`.
+
+The app is not a member of the main workspace, because Tauri needs system
+libraries the core does not. Its own checks run in its folder, after
+`node prepare.mjs` has put the interface and the practice agent in place:
+
+```bash
+cd crates/shell && node prepare.mjs && cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+The icon is drawn in `crates/shell/app-icon.svg`; `npx tauri icon app-icon.png`
+makes the sizes in `icons/` from its 1024-pixel picture.
 
 ## Check it
 
@@ -98,9 +139,13 @@ Milestones are listed in PLAN.md under "План разработки по ве�
   team; "Start" turns one into a task.
 - **Run.** Dev scripts from `package.json` and services from a compose file,
   each task in a compose project of its own, with taken ports moved to free ones.
+- **M9, the desktop app.** The core and the interface in one app (Tauri 2) for
+  macOS, Windows and Linux: a folder dialog for "Another folder", links that
+  open in the system's browser, a window that remembers its size and place, a
+  menu, one running copy at a time. Not signed, no auto-update.
 
 Not built yet: real agents have never been started (M2); points to go back to,
 "since your last visit" and tasks that touch the same lines (M4); checks and
 language servers (M5); teams, races and the Plan view (M6); Preview and Map
-(M7); Health, Automations and usage (M8); the desktop shell (M9). Views that
-are not built say so on screen.
+(M7); Health, Automations and usage (M8). Views that are not built say so on
+screen.

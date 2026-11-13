@@ -1,8 +1,21 @@
-import { createEffect, createSignal, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { go } from '../app/router';
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { go, taskHref } from '../app/router';
 import { core } from '../core/client';
 import { refreshRequests } from '../core/requests';
-import { createRequest, getRequest, mergeRequest, type RequestInfo, type Task } from '../core/store';
+import {
+  agentOf,
+  createRequest,
+  getRequest,
+  mergeRequest,
+  replyToComment,
+  requestComments,
+  sendPrompt,
+  setAutoMerge,
+  type RequestInfo,
+  type ReviewComment,
+  type Task,
+} from '../core/store';
+import { openInEditor } from '../core/work';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -24,7 +37,27 @@ function Gate(props: { state: 'good' | 'wait' | 'bad'; title: string; note: stri
  * see what stands between it and the merge, and merge it with the cleaning up
  * that goes with a finished task.
  */
-export function RequestCard(props: { task: Task; commits: number; onChanged: () => void }): JSX.Element {
+/** Where a comment is, in words: "src/a.ts, line 5". */
+const placeOf = (comment: ReviewComment) =>
+  comment.path ? `${comment.path}${comment.line ? `, line ${comment.line}` : ''}` : 'the request as a whole';
+
+/** What the agent is told when it is asked to deal with reviewers' comments. */
+export function fixPrompt(comments: ReviewComment[], word: string): string {
+  const one = (comment: ReviewComment) =>
+    `${comment.author} wrote about ${comment.path ? `\`${comment.path}\`${comment.line ? ` line ${comment.line}` : ''}` : 'the request'}:\n\n> ${comment.body.split('\n').join('\n> ')}`;
+  if (comments.length === 1) {
+    return `A reviewer left a comment on the ${word}. ${one(comments[0]!)}\n\nMake the change it asks for, and say in a sentence what you changed.`;
+  }
+  return `Reviewers left ${comments.length} comments on the ${word}.\n\n${comments.map((comment, index) => `${index + 1}. ${one(comment)}`).join('\n\n')}\n\nMake the changes they ask for, and say in a sentence for each what you changed.`;
+}
+
+export function RequestCard(props: {
+  task: Task;
+  commits: number;
+  /** How many lines of this task another open task changes too. */
+  overlaps?: number;
+  onChanged: () => void;
+}): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task, so the id never changes under it
   const taskId = props.task.info.id;
   const [info, setInfo] = createSignal<RequestInfo | null>(null);
@@ -36,11 +69,27 @@ export function RequestCard(props: { task: Task; commits: number; onChanged: () 
   const [squash, setSquash] = createSignal(true);
   const [remove, setRemove] = createSignal(true);
   const [archive, setArchive] = createSignal(true);
+  const [comments, setComments] = createSignal<ReviewComment[]>([]);
+  const [replyTo, setReplyTo] = createSignal<string | null>(null);
+  const [reply, setReply] = createSignal('');
+  const agentName = () => agentOf(props.task)?.name ?? 'the agent';
+  const canAsk = () => props.task.info.state === 'idle' || props.task.info.state === 'asleep';
+
+  const loadComments = async () => {
+    try {
+      setComments((await requestComments(taskId)).comments);
+    } catch {
+      // The request itself still shows; only the comments are missing.
+    }
+  };
 
   const load = async (fresh = false) => {
     try {
-      setInfo(await getRequest(taskId, fresh));
+      const got = await getRequest(taskId, fresh);
+      setInfo(got);
       setProblem(null);
+      if (got.request?.state === 'open') void loadComments();
+      else setComments([]);
     } catch (error) {
       setProblem(message(error));
     }
@@ -112,6 +161,29 @@ export function RequestCard(props: { task: Task; commits: number; onChanged: () 
       if (archive()) go('#/');
       else await load();
     });
+
+  const options = () => ({ squash: squash(), deleteBranch: remove(), archive: archive() });
+  const mergeByItself = (on: boolean) =>
+    // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
+    act('auto', async () => {
+      await setAutoMerge(taskId, on, options());
+      await load();
+    });
+
+  const askToFix = (list: ReviewComment[]) => act('fix', () => sendPrompt(taskId, fixPrompt(list, word())));
+
+  const sendReply = (comment: ReviewComment) =>
+    // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
+    act('reply', async () => {
+      await replyToComment(taskId, comment.id, reply());
+      setReply('');
+      setReplyTo(null);
+    });
+
+  const openInCode = (comment: ReviewComment) => {
+    go(taskHref(taskId, 'code'));
+    setTimeout(() => openInEditor(taskId, comment.path!, comment.line ?? undefined), 0);
+  };
 
   const word = () => info()?.host?.word ?? 'merge request';
   const Word = () => word().charAt(0).toUpperCase() + word().slice(1);
@@ -205,7 +277,84 @@ export function RequestCard(props: { task: Task; commits: number; onChanged: () 
               </p>
             }
           >
+            <Show when={comments().length > 0}>
+              <div class="git-head">
+                <h3 class="git-sub grow">Review comments</h3>
+                <Show when={comments().length > 1}>
+                  <button
+                    type="button"
+                    class="btn tiny"
+                    disabled={Boolean(busy()) || !canAsk()}
+                    onClick={() => void askToFix(comments())}
+                  >
+                    Let {agentName()} address {comments().length === 2 ? 'both' : `all ${comments().length}`}
+                  </button>
+                </Show>
+              </div>
+              <For each={comments()}>
+                {(comment) => (
+                  <div class="review-comment">
+                    <span class="review-where">
+                      <span class="mono">{placeOf(comment)}</span>
+                      <span class="fine">{comment.author}</span>
+                    </span>
+                    <p>{comment.body}</p>
+                    <div class="actions">
+                      <Show when={comment.path}>
+                        <button type="button" class="btn tiny ghost" onClick={() => openInCode(comment)}>
+                          Open in code
+                        </button>
+                      </Show>
+                      <button
+                        type="button"
+                        class="btn tiny"
+                        disabled={Boolean(busy()) || !canAsk()}
+                        title={canAsk() ? undefined : `${agentName()} is working. Ask when its turn ends.`}
+                        onClick={() => void askToFix([comment])}
+                      >
+                        Ask {agentName()} to fix
+                      </button>
+                      <button
+                        type="button"
+                        class="btn tiny ghost"
+                        aria-expanded={replyTo() === comment.id}
+                        onClick={() => setReplyTo(replyTo() === comment.id ? null : comment.id)}
+                      >
+                        Reply
+                      </button>
+                    </div>
+                    <Show when={replyTo() === comment.id}>
+                      <textarea
+                        class="git-message"
+                        rows="2"
+                        aria-label={`Reply to ${comment.author} about ${placeOf(comment)}`}
+                        value={reply()}
+                        onInput={(event) => setReply(event.currentTarget.value)}
+                      />
+                      <div class="actions">
+                        <button
+                          type="button"
+                          class="btn tiny"
+                          disabled={Boolean(busy()) || reply().trim() === ''}
+                          onClick={() => void sendReply(comment)}
+                        >
+                          {busy() === 'reply' ? 'Sending' : `Send the reply on ${info()!.host!.name}`}
+                        </button>
+                      </div>
+                    </Show>
+                  </div>
+                )}
+              </For>
+            </Show>
+
             <h3 class="git-sub">Before it can merge</h3>
+            <Show when={(props.overlaps ?? 0) > 0}>
+              <Gate
+                state="wait"
+                title="Other tasks"
+                note={`${props.overlaps === 1 ? 'One place is' : `${props.overlaps} places are`} also changed in another task. Whichever merges second gets the conflict.`}
+              />
+            </Show>
             <Gate
               state={request().mergeable === false ? 'bad' : request().mergeable === null ? 'wait' : 'good'}
               title="Conflicts"
@@ -274,6 +423,33 @@ export function RequestCard(props: { task: Task; commits: number; onChanged: () 
                     : `${issue().key} closes by itself if the description says “Closes ${issue().key}”.`}
                 </span>
               )}
+            </Show>
+            <Show
+              when={info()!.auto}
+              fallback={
+                <Show when={!info()!.ready}>
+                  <button
+                    type="button"
+                    class="btn tall"
+                    disabled={Boolean(busy())}
+                    onClick={() => void mergeByItself(true)}
+                  >
+                    Merge by itself when everything is green
+                  </button>
+                </Show>
+              }
+            >
+              <p class="banner review flush">
+                <span class="grow">It will merge by itself when everything above is green.</span>
+                <button
+                  type="button"
+                  class="btn tiny"
+                  disabled={Boolean(busy())}
+                  onClick={() => void mergeByItself(false)}
+                >
+                  Do not
+                </button>
+              </p>
             </Show>
             <button type="button" class="btn primary tall" disabled={Boolean(busy()) || !info()!.ready} onClick={merge}>
               {busy() === 'merge' ? 'Merging' : 'Merge now'}

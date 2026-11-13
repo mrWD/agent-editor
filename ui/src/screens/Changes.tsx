@@ -16,13 +16,20 @@ import {
   gitRevertCommit,
   gitUndoCommit,
   gitUpdate,
+  dismissOverlap,
+  listOverlaps,
+  sendPrompt,
+  state,
   type DiffHunk,
   type FileDiff,
   type GitCommit,
   type GitFile,
+  type Overlap,
   type Pick,
   type Task,
 } from '../core/store';
+import { stageOfTask } from '../core/requests';
+import { stageWord } from '../core/stages';
 import { openInEditor, saveAll, setWork } from '../core/work';
 import { ChangesMode } from './Span';
 
@@ -129,6 +136,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
 
   // What the user typed in the code is saved first, so the view shows what they see.
   onMount(() => void saveAll(taskId).then(() => props.git.reload()));
+  onMount(() => void loadOverlaps());
 
   // Whether the project lives on a host where a request can be opened decides what is offered after a commit.
   onMount(
@@ -267,6 +275,78 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
         return '';
     }
   };
+  // ----- lines that another open task changes too -----
+  const [overlaps, setOverlaps] = createSignal<Overlap[]>([]);
+  const loadOverlaps = async () => {
+    try {
+      setOverlaps((await listOverlaps(taskId)).overlaps);
+    } catch {
+      // Finding overlaps is a help, not a need: without it the view works as before.
+    }
+  };
+  const otherShort = (agentId: string) => state.agents.find((one) => one.id === agentId)?.short ?? '··';
+  const otherStage = (id: string) => {
+    const other = state.tasks[id];
+    return other ? stageWord(stageOfTask(other)) : '';
+  };
+  const canAsk = () => props.task.info.state === 'idle' || props.task.info.state === 'asleep';
+  const combinePrompt = (overlap: Overlap) =>
+    `Another task, “${overlap.task.title}”, changes the same place of \`${overlap.path}\`, around line ${overlap.line}.\n\n` +
+    `This task has there:\n\n\`\`\`\n${overlap.mine.join('\n')}\n\`\`\`\n\n` +
+    `The other task has there:\n\n\`\`\`\n${overlap.theirs.join('\n')}\n\`\`\`\n\n` +
+    `Change \`${overlap.path}\` here so that both changes are kept, if they do not contradict each other. If they do, change nothing and say why.`;
+
+  // ----- a commit message written by the agent -----
+  /** The length of the conversation when the agent was asked; `null` when nothing is awaited. */
+  const [awaited, setAwaited] = createSignal<number | null>(null);
+  const askForMessage = () =>
+    // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
+    act('message', async () => {
+      const names = files()
+        .filter((file) => fileTicked(file.path))
+        .map((file) => `\`${file.path}\``)
+        .slice(0, 30)
+        .join(', ');
+      setAwaited(props.task.feed.length);
+      try {
+        await sendPrompt(
+          taskId,
+          `Look at what is not committed in ${names || 'this task'} and write a commit message for it. ` +
+            'Answer with the commit message only: one line of at most 72 characters, then, if it helps, an empty line and a few lines on why. Leave every file as it is.',
+        );
+      } catch (error) {
+        setAwaited(null);
+        throw error;
+      }
+    });
+  // When that turn has ended, what the agent said last is the message.
+  createEffect(() => {
+    const from = awaited();
+    if (from === null) return;
+    const since = props.task.feed.slice(from);
+    const asked = since.findIndex((entry) => entry.kind === 'user');
+    if (asked < 0) return;
+    const after = since.slice(asked + 1);
+    // The turn is over when the task is at rest again with something said: an answer, or why there is none.
+    const atRest = props.task.info.state === 'idle' || props.task.info.state === 'asleep';
+    const said = after.findLast((entry) => entry.kind === 'agent');
+    const failed = after.some((entry) => entry.kind === 'notice');
+    if (!atRest || (!said && !failed)) return;
+    if (said && said.kind === 'agent') {
+      // Agents like to wrap such an answer in a code fence; the message is what is inside.
+      const message = said.text
+        .trim()
+        .replace(/^```[a-z]*\n?/, '')
+        .replace(/\n?```$/, '')
+        .trim();
+      if (message) {
+        setText(message);
+        setTouched(true);
+      }
+    }
+    setAwaited(null);
+  });
+
   const where = (hunk: DiffHunk) =>
     hunk.fromLine === hunk.toLine ? `Line ${hunk.fromLine}` : `Lines ${hunk.fromLine} to ${hunk.toLine}`;
 
@@ -303,6 +383,8 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
     // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
     const stop = core.onEvent((event) => {
       if (event.event === 'git.changed' && event.data.taskId === taskId) void loadDiff();
+      // Another task of the project may have moved too; its changes are read from disk each time.
+      if (event.event === 'git.changed' || event.event === 'review.changed') void loadOverlaps();
     });
     onCleanup(stop);
   });
@@ -323,6 +405,50 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
         <>
           <section class="git" aria-label="Git: what goes in, commit, push">
             <ChangesMode taskId={taskId} />
+            <For each={overlaps()}>
+              {(overlap) => (
+                <section class="card overlap" aria-label={`Overlap in ${overlap.path}`}>
+                  <h2>Another task changes the same {overlap.mine.length > 1 ? 'lines' : 'line'}</h2>
+                  <p>
+                    <button type="button" class="link mono" onClick={() => setSelected(overlap.path)}>
+                      {overlap.path}
+                    </button>
+                    , line {overlap.line}, is also changed in:
+                  </p>
+                  <a class="overlap-task" href={taskHref(overlap.task.id, 'changes')}>
+                    <Chip agentId={overlap.task.agentId} short={otherShort(overlap.task.agentId)} flat />
+                    <span class="grow">{overlap.task.title}</span>
+                    <span class="fine">{otherStage(overlap.task.id)}</span>
+                  </a>
+                  <Show
+                    when={overlap.theirs.length > 0}
+                    fallback={<p class="fine">That task takes these lines out.</p>}
+                  >
+                    <span class="fine">Their line {overlap.theirLine}</span>
+                    <pre class="overlap-lines">{overlap.theirs.join('\n')}</pre>
+                  </Show>
+                  <p class="fine">Whichever merges second gets the conflict. You can commit as it is.</p>
+                  <div class="actions">
+                    <button
+                      type="button"
+                      class="btn small"
+                      disabled={Boolean(busy()) || !canAsk()}
+                      onClick={() => act('combine', () => sendPrompt(taskId, combinePrompt(overlap)))}
+                    >
+                      Ask {agentName()} to combine them
+                    </button>
+                    <button
+                      type="button"
+                      class="btn small ghost"
+                      disabled={Boolean(busy())}
+                      onClick={() => act('dismiss', () => dismissOverlap(taskId, overlap.mark).then(loadOverlaps))}
+                    >
+                      Not a problem
+                    </button>
+                  </div>
+                </section>
+              )}
+            </For>
             <div class="git-branch">
               <span class="mono">{state().branch ?? 'no branch'}</span>
               <Show
@@ -423,9 +549,24 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
                     setText(event.currentTarget.value);
                   }}
                 />
-                <Show when={!touched()}>
-                  <span class="fine">Taken from the task's title. Edit it freely.</span>
-                </Show>
+                <div class="git-head">
+                  <span class="grow fine">
+                    {awaited() !== null
+                      ? `${agentName()} is writing it`
+                      : touched()
+                        ? ''
+                        : "Taken from the task's title. Edit it freely."}
+                  </span>
+                  <button
+                    type="button"
+                    class="btn tiny ghost"
+                    disabled={Boolean(busy()) || !canAsk() || awaited() !== null}
+                    title={`${agentName()} reads the changes and writes the message. It is a turn of the conversation.`}
+                    onClick={() => void askForMessage()}
+                  >
+                    Ask {agentName()} to write it
+                  </button>
+                </div>
 
                 <fieldset class="git-after">
                   <legend>After the commit</legend>
@@ -548,7 +689,12 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
               </For>
             </section>
 
-            <RequestCard task={props.task} commits={state().commits.length} onChanged={() => void props.git.reload()} />
+            <RequestCard
+              task={props.task}
+              commits={state().commits.length}
+              overlaps={overlaps().length}
+              onChanged={() => void props.git.reload()}
+            />
           </section>
 
           <section class="center">

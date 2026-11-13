@@ -36,7 +36,8 @@ test.describe('The search over everything', () => {
     await app.openSearch();
     await app.searchBox.fill(word);
     await expect(app.palette.getByRole('heading', { name: 'Tasks' })).toBeVisible();
-    const hits = app.palette.getByRole('button').filter({ hasText: word });
+    // The rows of tasks, not the rows of things said in them: those hold the word too and come a moment later.
+    const hits = app.palette.getByRole('button').filter({ hasText: `${shop.name} · your turn` });
     // Newest first, each with its project and where it stands.
     await expect(hits).toHaveText([
       new RegExp(`^${newer}${shop.name} · your turn`),

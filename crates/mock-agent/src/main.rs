@@ -10,6 +10,7 @@
 //!   really changes one file in the session's folder. The file is the one the
 //!   prompt names, else `src/middleware/rateLimit.ts`, else a new `NOTES.md`;
 //! - if the prompt asks for "markdown": an answer with a heading, a list, code and a link;
+//! - if the prompt asks for a "commit message": a subject line, an empty line and a reason;
 //! - `session/cancel` stops the turn with the stop reason `cancelled`;
 //! - every turn ends with a note on how much of the context is used. It costs nothing.
 //!
@@ -398,7 +399,9 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         }
     };
 
-    let edit = wants_edit(&text);
+    // A request for a commit message is answered with one, and changes no file.
+    let wants_message = last_paragraph(&text).to_lowercase().contains("commit message");
+    let edit = wants_edit(&text) && !wants_message;
     let known = agent.sessions.lock().unwrap().get(&session).cloned();
     let folder = known.as_ref().map(|s| s.folder.clone()).unwrap_or_default();
     let asks = known.as_ref().is_none_or(|s| s.mode != "auto");
@@ -516,7 +519,10 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         agent.pause();
     }
 
-    let answer = if last_paragraph(&text).to_lowercase().contains("markdown") {
+    let answer = if wants_message {
+        "Limit login attempts to five a minute\n\nThe limit comes from config now, so it can change without a release."
+            .to_string()
+    } else if last_paragraph(&text).to_lowercase().contains("markdown") {
         MARKDOWN_ANSWER.to_string()
     } else if !edit {
         "The limiter allows five attempts a minute and answers 429 after that. Nothing was changed.".to_string()

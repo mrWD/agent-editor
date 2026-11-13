@@ -906,7 +906,57 @@ export type RequestInfo = {
   request: MergeRequest | null;
   ready?: boolean;
   defaults?: { title: string; body: string; base: string | null };
+  /** Set when the request was asked to merge by itself: what to do at the merge. */
+  auto?: { squash: boolean; deleteBranch: boolean; archive: boolean } | null;
 };
+
+/** What a reviewer wrote about a line, and nobody has settled yet. */
+export type ReviewComment = {
+  id: string;
+  author: string;
+  path: string | null;
+  line: number | null;
+  body: string;
+  url: string;
+};
+
+export function requestComments(taskId: string) {
+  return core.request<{ comments: ReviewComment[] }>('mr.comments', { taskId });
+}
+
+export function replyToComment(taskId: string, commentId: string, body: string) {
+  return core.request('mr.reply', { taskId, commentId, body });
+}
+
+/** Asks for the request to merge by itself once everything is green, or takes that back. */
+export function setAutoMerge(
+  taskId: string,
+  on: boolean,
+  options: { squash: boolean; deleteBranch: boolean; archive: boolean },
+) {
+  return core.request('mr.auto', { taskId, on, ...options });
+}
+
+/** Lines of a task that another open task of the same project changes too. */
+export type Overlap = {
+  /** Stays the same for as long as the overlap does; names it when it is waved away. */
+  mark: string;
+  path: string;
+  line: number;
+  mine: string[];
+  theirs: string[];
+  before: string[];
+  theirLine: number;
+  task: { id: string; title: string; agentId: string };
+};
+
+export function listOverlaps(taskId: string) {
+  return core.request<{ overlaps: Overlap[] }>('overlaps.list', { taskId });
+}
+
+export function dismissOverlap(taskId: string, mark: string) {
+  return core.request('overlaps.dismiss', { taskId, mark });
+}
 
 export function getRequest(taskId: string, fresh = false) {
   return core.request<RequestInfo>('mr.get', { taskId, fresh });

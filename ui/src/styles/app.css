@@ -2514,3 +2514,65 @@ button.search-link:hover {
   color: var(--red);
   font-size: 12px;
 }
+
+/* ---------- Review comments and overlaps with other tasks ---------- */
+
+.review-comment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.review-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 12.5px;
+}
+.review-comment p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.review-comment .actions,
+.card.overlap .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.card.overlap {
+  border-color: var(--accent);
+}
+.card.overlap .link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.overlap-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--ground);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+.overlap-lines {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--ground);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

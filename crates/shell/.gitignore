@@ -1,0 +1,6 @@
+# Made by prepare.mjs: the practice agent for the system the app is built for,
+# and the built interface without its source maps.
+/binaries/
+/ui/
+# What Tauri writes while it builds.
+/gen/

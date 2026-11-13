@@ -1,0 +1,37 @@
+[package]
+name = "ae-shell"
+description = "The desktop app of Agent Editor: a window around the core, which runs inside the same process."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+# A workspace of its own, with its own lock file. Tauri brings several hundred
+# crates and, on Linux, needs WebKitGTK installed. Kept apart, the core and the
+# practice agent still build and test anywhere with nothing but Rust.
+[workspace]
+
+[[bin]]
+name = "agent-editor"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+ae-core = { path = "../core" }
+anyhow = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+tokio = { version = "1", features = ["rt", "signal", "time"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+# The bundles are what people download; debug symbols would triple their size.
+strip = true

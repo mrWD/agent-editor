@@ -13,22 +13,28 @@
 use crate::marks::Author;
 use crate::runner::Runner;
 use crate::search::Search;
+use crate::startup::Desktop;
 use crate::tasks::Manager;
 use crate::terminals::{TermEvent, Terminals};
 use anyhow::{Result, anyhow, bail};
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::response::IntoResponse;
+use axum::http::HeaderValue;
+use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 use tower_http::services::{ServeDir, ServeFile};
+
+/// How often the requests that merge by themselves are looked at.
+const AUTO_MERGE_EVERY: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// What every request handler can reach.
 #[derive(Clone)]
@@ -37,9 +43,39 @@ pub struct AppState {
     pub terminals: Arc<Terminals>,
     pub search: Arc<Search>,
     pub runner: Arc<Runner>,
+    /// What the desktop app lends to the core. `None` when the core runs on its own.
+    pub desktop: Option<Desktop>,
 }
 
 impl AppState {
+    /// Starts looking, now and then, at the requests that were asked to merge
+    /// by themselves. Does nothing outside a running core (in a plain unit test).
+    pub fn watch_requests(&self) {
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else { return };
+        let state = self.clone();
+        runtime.spawn(async move {
+            loop {
+                tokio::time::sleep(AUTO_MERGE_EVERY).await;
+                state.auto_merge_round().await;
+            }
+        });
+    }
+
+    /// Merges every request that was asked to merge by itself and can merge
+    /// now, with the cleaning up the user chose when asking.
+    pub async fn auto_merge_round(&self) {
+        let manager = self.manager.clone();
+        let Ok(due) = tokio::task::spawn_blocking(move || manager.auto_merge_due()).await else { return };
+        for (task_id, mut options) in due {
+            options["taskId"] = json!(task_id);
+            // The same steps as "Merge now", so a merge is a merge however it was started.
+            match dispatch(self, "mr.merge", &options).await {
+                Ok(_) => self.manager.auto_merge_done(&task_id),
+                Err(error) => self.manager.auto_merge_failed(&task_id, &format!("{error:#}")),
+            }
+        }
+    }
+
     pub fn new(manager: Arc<Manager>) -> Self {
         Self::listening_on(manager, None)
     }
@@ -55,7 +91,16 @@ impl AppState {
         }
         let terminals = Arc::new(Terminals::without(own));
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
-        Self { manager, terminals, search: Arc::new(Search::new()), runner }
+        Self { manager, terminals, search: Arc::new(Search::new()), runner, desktop: None }
+    }
+
+    /// The desktop app, when the one who asks is the app's own window.
+    fn desktop_for(&self, params: &Value) -> Result<&Desktop> {
+        let key = params.get("key").and_then(Value::as_str);
+        self.desktop
+            .as_ref()
+            .filter(|desktop| key == Some(desktop.key.as_str()))
+            .ok_or_else(|| anyhow!("Only the desktop app can show a folder dialog. Type the path instead."))
     }
 
     /// The task's project name and folder, which is what running it needs.
@@ -97,28 +142,47 @@ type Attached = HashMap<u32, u64>;
 
 /// Builds the HTTP routes. `ui_dir`, when given, is served as the interface.
 pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
+    state.watch_requests();
     let api = Router::new().route("/api/health", get(health)).route("/ws", get(upgrade)).with_state(state);
     match ui_dir {
         Some(dir) => {
             // Unknown paths fall back to index.html so links inside the interface survive a reload.
             let index = ServeFile::new(dir.join("index.html"));
             api.fallback_service(ServeDir::new(dir).fallback(index))
+                .layer(axum::middleware::map_response(never_keep_pages))
         }
         None => api,
     }
 }
 
-/// Listens on `addr` until the process is asked to stop.
-pub async fn serve(state: AppState, addr: SocketAddr, ui_dir: Option<PathBuf>) -> Result<()> {
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!("Core is listening on http://{}", listener.local_addr()?);
+/// Tells the browser not to keep the page that starts the interface.
+///
+/// That page names the script files of one build. A kept copy of it, shown
+/// after the interface was built anew or the app was updated, would ask for
+/// files that are gone and leave an empty window. The script files themselves
+/// may be kept: a new build gives them new names.
+async fn never_keep_pages(mut response: Response) -> Response {
+    let is_page = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|kind| kind.to_str().ok())
+        .is_some_and(|kind| kind.starts_with("text/html"));
+    if is_page {
+        response.headers_mut().insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    response
+}
+
+/// Serves on `listener` until `stop` is done, then stops every terminal and every agent.
+pub async fn serve_until(
+    listener: tokio::net::TcpListener,
+    state: AppState,
+    ui_dir: Option<PathBuf>,
+    stop: impl Future<Output = ()> + Send + 'static,
+) -> Result<()> {
     let manager = state.manager.clone();
     let terminals = state.terminals.clone();
-    axum::serve(listener, router(state, ui_dir))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+    axum::serve(listener, router(state, ui_dir)).with_graceful_shutdown(stop).await?;
     terminals.close_all();
     manager.stop_all().await;
     Ok(())
@@ -133,6 +197,14 @@ async fn upgrade(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl In
 }
 
 async fn connection(socket: WebSocket, state: AppState) {
+    // Quiet unless asked for (`RUST_LOG=ae_core=debug`): it answers "did the window ever reach the core?".
+    tracing::debug!("An interface connected");
+    converse(socket, state).await;
+    tracing::debug!("An interface disconnected");
+}
+
+/// Talks to one interface until it goes away.
+async fn converse(socket: WebSocket, state: AppState) {
     let (mut sink, mut stream) = socket.split();
     let mut events = state.manager.subscribe();
     let mut term_events = state.terminals.subscribe();
@@ -280,6 +352,7 @@ fn parse(text: &str) -> Result<(Value, String, Value), Value> {
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     let method = request.get("method").and_then(Value::as_str).unwrap_or_default().to_string();
     let params = request.get("params").cloned().unwrap_or(json!({}));
+    tracing::trace!("Command {method}");
     Ok((id, method, params))
 }
 
@@ -674,6 +747,42 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             let request = tokio::task::spawn_blocking(move || manager.open_request(&task_id, &title, &body)).await??;
             Ok(json!({ "request": request }))
         }
+        "mr.comments" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.request_comments(&task_id)).await?
+        }
+        "mr.reply" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let comment = text_param(params, "commentId")?.to_string();
+            let body = text_param(params, "body")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.reply_to_comment(&task_id, &comment, &body)).await??;
+            Ok(json!({}))
+        }
+        "mr.auto" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let flag = |name: &str, fallback: bool| params.get(name).and_then(Value::as_bool).unwrap_or(fallback);
+            // What to do at the merge is fixed when the user asks, like the ticks next to "Merge now".
+            let options = flag("on", true).then(|| {
+                json!({ "squash": flag("squash", true), "deleteBranch": flag("deleteBranch", true), "archive": flag("archive", true) })
+            });
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.set_auto_merge(&task_id, options)).await??;
+            Ok(json!({}))
+        }
+        "overlaps.list" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.overlaps(&task_id)).await?
+        }
+        "overlaps.dismiss" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let mark = text_param(params, "mark")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.dismiss_overlap(&task_id, &mark)).await??;
+            Ok(json!({}))
+        }
         "mr.merge" => {
             let task_id = text_param(params, "taskId")?.to_string();
             let flag = |name: &str, fallback: bool| params.get(name).and_then(Value::as_bool).unwrap_or(fallback);
@@ -738,6 +847,13 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             .await?;
             Ok(json!({ "hits": hits }))
         }
+        "dialogs.pickFolder" => {
+            let pick = state.desktop_for(params)?.pick_folder.clone();
+            // The dialog stays open for as long as the user likes; that must not hold a worker of the event loop.
+            let picked = tokio::task::spawn_blocking(move || pick()).await?;
+            Ok(json!({ "path": picked.map(|path| path.to_string_lossy().into_owned()) }))
+        }
+
         "search.chats" => {
             let query = text_param(params, "query")?.to_string();
             let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(20).min(200) as usize;

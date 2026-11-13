@@ -74,6 +74,19 @@ case "$1 $2" in
         sed 's/"state":"OPEN"/"state":"MERGED"/' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
       fi
     done ;;
+  "api graphql")
+    # The open review threads of a pull request: asked with owner=, name= and number=.
+    owner=""; name=""; number=""
+    for word in "$@"; do
+      case "$word" in
+        owner=*) owner=$(printf '%s' "$word" | sed 's/^owner=//') ;;
+        name=*) name=$(printf '%s' "$word" | sed 's/^name=//') ;;
+        number=*) number=$(printf '%s' "$word" | sed 's/^number=//') ;;
+      esac
+    done
+    file="$here/state/gh/$owner"_"$name/threads-$number.json"
+    if [ -f "$file" ]; then cat "$file"; else echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; fi ;;
+  "api --hostname") echo '{}' ;;
   *) echo "unexpected call: $*" >&2; exit 2 ;;
 esac
 `;
@@ -157,6 +170,29 @@ export function callsOf(dir: string, name: StandIn): string[] {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+/** A review comment as the tests write it. */
+export type ReviewThread = { id: number; author: string; path: string; line: number; body: string; resolved?: boolean };
+
+/** Review threads as GitHub answers them, for the `gh` stand-in to print. */
+export function threadsAnswer(threads: ReviewThread[]): string {
+  const nodes = threads.map((thread) => ({
+    isResolved: thread.resolved ?? false,
+    comments: {
+      nodes: [
+        {
+          databaseId: thread.id,
+          author: { login: thread.author },
+          path: thread.path,
+          line: thread.line,
+          body: thread.body,
+          url: `https://github.com/e2e/pull#discussion_r${thread.id}`,
+        },
+      ],
+    },
+  }));
+  return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } });
 }
 
 /** The folder where the `gh` stand-in keeps what it knows about one repository. */

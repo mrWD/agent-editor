@@ -308,8 +308,16 @@ impl Manager {
         Ok((task, root, branch, remote))
     }
 
-    fn remember_request(&self, task_id: &str, request: Option<Request>) {
-        self.remembered.requests.lock().unwrap().insert(task_id.to_string(), (Instant::now(), request));
+    /// Keeps what a host said about a task's request. `asked` is when the host
+    /// was asked: commands run side by side, and an answer that was asked for
+    /// before something newer became known (the request was just opened, say)
+    /// must not be put on top of it.
+    fn remember_request(&self, task_id: &str, request: Option<Request>, asked: Instant) {
+        let mut known = self.remembered.requests.lock().unwrap();
+        if known.get(task_id).is_some_and(|(at, _)| *at > asked) {
+            return;
+        }
+        known.insert(task_id.to_string(), (Instant::now(), request));
     }
 
     /// The title and description a new request starts with: written from the commits and the issue.
@@ -346,9 +354,11 @@ impl Manager {
         let request = match cached {
             Some((at, request)) if !fresh && at.elapsed() < REQUEST_TTL => request,
             _ => {
+                let asked = Instant::now();
                 let request = self.hosts.request(&remote, &branch)?;
-                self.remember_request(task_id, request.clone());
-                request
+                self.remember_request(task_id, request.clone(), asked);
+                // What is known may be newer than this answer: that is what is shown.
+                self.remembered.requests.lock().unwrap().get(task_id).map_or(request, |(_, known)| known.clone())
             }
         };
         let (title, body) = self.request_defaults(&task, &root);
@@ -376,7 +386,7 @@ impl Manager {
         }
         gitops::push(&root)?;
         let request = self.hosts.create_request(&remote, &branch, &base, title.trim(), body)?;
-        self.remember_request(task_id, Some(request.clone()));
+        self.remember_request(task_id, Some(request.clone()), Instant::now());
         self.emit(
             task_id,
             json!({ "type": "git", "action": "opened", "subject": format!("{} {}", remote.kind.request_word(), request.number), "short": "" }),
@@ -403,7 +413,7 @@ impl Manager {
         }
         self.hosts.merge_request(&remote, request.number, squash, delete_branch)?;
         let merged = Request { state: "merged", ..request };
-        self.remember_request(task_id, Some(merged.clone()));
+        self.remember_request(task_id, Some(merged.clone()), Instant::now());
         self.emit(
             task_id,
             json!({ "type": "git", "action": "merged", "subject": format!("{word} {}", merged.number), "short": "" }),
@@ -475,8 +485,9 @@ impl Manager {
             let root = PathBuf::from(&task.cwd);
             let (Some(branch), Some(remote)) = (task.branch.clone(), remote_of(&root)) else { continue };
             // A host that cannot be reached now is asked again in the next round.
+            let asked = Instant::now();
             let Ok(request) = self.hosts.request(&remote, &branch) else { continue };
-            self.remember_request(&task.id, request.clone());
+            self.remember_request(&task.id, request.clone(), asked);
             let word = remote.kind.request_word();
             let stop = |why: String| {
                 let _ = self.store().set_setting(&auto_merge_key(&task.id), None);
@@ -545,9 +556,12 @@ impl Manager {
                             let request = match cached {
                                 Some((at, request)) if at.elapsed() < REQUEST_TTL => request,
                                 _ => {
+                                    let asked = Instant::now();
                                     let request = self.hosts.request(remote, branch).unwrap_or(None);
-                                    self.remember_request(&task.id, request.clone());
-                                    request
+                                    self.remember_request(&task.id, request.clone(), asked);
+                                    // Something newer may have become known meanwhile: that is what is told.
+                                    let known = self.remembered.requests.lock().unwrap().get(&task.id).cloned();
+                                    known.map_or(request, |(_, known)| known)
                                 }
                             };
                             (task.id.clone(), request)

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { freePort, type Core } from './core';
-import { ghState } from './standins';
+import { ghState, threadsAnswer, type ReviewThread } from './standins';
 
 /** The file the practice agent edits when the message names no other. */
 export const DEMO_FILE = 'src/middleware/rateLimit.ts';
@@ -131,6 +131,12 @@ export class Project {
   setPullTemplate(template: string) {
     if (!this.slug) throw new Error('Only a project with a GitHub address has pull requests');
     writeFileSync(path.join(ghState(this.core.toolsDir, this.slug), 'template.json'), template);
+  }
+
+  /** Says which review comments pull request `number` of this project has. */
+  setReviewThreads(number: number, threads: ReviewThread[]) {
+    if (!this.slug) throw new Error('Only a project with a GitHub address has pull requests');
+    writeFileSync(path.join(ghState(this.core.toolsDir, this.slug), `threads-${number}.json`), threadsAnswer(threads));
   }
 
   /** Changes the pull request of a branch behind the core's back, as GitHub does when checks or reviews move. */
