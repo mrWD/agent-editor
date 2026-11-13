@@ -14,6 +14,7 @@ pub mod fileops;
 pub mod files;
 pub mod git;
 pub mod gitops;
+pub mod health;
 pub mod hosts;
 pub mod integrations;
 pub mod lsp;

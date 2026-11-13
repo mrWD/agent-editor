@@ -3298,3 +3298,42 @@ button.map-step:hover {
 .editor .cm-lsp-info > :last-child {
   margin-bottom: 0;
 }
+
+/* ---------- Health ---------- */
+
+.finding {
+  align-items: center;
+}
+.finding-what {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.finding-what .soft {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.finding-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.finding-security {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.project-tag {
+  flex: none;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--text-2);
+}
+.health-check code {
+  font-size: 12.5px;
+}

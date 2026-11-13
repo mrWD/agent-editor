@@ -189,3 +189,44 @@ test.describe('Automations', () => {
     await expect(app.page.locator('.stage-row', { hasText: what })).toHaveCount(1);
   });
 });
+
+test.describe('Health: what the projects are missing', () => {
+  test('W-08 W-09 findings are read from the files; Fix starts a task with what is missing; Ignore hides one', async ({
+    app,
+    project,
+  }) => {
+    // A test command but no lint: one thing is missing. (No remote, so no pipeline is expected.)
+    const shop = await project({ scripts: { test: 'echo ok' } });
+    await app.addProject(shop.dir);
+    await app.openHome();
+    await app.page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Health' }).click();
+
+    const missing = app.page.getByRole('region', { name: 'What is missing' });
+    const row = missing.locator('.finding', { hasText: shop.name });
+    await expect(row).toContainText('There is no lint command');
+    await expect(row).toContainText('Tests');
+    await expect(app.page.getByRole('heading', { level: 1 })).toContainText(/your projects (is|are) missing$/);
+
+    // The checks of the project, with their switches.
+    const checks = app.page.getByRole('region', { name: 'Checks on every task' });
+    const unit = checks.getByRole('button', { name: `Unit tests pass in ${shop.name}: on` });
+    await expect(unit).toHaveAttribute('aria-pressed', 'true');
+    await unit.click();
+    await expect(checks.getByRole('button', { name: `Unit tests pass in ${shop.name}: off` })).toBeVisible();
+    // With no test command that is on... the command is still there, so nothing new is missing.
+    await expect(row).toHaveCount(1);
+
+    // Ignore takes the finding off the list and says how many are hidden; they can be shown again.
+    await row.getByRole('button', { name: 'Ignore' }).click();
+    await expect(row).toHaveCount(0);
+    await expect(missing).toContainText(/(One finding is|\d+ findings are) ignored\./);
+    await missing.getByRole('button', { name: 'Show them again' }).click();
+    await expect(row).toHaveCount(1);
+
+    // Fix starts a task in that project and tells the agent what is missing.
+    await row.getByRole('button', { name: 'Fix' }).click();
+    await app.page.waitForURL(/#\/task\/[^/]+\/code$/);
+    await expect(app.messages.first()).toContainText('This project has no lint command.');
+    await expect(app.page.locator('.subbar .project')).toHaveText(shop.name);
+  });
+});

@@ -827,6 +827,24 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             tokio::task::spawn_blocking(move || manager.set_auto_merge(&task_id, options)).await??;
             Ok(json!({}))
         }
+        "health.get" => {
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.health()).await?
+        }
+        "health.audit" => {
+            // Asks the package managers, which ask the network: only on the user's word.
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.health_audit().and_then(|()| manager.health())).await?
+        }
+        "health.ignore" => {
+            manager.health_ignore(params.get("id").and_then(Value::as_str))?;
+            Ok(json!({}))
+        }
+        "health.turnCheck" => {
+            let on = params.get("on").and_then(Value::as_bool).unwrap_or(true);
+            manager.project_check_turn(text_param(params, "projectId")?, text_param(params, "id")?, on)?;
+            Ok(json!({}))
+        }
         "automations.list" => Ok(json!({ "automations": manager.automations() })),
         "automations.turn" => {
             let on = params.get("on").and_then(Value::as_bool).unwrap_or(true);

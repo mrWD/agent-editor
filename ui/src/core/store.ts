@@ -624,6 +624,48 @@ export async function switchAgent(taskId: string, agentId: string) {
   if (state.tasks[taskId]) setState('tasks', taskId, 'info', info);
 }
 
+/** One thing a project is missing, found by looking at its files. */
+export type Finding = {
+  id: string;
+  projectId: string;
+  category: 'Security' | 'Tests' | 'Pipeline' | 'Housekeeping';
+  title: string;
+  detail: string;
+  /** What an agent is told when the user presses "Fix". */
+  fix: string;
+};
+
+export type Health = {
+  findings: Finding[];
+  /** How many findings the user chose not to see. */
+  ignored: number;
+  /** When the package managers were last asked for their audit. */
+  auditedAt: number | null;
+  /** The checks of each project, with whether each is on. */
+  projects: {
+    projectId: string;
+    checks: { id: string; title: string; command: string; from: string; on: boolean }[];
+  }[];
+};
+
+export function getHealth() {
+  return core.request<Health>('health.get');
+}
+
+/** Asks each project's package manager for its audit. This reaches the network. */
+export function auditHealth() {
+  return core.request<Health>('health.audit');
+}
+
+/** Ignores one finding, or brings every ignored one back when no id is given. */
+export function ignoreFinding(id?: string) {
+  return core.request('health.ignore', id ? { id } : {});
+}
+
+export function turnProjectCheck(projectId: string, id: string, on: boolean) {
+  return core.request('health.turnCheck', { projectId, id, on });
+}
+
 /** What sets an automation off. */
 export type AutomationWhen =
   | { kind: 'merged' }

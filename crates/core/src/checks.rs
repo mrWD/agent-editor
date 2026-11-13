@@ -382,12 +382,22 @@ impl Manager {
         Ok(())
     }
 
-    /// Every check of a task's project: the ones found in its files, then the ones the user added.
-    fn check_defs(&self, task_id: &str) -> Result<Place> {
-        let task = self.store().task(task_id)?;
-        let root = PathBuf::from(&task.cwd);
-        let config = self.project_checks(&task.project_id);
-        let mut all: Vec<(CheckDef, bool)> = detect(&root)
+    /// Every check of a project, as found in `root`, each with whether it is on:
+    /// the ones found in its files, then the ones the user added.
+    pub(crate) fn project_check_defs(&self, project_id: &str, root: &Path) -> Vec<Value> {
+        self.checks_in(project_id, root)
+            .into_iter()
+            .map(|(check, on)| {
+                let mut entry = json!(check);
+                entry["on"] = json!(on);
+                entry
+            })
+            .collect()
+    }
+
+    fn checks_in(&self, project_id: &str, root: &Path) -> Vec<(CheckDef, bool)> {
+        let config = self.project_checks(project_id);
+        let mut all: Vec<(CheckDef, bool)> = detect(root)
             .into_iter()
             // End-to-end tests are slow: they are there, and off until the user turns them on.
             .map(|check| {
@@ -403,6 +413,14 @@ impl Manager {
             let on = !config.off.contains(&check.id);
             (check, on)
         }));
+        all
+    }
+
+    /// Every check of a task's project, as found in the task's own working copy.
+    fn check_defs(&self, task_id: &str) -> Result<Place> {
+        let task = self.store().task(task_id)?;
+        let root = PathBuf::from(&task.cwd);
+        let all = self.checks_in(&task.project_id, &root);
         Ok((root, task.project_id, all))
     }
 
@@ -592,17 +610,33 @@ impl Manager {
     /// Turns a check of the task's project on or off, for every task of that project.
     pub fn check_turn(&self, task_id: &str, id: &str, on: bool) -> Result<()> {
         let (_, project_id, defs) = self.check_defs(task_id)?;
+        self.turn(&project_id, &defs, id, on)?;
+        self.broadcast("checks.changed", json!({ "taskId": task_id }));
+        Ok(())
+    }
+
+    /// The same, asked for a project and not through one of its tasks.
+    pub fn project_check_turn(&self, project_id: &str, id: &str, on: bool) -> Result<()> {
+        let project = self.store().project(project_id)?;
+        let defs = self.checks_in(project_id, Path::new(&project.path));
+        self.turn(project_id, &defs, id, on)?;
+        // Every open task of the project has one check more or less now.
+        for task in self.store().tasks()?.into_iter().filter(|task| task.project_id == project_id) {
+            self.broadcast("checks.changed", json!({ "taskId": task.id }));
+        }
+        Ok(())
+    }
+
+    fn turn(&self, project_id: &str, defs: &[(CheckDef, bool)], id: &str, on: bool) -> Result<()> {
         let Some((check, _)) = defs.iter().find(|(check, _)| check.id == id) else { bail!("No such check") };
-        let mut config = self.project_checks(&project_id);
+        let mut config = self.project_checks(project_id);
         // End-to-end tests are off unless turned on, so for them "on" is what is written down.
         let (mark, write) = if check.kind == "e2e" { ("-e2e".to_string(), on) } else { (id.to_string(), !on) };
         config.off.retain(|one| *one != mark);
         if write {
             config.off.push(mark);
         }
-        self.store().set_setting(&project_key(&project_id), Some(&serde_json::to_string(&config)?))?;
-        self.broadcast("checks.changed", json!({ "taskId": task_id }));
-        Ok(())
+        self.store().set_setting(&project_key(project_id), Some(&serde_json::to_string(&config)?))
     }
 
     /// Adds a command of the user's own to the checks of the task's project.

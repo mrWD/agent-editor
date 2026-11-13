@@ -4,28 +4,13 @@ import { ProjectsRail } from '../components/ProjectsRail';
 import { SearchPalette } from '../components/SearchPalette';
 import { Agents } from '../screens/Agents';
 import { Automations } from '../screens/Automations';
+import { Health } from '../screens/Health';
 import { Home } from '../screens/Home';
 import { Issues } from '../screens/Issues';
 import { route, type View } from './router';
 
 // The editor is the heavy part of the interface. Home opens without it; it is fetched with the first task.
 const TaskScreen = lazy(() => import('../screens/Task').then((module) => ({ default: module.TaskScreen })));
-
-const sections = {
-  health: { title: 'Health', what: 'What each project is missing, and the checks every task must pass.' },
-} as const;
-
-/** A section that is drawn in the design but not built yet says so plainly. */
-function NotBuilt(props: { page: keyof typeof sections }): JSX.Element {
-  return (
-    <main class="page">
-      <div class="page-inner">
-        <h1 class="headline">{sections[props.page].title} is not built yet</h1>
-        <p class="soft">{sections[props.page].what} It arrives with milestone M8.</p>
-      </div>
-    </main>
-  );
-}
 
 export function App(): JSX.Element {
   // The task last shown. It keeps its value while the task screen is being taken
@@ -79,8 +64,8 @@ export function App(): JSX.Element {
           <Match when={route().page === 'agents'}>
             <Agents />
           </Match>
-          <Match when={route().page in sections}>
-            <NotBuilt page={route().page as keyof typeof sections} />
+          <Match when={route().page === 'health'}>
+            <Health />
           </Match>
         </Switch>
       </div>
