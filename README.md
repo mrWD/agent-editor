@@ -219,11 +219,23 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   open in the system's browser, a window that remembers its size and place, a
   menu, one running copy at a time. Not signed, no auto-update.
 
-Not built: a way to run, in a terminal, an agent that does not speak ACP.
+An agent that does not speak ACP runs in a terminal instead. Add it in
+Settings as an agent of your own and tick "It runs in a terminal". A task then
+shows that terminal in place of the conversation; what you send is typed into
+the program, and you can type into it yourself. The editor cannot read what
+such a program means, so a turn is taken to be over when the program has
+printed nothing for a moment (2.5 seconds), and "your turn" may also mean that
+it is asking you something. Line marks, checkpoints, Changes and checks work
+as with any agent; a team or a race with such an agent has not been tried. There are no tool calls in the conversation, no
+questions to answer there, no settings in the head, no pictures, no cost, and
+none of the editor's own tools. A program started again is told what was said
+before as one long message.
 
 Not checked: anything on Windows or Linux (the CI is written and has never
 run); GitLab and Linear against the real services; Codex and Gemini; the
 real language servers for Rust, Go and Python (the one for TypeScript and
 JavaScript was tried by hand; the tests use a practice server); the
 screenshot with a real browser, the real iOS simulator and Android emulator,
-and a notification of the real system (the tests use stand-ins for each).
+and a notification of the real system (the tests use stand-ins for each); a
+real agent in a terminal, such as the command-line programs of Claude, Codex
+or Gemini (the tests use a practice program that reads lines).
