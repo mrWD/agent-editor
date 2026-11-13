@@ -1450,6 +1450,9 @@ textarea::placeholder {
 }
 .banner .grow {
   flex: 1 1 240px;
+  /* What a tool said may hold an address of a hundred letters without a space: it breaks where it must. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .banner.review {
   border-color: var(--agent-line);
@@ -5825,6 +5828,36 @@ button.picked-source:hover {
   border-radius: 28px;
   background: var(--line-strong);
   object-fit: contain;
+}
+/* How to get a device, when there is none to show: steps with the commands to copy. */
+.device-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 76ch;
+  margin: 4px 0;
+  padding-left: 20px;
+  color: var(--text-2);
+  text-align: left;
+}
+.device-command {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.device-command code {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground-deep);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 /* A picture that passes a press on to the device says so with the pointer, and is never dragged away as an image. */
 .device-screen img.touchable {

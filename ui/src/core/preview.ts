@@ -548,6 +548,70 @@ export function deviceWords(kind: DeviceKind): {
     : { one: 'emulator', many: 'Android emulators', window: "the emulator's own window" };
 }
 
+/** One step towards having a device to show: what to do, and the command for it when there is one. */
+export type DeviceStep = { text: string; command?: string };
+
+const SYSTEM_IMAGE = 'system-images;android-35;google_apis;arm64-v8a';
+
+/**
+ * How to get what a device tab says is missing, step by step. Read from the
+ * sentence the core gave: it names the one thing that is missing first. An
+ * empty list when the sentence is about something else.
+ */
+export function deviceSetup(kind: DeviceKind, needs: string | null): DeviceStep[] {
+  const said = needs ?? '';
+  if (kind === 'ios') {
+    if (said.includes('needs Xcode')) {
+      return [
+        {
+          text: 'Install Xcode from the App Store and open it once. It offers to install the iOS platform: that is what brings the simulators.',
+        },
+        {
+          text: 'If the command line tools were on this Mac before Xcode, point them at Xcode:',
+          command: 'sudo xcode-select -s /Applications/Xcode.app/Contents/Developer',
+        },
+        { text: 'Then press Look again.' },
+      ];
+    }
+    if (said.includes('no iOS simulator yet')) {
+      return [{ text: 'In Xcode: Window, Devices and Simulators, Simulators, then the plus at the bottom left.' }];
+    }
+    return [];
+  }
+  const anEmulator: DeviceStep[] = [
+    {
+      text: 'Make an emulator. In Android Studio: More Actions, Virtual Device Manager, Create. Or from a terminal (on an Intel computer write x86_64 for arm64-v8a):',
+      command: `sdkmanager "${SYSTEM_IMAGE}"`,
+    },
+    { text: 'and', command: `avdmanager create avd -n Pixel_7 -d pixel_7 -k "${SYSTEM_IMAGE}"` },
+    { text: 'Then press Look again: it is listed here and started from here.' },
+  ];
+  if (said.includes('needs adb')) {
+    return [
+      {
+        text: 'Android Studio brings everything: install it, then in More Actions, SDK Manager, SDK Tools tick Android SDK Platform-Tools and Android Emulator.',
+      },
+      {
+        text: 'Without Android Studio, the command line tools are enough:',
+        command: 'brew install --cask android-commandlinetools',
+      },
+      { text: 'then adb and the emulator itself:', command: 'sdkmanager "platform-tools" "emulator"' },
+      ...anEmulator,
+    ];
+  }
+  if (said.includes('has no emulator yet')) return anEmulator;
+  if (said.includes('No Android emulator is running')) {
+    return [
+      { text: 'Start one from the Device Manager of Android Studio, then press Look again.' },
+      {
+        text: 'To start emulators from here, this computer also needs the emulator program of the Android tools:',
+        command: 'sdkmanager "emulator"',
+      },
+    ];
+  }
+  return [];
+}
+
 /** What the button of a listed device says, and whether it can be pressed. */
 export function deviceButton(device: Device): { label: string; can: boolean } {
   if (device.state === 'running') return { label: 'Show', can: true };

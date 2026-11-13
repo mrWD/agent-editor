@@ -819,7 +819,9 @@ test.describe('The iOS simulator and the Android emulator', () => {
 
     // PV-30: a press on the picture is a tap on the simulator, where it was made. This Mac has idb, which
     // counts in points: the picture has three pixels to one.
-    await screen.click();
+    // (Pressed in the middle of a pixel of the picture, which is drawn at its own size: on the very
+    // line between two pixels a browser may round either way.)
+    await screen.click({ position: { x: 30.5, y: 65.5 } });
     await expect.poll(() => core.calls('idb')).toContain(`ui tap --udid ${PHONE} 10 22`);
     const keys = device.getByRole('group', { name: 'The buttons of iPhone 17 Pro' });
     await keys.getByRole('textbox', { name: 'Type on iPhone 17 Pro' }).fill('привет, it’s me');
@@ -956,14 +958,15 @@ test.describe('The iOS simulator and the Android emulator', () => {
     // PV-31: a press on the picture lands on the emulator where it was made, in the pixels of its screen;
     // a drag is a swipe from where it began to where it ended.
     const did = (call: string) => expect.poll(() => core.calls('adb')).toContain(`-s emulator-5554 shell ${call}`);
-    await screen.click();
+    await screen.click({ position: { x: 27.5, y: 60.5 } });
     await did('input tap 27 60');
     const box = (await screen.boundingBox())!;
-    const [left, top] = [box.x + 10, box.y + 10];
-    await app.page.mouse.move(left + 27, top + 90);
+    // The picture stands inside a frame ten pixels wide; each place is the middle of one of its pixels.
+    const [left, top] = [box.x + 10 + 27.5, box.y + 10];
+    await app.page.mouse.move(left, top + 90.5);
     await app.page.mouse.down();
-    await app.page.mouse.move(left + 27, top + 60, { steps: 3 });
-    await app.page.mouse.move(left + 27, top + 30, { steps: 3 });
+    await app.page.mouse.move(left, top + 60.5, { steps: 3 });
+    await app.page.mouse.move(left, top + 30.5, { steps: 3 });
     await app.page.mouse.up();
     await did('input swipe 27 90 27 30 250');
     // Typed text goes with Enter in the field; the buttons are the emulator's own.
@@ -1041,6 +1044,10 @@ test.describe('The iOS simulator and the Android emulator', () => {
     await expect(preview.view).toContainText(
       'The iOS simulator needs Xcode on this Mac: install it from the App Store and open it once.',
     );
+    // PV-40: what to do about it stands under the sentence, step by step, with the command to copy.
+    const forIos = preview.view.getByRole('list', { name: 'How to get a simulator' });
+    await expect(forIos.getByRole('listitem')).toHaveCount(3);
+    await expect(forIos).toContainText('sudo xcode-select -s /Applications/Xcode.app/Contents/Developer');
 
     // No emulator runs and the Device Manager has none to start; then adb itself is not there.
     await preview.kind('Android emulator').click();
@@ -1053,6 +1060,12 @@ test.describe('The iOS simulator and the Android emulator', () => {
     await expect(preview.view).toContainText(
       'The Android emulator needs adb, which comes with Android Studio (SDK Platform-Tools in its SDK Manager).',
     );
+    const forAndroid = preview.view.getByRole('list', { name: 'How to get an emulator' });
+    await expect(forAndroid).toContainText('brew install --cask android-commandlinetools');
+    await expect(forAndroid).toContainText('avdmanager create avd -n Pixel_7');
+    await expect(
+      forAndroid.getByRole('button', { name: 'Copy the command: sdkmanager "platform-tools" "emulator"' }),
+    ).toBeVisible();
     await expect(preview.view.getByRole('img')).toHaveCount(0);
   });
 

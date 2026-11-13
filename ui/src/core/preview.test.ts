@@ -10,6 +10,7 @@ import {
   deviceButton,
   deviceKeys,
   deviceLine,
+  deviceSetup,
   deviceName,
   deviceWords,
   elementName,
@@ -560,5 +561,43 @@ describe('a press on the picture of a device', () => {
   it('comes with the buttons the device has: an iPhone has only Home', () => {
     expect(deviceKeys('ios').map((one) => one.label)).toEqual(['Home']);
     expect(deviceKeys('android').map((one) => one.key)).toEqual(['back', 'home', 'recent']);
+  });
+});
+
+describe('how to get a device when there is none', () => {
+  const commands = (kind: 'ios' | 'android', needs: string) =>
+    deviceSetup(kind, needs).flatMap((step) => (step.command ? [step.command] : []));
+
+  it('reads from what the core says is missing', () => {
+    const xcode = 'The iOS simulator needs Xcode on this Mac: install it from the App Store and open it once.';
+    expect(deviceSetup('ios', xcode)[0]!.text).toContain('Install Xcode from the App Store');
+    expect(commands('ios', xcode)).toEqual(['sudo xcode-select -s /Applications/Xcode.app/Contents/Developer']);
+    // The core adds what xcrun said behind the sentence: the steps are the same.
+    expect(deviceSetup('ios', `${xcode} (Asked for its simulators, xcrun said: unable to find utility.)`)).toHaveLength(
+      3,
+    );
+    expect(
+      commands('ios', 'Xcode has no iOS simulator yet: add one in Xcode under Window, Devices and Simulators.'),
+    ).toEqual([]);
+  });
+
+  it('gives the whole way for Android when nothing is there, and only the rest when some of it is', () => {
+    const adb =
+      'The Android emulator needs adb, which comes with Android Studio (SDK Platform-Tools in its SDK Manager).';
+    expect(commands('android', adb)).toEqual([
+      'brew install --cask android-commandlinetools',
+      'sdkmanager "platform-tools" "emulator"',
+      'sdkmanager "system-images;android-35;google_apis;arm64-v8a"',
+      'avdmanager create avd -n Pixel_7 -d pixel_7 -k "system-images;android-35;google_apis;arm64-v8a"',
+    ]);
+    const none = 'Android has no emulator yet: make one in the Device Manager of Android Studio.';
+    expect(commands('android', none)).toEqual(commands('android', adb).slice(2));
+    const off = 'No Android emulator is running: start one from the Device Manager of Android Studio.';
+    expect(commands('android', off)).toEqual(['sdkmanager "emulator"']);
+  });
+
+  it('says nothing more about a sentence it does not know', () => {
+    expect(deviceSetup('android', 'adb did not list the devices. It said: daemon not running')).toEqual([]);
+    expect(deviceSetup('ios', null)).toEqual([]);
   });
 });

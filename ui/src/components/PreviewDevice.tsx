@@ -4,6 +4,7 @@ import {
   deviceButton,
   deviceKeys,
   deviceLine,
+  deviceSetup,
   deviceWords,
   readDevices,
   touchOn,
@@ -207,6 +208,18 @@ export function DeviceView(props: {
     core.request('devices.front', { taskId }).catch((error) => setProblem(message(error)));
   };
 
+  /** The command that was copied last, so its button can say so for a moment. */
+  const [copied, setCopied] = createSignal<string | null>(null);
+  const copy = async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(command);
+      setTimeout(() => copied() === command && setCopied(null), 2000);
+    } catch {
+      // No clipboard here: the command stands on the page to be selected by hand.
+    }
+  };
+
   /** Passes a touch on to the device, and looks at its screen again a moment later. */
   const touch = async (what: DeviceTouch) => {
     setProblem(null);
@@ -317,6 +330,32 @@ export function DeviceView(props: {
         <div class="center-note">
           <h2>No {words.one} to show</h2>
           <p>{found()!.needs}</p>
+          <Show when={deviceSetup(kind, found()!.needs).length > 0}>
+            <ol class="device-steps" aria-label={`How to get ${kind === 'ios' ? 'a simulator' : 'an emulator'}`}>
+              <For each={deviceSetup(kind, found()!.needs)}>
+                {(step) => (
+                  <li>
+                    <span>{step.text}</span>
+                    <Show when={step.command}>
+                      {(command) => (
+                        <span class="device-command">
+                          <code>{command()}</code>
+                          <button
+                            type="button"
+                            class="btn tiny ghost"
+                            aria-label={`Copy the command: ${command()}`}
+                            onClick={() => void copy(command())}
+                          >
+                            {copied() === command() ? 'Copied' : 'Copy'}
+                          </button>
+                        </span>
+                      )}
+                    </Show>
+                  </li>
+                )}
+              </For>
+            </ol>
+          </Show>
           <div class="actions">
             <button type="button" class="btn small" onClick={() => void look()}>
               Look again

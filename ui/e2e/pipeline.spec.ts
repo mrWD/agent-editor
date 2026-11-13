@@ -105,14 +105,15 @@ test.describe('The pipeline of a task’s branch', () => {
     await taskOn(app, shop);
     const ci = run(app, 'CI');
 
-    // One press only arms the button, and leaving it takes the arming back.
-    const all = ci.getByRole('button', { name: 'Run all again: CI' });
+    // One press only arms the button. Leaving it takes the arming back, and so do a few seconds: a
+    // browser that gives a pressed button no keyboard (WebKit) never says that it was left.
+    const all = ci.getByRole('button', { name: 'Run all again: CI', exact: true });
     await all.click();
-    const armed = ci.getByRole('button', { name: 'Press again: Run all again: CI' });
+    const armed = ci.getByRole('button', { name: 'Press again: Run all again: CI', exact: true });
     await expect(armed).toBeVisible();
     expect(done(app, shop)).toEqual([]);
     await armed.blur();
-    await expect(all).toBeVisible();
+    await expect(all).toBeVisible({ timeout: 8000 });
     expect(done(app, shop)).toEqual([]);
 
     await all.click();
@@ -121,8 +122,8 @@ test.describe('The pipeline of a task’s branch', () => {
     await expect(ci).toContainText('1 running');
 
     // A run that is going can be stopped, with two presses as well.
-    await ci.getByRole('button', { name: 'Stop: CI' }).click();
-    await ci.getByRole('button', { name: 'Press again: Stop: CI' }).click();
+    await ci.getByRole('button', { name: 'Stop: CI', exact: true }).click();
+    await ci.getByRole('button', { name: 'Press again: Stop: CI', exact: true }).click();
     await expect
       .poll(() => done(app, shop))
       .toEqual([`run rerun 9002 -R ${shop.slug}`, `run cancel 9002 -R ${shop.slug}`]);

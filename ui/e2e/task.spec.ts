@@ -318,7 +318,7 @@ test.describe('The practice agent says what it is', () => {
 });
 
 test.describe('What is typed for a task stays with that task', () => {
-  test('C-14 a message typed for one task is not in the box of another, and is there again on coming back', async ({
+  test('C-16 a message typed for one task is not in the box of another, and is there again on coming back', async ({
     app,
     project,
   }) => {

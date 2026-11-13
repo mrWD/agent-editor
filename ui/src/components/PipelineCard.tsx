@@ -77,7 +77,10 @@ export function PipelineCard(props: { task: Task }): JSX.Element {
       if (mine !== asked) return;
       const why = said(error);
       // A folder without git, or a remote that is neither host: there is no pipeline to speak of, and no fault to report.
-      if (why.includes('without git') || why.includes('not on GitHub or GitLab')) setNowhere(true);
+      // The same for a repository the host does not know (not pushed there yet, or not this account's
+      // to see): the request card above says so already, and a second red line would say nothing new.
+      const none = ['without git', 'not on GitHub or GitLab', 'knows no repository'];
+      if (none.some((words) => why.includes(words))) setNowhere(true);
       else setProblem(why);
     }
   };
