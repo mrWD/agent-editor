@@ -707,7 +707,7 @@ impl Manager {
 
     /// Where a new task of `project` works: its own working copy when the project
     /// is a git repository with commits, the project folder itself otherwise.
-    async fn prepare_folder(
+    pub(crate) async fn prepare_folder(
         &self,
         project: &Project,
         task_id: &str,

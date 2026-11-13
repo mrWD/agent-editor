@@ -19,6 +19,7 @@ pub mod git;
 pub mod gitops;
 pub mod health;
 pub mod hosts;
+pub mod imports;
 pub mod integrations;
 pub mod lsp;
 pub mod map;

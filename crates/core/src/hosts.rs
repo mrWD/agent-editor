@@ -243,8 +243,8 @@ impl Request {
     }
 }
 
-/// Seconds since 1970 for a time like `2026-11-12T19:05:30Z`. Zero when it cannot be read.
-fn parse_time(text: &str) -> u64 {
+/// Milliseconds since 1970 for a time like `2026-11-12T19:05:30Z`. Zero when it cannot be read.
+pub(crate) fn parse_time(text: &str) -> u64 {
     let digits = |from: usize, len: usize| text.get(from..from + len).and_then(|part| part.parse::<i64>().ok());
     let (Some(year), Some(month), Some(day)) = (digits(0, 4), digits(5, 2), digits(8, 2)) else {
         return 0;
