@@ -101,9 +101,15 @@ export function Header(): JSX.Element {
           Search
           <kbd>{modKey}K</kbd>
         </button>
-        <button type="button" class="icon-button" aria-label="Settings" disabled title="Settings are not built yet">
+        <a
+          class="icon-button"
+          href="#/settings"
+          aria-label="Settings"
+          title="Settings"
+          aria-current={current('settings')}
+        >
           <Icon.Settings />
-        </button>
+        </a>
       </header>
       <Show when={core.status() === 'lost'}>
         <div class="link-lost" role="status">

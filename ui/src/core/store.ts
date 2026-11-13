@@ -11,6 +11,8 @@ export type AgentDef = {
   available: boolean;
   note: string | null;
   spendsTokens: boolean;
+  /** True for the agent picked in Settings as the one a new task starts with. */
+  isDefault?: boolean;
 };
 
 export type Project = { id: string; name: string; path: string; folder: string | null; createdAt: number };
@@ -1478,4 +1480,17 @@ export function listTerminals(taskId: string) {
  */
 export function closeTerminal(termId: number, force = false) {
   return core.request<{ closed: boolean; running?: string }>('terminal.close', { termId, force });
+}
+
+// ----- settings -----
+
+/** Reads the agents again: Settings changed a command, added or removed an agent, or picked another default. */
+export async function reloadAgents() {
+  setState('agents', reconcile(await core.request<AgentDef[]>('agents.list'), { key: 'id' }));
+}
+
+/** The agent a new task starts with: the one picked in Settings, else the first that is installed. */
+export function defaultAgentId(): string {
+  const installed = state.agents.filter((agent) => agent.available);
+  return (installed.find((agent) => agent.isDefault) ?? installed[0])?.id ?? '';
 }

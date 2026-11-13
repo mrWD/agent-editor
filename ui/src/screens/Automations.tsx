@@ -2,6 +2,7 @@ import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js'
 import { ago, Chip } from '../components/bits';
 import { core } from '../core/client';
 import {
+  defaultAgentId,
   listAutomations,
   projectName,
   removeAutomation,
@@ -56,7 +57,7 @@ export function Automations(): JSX.Element {
   const [projects, setProjects] = createSignal<string[]>([]);
 
   const agents = () => state.agents.filter((agent) => agent.available);
-  const chosenAgent = () => agentId() || agents()[0]?.id || '';
+  const chosenAgent = () => agentId() || defaultAgentId();
   const startsTask = () => trigger() === 'daily' || trigger() === 'issueLabeled';
 
   const load = async () => {

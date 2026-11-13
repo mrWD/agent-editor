@@ -839,7 +839,7 @@ impl Drop for Window {
 }
 
 /// Where it is kept that a project does not want its files formatted on save.
-fn format_setting(project_id: &str) -> String {
+pub(crate) fn format_setting(project_id: &str) -> String {
     format!("project.{project_id}.formatOnSave")
 }
 

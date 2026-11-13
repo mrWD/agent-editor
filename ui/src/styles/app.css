@@ -5200,3 +5200,55 @@ button.picked-source:hover {
 .bottom-fill.shells > .bottom-fill {
   min-width: 0;
 }
+
+/* ---------- Settings ---------- */
+
+.setting-row {
+  align-items: center;
+}
+.setting-what {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.setting-what .soft,
+.setting-what.soft {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.setting-what .name {
+  flex: none;
+}
+.setting-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.setting-command {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.setting-tried {
+  font-size: 13px;
+  color: var(--text);
+}
+.setting-tried.text-bad {
+  color: var(--red);
+}
+.setting-form {
+  flex: 1 1 100%;
+  margin: 4px 0;
+}
+.setting-form .field.mono,
+.setting-form .git-message.mono {
+  font-size: 12.5px;
+}
+.icon-button[aria-current='page'] {
+  background: var(--raised);
+  color: var(--text);
+}

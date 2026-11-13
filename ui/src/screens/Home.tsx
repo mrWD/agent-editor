@@ -12,6 +12,7 @@ import {
   cancelTurn,
   cleanUpTask,
   createTask,
+  defaultAgentId,
   mergeRequest,
   projectFilter,
   projectName,
@@ -67,8 +68,8 @@ function NewTask(): JSX.Element {
   // Fill in the defaults once the core has told us what it has.
   createEffect(() => {
     if (!agentId()) {
-      const first = state.agents.find((agent) => agent.available);
-      if (first) setAgentId(first.id);
+      const first = defaultAgentId();
+      if (first) setAgentId(first);
     }
     if (!state.ready) return;
     const known = state.projects.some((project) => project.id === projectId());

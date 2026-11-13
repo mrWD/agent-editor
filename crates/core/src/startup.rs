@@ -38,6 +38,10 @@ pub struct Desktop {
     /// Shows the system's "choose a folder" dialog and waits for the answer.
     /// `None` means the user closed it without choosing. Called off the main thread.
     pub pick_folder: Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>,
+    /// Shows a notification of the system: something happened while no window of
+    /// the editor was in front. The core decides when; this only shows it, and
+    /// must come back at once. It is called with the app's window closed too.
+    pub notify: Arc<dyn Fn(&crate::notify::Notice) + Send + Sync>,
 }
 
 /// How to start the core.
@@ -152,6 +156,9 @@ pub async fn serve(manager: Arc<Manager>, options: &Options) -> Result<Core> {
 
     let mut state = AppState::listening_on(manager, Some(addr.port()));
     state.desktop = options.desktop.clone();
+    if let Some(desktop) = &options.desktop {
+        state.manager.notify_through(desktop.notify.clone());
+    }
     let (stop, stopped) = oneshot::channel::<()>();
     let served = tokio::spawn(server::serve_until(listener, state.clone(), options.ui_dir.clone(), async {
         // A dropped sender counts as "stop" too: whoever held the core is gone.

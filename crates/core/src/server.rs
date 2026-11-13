@@ -67,6 +67,8 @@ impl AppState {
                 tokio::time::sleep(watch_every()).await;
                 state.auto_merge_round().await;
                 state.automations_round().await;
+                // With no window open, nobody else would notice that a request's checks failed or went green.
+                state.manager.requests_round().await;
             }
         });
     }
@@ -300,6 +302,8 @@ async fn converse(socket: WebSocket, state: AppState) {
     let mut attached = Attached::new();
     // The files this window has open in language servers are closed when it goes away.
     let window = state.lsp.window();
+    // Whether this window is in front decides if the user is told things by a notification.
+    let looking = state.manager.window_opened();
     // Commands run in lanes: one lane per kind of command and task. Inside a
     // lane they run one after another, so their answers come in the order they
     // were asked (the interface counts on "the last answer is the newest").
@@ -325,6 +329,9 @@ async fn converse(socket: WebSocket, state: AppState) {
                         // A language server is shared by every window, so it is told which one is speaking.
                         if method.starts_with("lsp.") && let Some(given) = params.as_object_mut() {
                             given.insert("window".into(), json!(window.id()));
+                        }
+                        if method == "notifications.attention" && let Some(given) = params.as_object_mut() {
+                            given.insert("window".into(), json!(looking.id()));
                         }
                         if !method.starts_with("terminal.") {
                             let lane = lanes.entry(lane_of(&method, &params)).or_insert_with(|| {
@@ -459,6 +466,11 @@ fn lane_of(method: &str, params: &Value) -> String {
     if kind == "mr" {
         return "mr:".to_string();
     }
+    // Trying an agent can take minutes (its first start downloads it). Each try has
+    // a lane of its own, so the list of agents is never kept waiting behind one.
+    if method == "agents.try" {
+        return format!("agents.try:{}", params.get("id").and_then(Value::as_str).unwrap_or_default());
+    }
     let task = params.get("taskId").and_then(Value::as_str).unwrap_or_default();
     format!("{kind}:{task}")
 }
@@ -546,7 +558,14 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             "cwd": std::env::current_dir().ok().map(|p| p.to_string_lossy().into_owned()),
             "dataDir": manager.data_dir().to_string_lossy()
         })),
-        "agents.list" => Ok(json!(manager.registry().list())),
+        "agents.list" => Ok(manager.agents_listed()),
+        "settings.get"
+        | "settings.set"
+        | "agents.save"
+        | "agents.reset"
+        | "agents.remove"
+        | "agents.try"
+        | "notifications.attention" => crate::settings::command(manager, method, params).await,
 
         "projects.list" => Ok(json!(manager.projects()?)),
         "projects.add" => {

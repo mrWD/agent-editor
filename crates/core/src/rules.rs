@@ -119,8 +119,11 @@ impl Manager {
     }
 
     /// Whether the user wants to be offered a rule after correcting an agent's line in this project.
+    /// Settings can stop the question everywhere; a project can stop it for itself.
     pub fn rule_offers(&self, project_id: &str) -> bool {
-        self.store().setting(&format!("project.{project_id}.ruleOffers")).ok().flatten().as_deref() != Some("off")
+        self.rule_offers_wanted()
+            && self.store().setting(&format!("project.{project_id}.ruleOffers")).ok().flatten().as_deref()
+                != Some("off")
     }
 
     pub fn set_rule_offers(&self, project_id: &str, on: bool) -> Result<()> {

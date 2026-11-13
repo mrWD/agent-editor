@@ -8,7 +8,7 @@ export type View = (typeof VIEWS)[number] | typeof RACE_VIEW;
 
 export type Route =
   | { page: 'home' }
-  | { page: 'issues' | 'health' | 'automations' | 'agents' }
+  | { page: 'issues' | 'health' | 'automations' | 'agents' | 'settings' }
   | { page: 'task'; id: string; view: View };
 
 function parse(hash: string): Route {
@@ -18,6 +18,7 @@ function parse(hash: string): Route {
     case 'health':
     case 'automations':
     case 'agents':
+    case 'settings':
       return { page: parts[0] };
     case 'task': {
       if (!parts[1]) return { page: 'home' };

@@ -5,6 +5,7 @@ import { core } from '../core/client';
 import {
   auditHealth,
   createTask,
+  defaultAgentId,
   getHealth,
   ignoreFinding,
   projectName,
@@ -32,7 +33,7 @@ export function Health(): JSX.Element {
   const [agentId, setAgentId] = createSignal('');
 
   const agents = () => state.agents.filter((agent) => agent.available);
-  const chosenAgent = () => agentId() || agents()[0]?.id || '';
+  const chosenAgent = () => agentId() || defaultAgentId();
   const agentName = () => state.agents.find((agent) => agent.id === chosenAgent())?.name ?? 'an agent';
 
   const load = async () => {
