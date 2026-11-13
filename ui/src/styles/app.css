@@ -5758,3 +5758,25 @@ button.picked-source:hover {
 .device-status {
   margin: 0 -16px -16px;
 }
+
+/* ---------- An agent that runs in a terminal ---------- */
+
+/* Its terminal stands where the conversation would; what the editor itself knows of the task stays above it. */
+.agent-terminal {
+  flex: 3 1 0;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.feed.beside {
+  flex: 1 1 0;
+  max-height: 32%;
+}
+.setting-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

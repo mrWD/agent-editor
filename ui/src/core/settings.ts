@@ -18,6 +18,8 @@ export type AgentSetting = {
   available: boolean;
   note: string | null;
   spendsTokens: boolean;
+  /** "terminal" for a program that speaks no protocol: it runs in a terminal and messages are typed into it. */
+  speaks: 'acp' | 'terminal';
   isDefault: boolean;
   /** How many open tasks have this agent. */
   tasks: number;
@@ -93,7 +95,7 @@ export function setSettings(change: {
  * changes. With the `id` of one of the user's own, or with none, the name and
  * the short name are taken too; with none a new agent is added.
  */
-export function saveAgent(agent: AgentCommand & { id?: string; name?: string; short?: string }) {
+export function saveAgent(agent: AgentCommand & { id?: string; name?: string; short?: string; terminal?: boolean }) {
   return core.request<Settings & { saved: string }>('agents.save', agent);
 }
 

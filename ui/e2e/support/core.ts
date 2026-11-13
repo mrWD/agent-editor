@@ -114,6 +114,8 @@ export class Core {
       AE_XCRUN: path.join(this.toolsDir, 'xcrun'),
       AE_ADB: path.join(this.toolsDir, 'adb'),
       AE_MOCK_DELAY_MS: String(options.mockDelayMs ?? 30),
+      // An agent that runs in a terminal is taken to be done after this much quiet. Short, so tests need not wait.
+      AE_TERMINAL_QUIET_MS: '500',
       // The core looks at what is due (automations, requests that merge by themselves) often, so tests need not wait.
       AE_WATCH_EVERY_MS: '1500',
       GIT_CONFIG_GLOBAL: gitConfig,

@@ -1,4 +1,16 @@
-import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from 'solid-js';
+import {
+  createEffect,
+  createSignal,
+  For,
+  lazy,
+  Match,
+  on,
+  onCleanup,
+  Show,
+  Suspense,
+  Switch,
+  type JSX,
+} from 'solid-js';
 import { sideWidth } from '../core/layout';
 import { go, route, taskHref } from '../app/router';
 import {
@@ -40,6 +52,9 @@ import { TeamPanel } from './TeamPanel';
 import { PointedChips, PreviewPointed } from './PreviewPointed';
 import { PickResult, TalkingTo } from './RacePane';
 import { WhereStopped } from './WhereStopped';
+
+// Only a task whose agent runs in a terminal needs it, so it is loaded when one is shown.
+const TerminalView = lazy(() => import('./Terminal').then((module) => ({ default: module.TerminalView })));
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
 const linesOf = (quote: Quote) =>
@@ -149,6 +164,9 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   const short = () => agent()?.short ?? '··';
   const agentId = () => props.task.info.agentId;
   const sessionState = () => props.task.info.state;
+  // An agent that speaks no protocol runs in a terminal: that terminal is shown in place of what it would say.
+  const inTerminal = () => agent()?.speaks === 'terminal';
+  const agentTerminal = () => props.task.info.config?.terminal ?? null;
   const canSend = () => sessionState() === 'idle' || sessionState() === 'asleep';
   const taskId = () => props.task.info.id;
   const work = () => workOf(taskId());
@@ -676,6 +694,17 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               </div>
             </section>
           </Match>
+          <Match
+            when={sessionState() === 'idle' && inTerminal() && props.task.feed.length > 0 && !props.task.info.race}
+          >
+            <section class="card pinned">
+              <h2>Your turn</h2>
+              <p>
+                {name()} has gone quiet. It may be done, or it may be asking you something: look at its terminal, then
+                answer there or say what to do next.
+              </p>
+            </section>
+          </Match>
           <Match when={sessionState() === 'idle' && props.task.feed.length > 0 && !props.task.info.race}>
             <section class="card pinned">
               <h2>Your turn</h2>
@@ -686,6 +715,15 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             <section class="card pinned">
               <h2>Starting {name()}</h2>
               <p>It is told what was said so far, then gets your message.</p>
+            </section>
+          </Match>
+          <Match when={sessionState() === 'asleep' && inTerminal() && !props.task.info.race}>
+            <section class="card pinned">
+              <h2>{name()} is not running</h2>
+              <p>
+                Your next message starts it again in a new terminal and types to it what you said before. What it
+                printed in the old terminal is gone.
+              </p>
             </section>
           </Match>
           <Match when={sessionState() === 'asleep' && !props.task.info.race}>
@@ -702,7 +740,20 @@ export function AgentPane(props: { task: Task }): JSX.Element {
 
         <PreviewPointed task={props.task} agentName={name()} onOpen={showFile} />
 
-        <div class="feed" ref={feedEl} onScroll={onScroll}>
+        <Show when={inTerminal() && agentTerminal() !== null ? agentTerminal() : null} keyed>
+          {(termId) => (
+            <section class="agent-terminal" aria-label={`The terminal of ${name()}`}>
+              <span class="fine">
+                {name()} runs here. What you send below is typed into it; you can also type into it yourself.
+              </span>
+              <Suspense>
+                <TerminalView taskId={taskId()} visible attach={termId} follow />
+              </Suspense>
+            </section>
+          )}
+        </Show>
+
+        <div class="feed" classList={{ beside: inTerminal() }} ref={feedEl} onScroll={onScroll}>
           <For each={props.task.feed}>{item}</For>
           <Show when={work().editing}>
             {(editing) => (

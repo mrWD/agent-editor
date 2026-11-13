@@ -11,6 +11,11 @@ export type AgentDef = {
   available: boolean;
   note: string | null;
   spendsTokens: boolean;
+  /**
+   * How the editor talks to it: the Agent Client Protocol, or not at all. An
+   * agent that speaks no protocol runs in a terminal, and messages are typed into it.
+   */
+  speaks?: 'acp' | 'terminal';
   /** True for the agent picked in Settings as the one a new task starts with. */
   isDefault?: boolean;
 };
@@ -59,6 +64,8 @@ export type TaskConfig = {
   commands: { name: string; description?: string }[];
   /** True when the running agent takes pictures in a message. */
   images?: boolean;
+  /** The terminal the agent runs in, for one that speaks no protocol. */
+  terminal?: number | null;
 };
 
 /** A picture of a message, as the conversation names it. Its bytes are asked for by `pictureUrl`. */
