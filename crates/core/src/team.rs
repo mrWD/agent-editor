@@ -145,8 +145,10 @@ impl Manager {
         steps.extend(review.map(|agent| step("review", Some(agent))));
         steps.push(step("checks", None));
         let team = Team { text, steps, running: true, pause_after: false, rounds: 0, stopped: None };
+        // From here on this is the run that counts: one that is still coming to a stop says no more.
+        let run = self.next_team_run(task_id);
         self.save_team(task_id, &team);
-        self.drive(task_id);
+        self.drive(task_id, run);
         Ok(team)
     }
 
@@ -178,8 +180,10 @@ impl Manager {
         team.running = true;
         team.pause_after = false;
         team.stopped = None;
+        // From here on this is the run that counts: one that is still coming to a stop says no more.
+        let run = self.next_team_run(task_id);
         self.save_team(task_id, &team);
-        self.drive(task_id);
+        self.drive(task_id, run);
         Ok(team)
     }
 
@@ -201,8 +205,10 @@ impl Manager {
         }
         team.running = true;
         team.stopped = None;
+        // From here on this is the run that counts: one that is still coming to a stop says no more.
+        let run = self.next_team_run(task_id);
         self.save_team(task_id, &team);
-        self.drive(task_id);
+        self.drive(task_id, run);
         Ok(team)
     }
 
@@ -237,62 +243,106 @@ impl Manager {
         }
     }
 
+    /// Begins a new run of a task's team and gives its number. A run that was stopped is still there
+    /// until its agent has come to a stop; when the user goes on before that, the new run is the one
+    /// that counts.
+    fn next_team_run(&self, task_id: &str) -> u64 {
+        let mut runs = self.team_runs.lock().unwrap();
+        let run = runs.entry(task_id.to_string()).or_insert(0);
+        *run += 1;
+        *run
+    }
+
+    /// Whether a run of a task's team is still the one that counts.
+    fn is_team_run(&self, task_id: &str, run: u64) -> bool {
+        self.team_runs.lock().unwrap().get(task_id) == Some(&run)
+    }
+
+    /// Whether a run of a task's team should go on: it is the one that counts and nobody stopped the team.
+    fn team_run_goes_on(&self, task_id: &str, run: u64) -> bool {
+        self.is_team_run(task_id, run) && self.team(task_id).is_some_and(|team| team.running)
+    }
+
     /// Runs the steps that are waiting, one after another, until the team is
     /// done, pauses, asks the user or fails.
-    fn drive(self: &Arc<Self>, task_id: &str) {
+    fn drive(self: &Arc<Self>, task_id: &str, run: u64) {
         let (manager, task_id) = (self.clone(), task_id.to_string());
         tokio::spawn(async move {
             loop {
-                let Some(mut team) = manager.team(&task_id).filter(|team| team.running) else { return };
-                let Some(index) = team.steps.iter().position(|step| step.state == "waiting") else {
-                    team.running = false;
-                    manager.save_team(&task_id, &team);
-                    return;
+                let team = {
+                    // Held while the team is read and written, so a new run cannot begin in between.
+                    let runs = manager.team_runs.lock().unwrap();
+                    if runs.get(&task_id) != Some(&run) {
+                        return;
+                    }
+                    manager.step_begins(&task_id)
                 };
-                team.steps[index].state = "running".into();
-                team.steps[index].started_at = Some(now_ms());
-                team.steps[index].ended_at = None;
-                manager.save_team(&task_id, &team);
-
-                let outcome = manager.run_step(&task_id, &team, index).await;
-                // The user may have stopped or paused the team meanwhile: what is stored now is what counts.
-                let Some(mut team) = manager.team(&task_id) else { return };
-                let step = &mut team.steps[index];
-                step.ended_at = Some(now_ms());
-                let mut go_on = team.running;
-                match outcome {
-                    Ok((state, note)) => {
-                        if step.state == "running" {
-                            step.state = state.to_string();
-                        }
-                        step.note = note;
-                        if matches!(state, "asks" | "failed") {
-                            go_on = false;
-                        }
-                        if state == "failed" {
-                            team.stopped = Some("The checks failed. The team stops here.".into());
-                        }
-                    }
-                    Err(error) => {
-                        if step.state == "running" {
-                            step.state = "failed".into();
-                        }
-                        team.stopped.get_or_insert(format!("{error:#}"));
-                        go_on = false;
-                    }
+                let Some((team, index)) = team else { return };
+                let outcome = manager.run_step(&task_id, &team, index, run).await;
+                // The user may have stopped the team and gone on meanwhile: then the team is another run's
+                // now, and how this step ended is no news to it.
+                let runs = manager.team_runs.lock().unwrap();
+                if runs.get(&task_id) != Some(&run) {
+                    return;
                 }
-                if go_on && team.pause_after && team.steps.iter().any(|step| step.state == "waiting") {
-                    team.pause_after = false;
-                    team.stopped = Some("Paused after this step, as you asked.".into());
-                    go_on = false;
-                }
-                team.running = go_on;
-                manager.save_team(&task_id, &team);
-                if !go_on {
+                if !manager.step_ended(&task_id, index, outcome) {
                     return;
                 }
             }
         });
+    }
+
+    /// Marks the first waiting step as running. `None` when the team is not running or has no step left.
+    fn step_begins(&self, task_id: &str) -> Option<(Team, usize)> {
+        let mut team = self.team(task_id).filter(|team| team.running)?;
+        let Some(index) = team.steps.iter().position(|step| step.state == "waiting") else {
+            team.running = false;
+            self.save_team(task_id, &team);
+            return None;
+        };
+        team.steps[index].state = "running".into();
+        team.steps[index].started_at = Some(now_ms());
+        team.steps[index].ended_at = None;
+        self.save_team(task_id, &team);
+        Some((team, index))
+    }
+
+    /// Writes down how a step ended and says whether the team goes on to the next one.
+    fn step_ended(&self, task_id: &str, index: usize, outcome: Result<(&'static str, Option<String>)>) -> bool {
+        // The user may have stopped or paused the team meanwhile: what is stored now is what counts.
+        let Some(mut team) = self.team(task_id) else { return false };
+        let step = &mut team.steps[index];
+        step.ended_at = Some(now_ms());
+        let mut go_on = team.running;
+        match outcome {
+            Ok((state, note)) => {
+                if step.state == "running" {
+                    step.state = state.to_string();
+                }
+                step.note = note;
+                if matches!(state, "asks" | "failed") {
+                    go_on = false;
+                }
+                if state == "failed" {
+                    team.stopped = Some("The checks failed. The team stops here.".into());
+                }
+            }
+            Err(error) => {
+                if step.state == "running" {
+                    step.state = "failed".into();
+                }
+                team.stopped.get_or_insert(format!("{error:#}"));
+                go_on = false;
+            }
+        }
+        if go_on && team.pause_after && team.steps.iter().any(|step| step.state == "waiting") {
+            team.pause_after = false;
+            team.stopped = Some("Paused after this step, as you asked.".into());
+            go_on = false;
+        }
+        team.running = go_on;
+        self.save_team(task_id, &team);
+        go_on
     }
 
     /// Does one step and says how it ended: the new state and the note to hand on.
@@ -301,6 +351,7 @@ impl Manager {
         task_id: &str,
         team: &Team,
         index: usize,
+        run: u64,
     ) -> Result<(&'static str, Option<String>)> {
         let step = &team.steps[index];
         let note_of = |role: &str| team.steps.iter().find(|one| one.role == role).and_then(|one| one.note.clone());
@@ -315,7 +366,7 @@ impl Manager {
             }
             loop {
                 tokio::time::sleep(Duration::from_millis(150)).await;
-                if !self.team(task_id).is_some_and(|team| team.running) {
+                if !self.team_run_goes_on(task_id, run) {
                     bail!("The team was stopped while the checks ran");
                 }
                 let state = self.checks_state(task_id)?;
@@ -384,6 +435,19 @@ impl Manager {
             other => bail!("Unknown step: {other}"),
         };
 
+        // The step before this one may have been stopped a moment ago, and an agent takes a moment to
+        // come to a stop: its turn is over only when the task is idle, also when it was stopped while it
+        // asked the user something. Waiting here is what the user means by "go on": they should not be
+        // told to wait.
+        for _ in 0..200 {
+            if !matches!(self.state_of(task_id), TaskState::Running | TaskState::WaitingPermission) {
+                break;
+            }
+            if !self.team_run_goes_on(task_id, run) {
+                bail!("The team was stopped");
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         if step.role == "build" {
             let mut counted = self.team(task_id).ok_or_else(|| anyhow!("The team is gone"))?;
             counted.rounds += 1;
@@ -391,6 +455,7 @@ impl Manager {
         }
         // The step's agent takes the task. It is told the conversation so far, as with any hand-over.
         self.switch_agent(task_id, &agent_id).await?;
+        // Listening starts here, after the wait above: the end of a turn that was stopped is not this step's end.
         let mut events = self.subscribe();
         // What goes from one agent to the next is shown as a note, not as something the user said.
         let handed = match step.role.as_str() {
@@ -400,17 +465,6 @@ impl Manager {
             _ => note_of("build").unwrap_or_default(),
         };
         let shown = json!({ "type": "team_note", "role": step.role, "from": from, "to": to, "text": handed });
-        // The step before this one may have been stopped a moment ago, and an agent takes a moment to
-        // come to a stop. Waiting here is what the user means by "go on": they should not be told to wait.
-        for _ in 0..200 {
-            if self.state_of(task_id) != crate::tasks::TaskState::Running {
-                break;
-            }
-            if !self.team(task_id).is_some_and(|team| team.running) {
-                bail!("The team was stopped");
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
         self.prompt_as(task_id, prompt, Some(shown)).await?;
 
         // The step lasts until the agent's turn is over. A question to the user is part of the turn.
