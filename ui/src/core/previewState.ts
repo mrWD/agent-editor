@@ -71,3 +71,44 @@ let nonce = 0;
 export function askForParent(taskId: string) {
   setParentAsked({ taskId, nonce: ++nonce });
 }
+
+/**
+ * What the Preview view lends to the conversation while a page is on show:
+ * a way to take a picture of each frame at the moment a message is sent.
+ */
+export type Shooter = {
+  /** Why no screenshot can be taken right now, in words for the user. `null` when one can. */
+  refusal: () => string | null;
+  /** What a screenshot taken now would be of, and what it is not. */
+  words: () => string;
+  /** Takes a picture of each frame and puts them into the unsent message. */
+  take: () => Promise<void>;
+};
+
+const [shooters, setShooters] = createSignal<Record<string, Shooter>>({});
+
+/** The Preview of a task says that screenshots can be asked of it, or, with `null`, that it is gone. */
+export function setShooter(taskId: string, shooter: Shooter | null) {
+  setShooters((before) => {
+    const next = { ...before };
+    if (shooter) next[taskId] = shooter;
+    else delete next[taskId];
+    return next;
+  });
+}
+
+/** The way to a screenshot of the task's Preview, while that Preview is on screen and shows a page. */
+export function shooterOf(taskId: string): Shooter | null {
+  return shooters()[taskId] ?? null;
+}
+
+// "Send a screenshot too", per task. Off to begin with: a picture costs the agent's tokens, so it is the user's to ask for.
+const [shotToo, setShotToo] = createStore<Record<string, boolean>>({});
+
+export function sendsShot(taskId: string): boolean {
+  return shotToo[taskId] === true;
+}
+
+export function setSendsShot(taskId: string, on: boolean) {
+  setShotToo(taskId, on);
+}

@@ -155,8 +155,38 @@ export class Preview {
     return this.pageIn(name).locator(`[data-ae-preview] #${part}`);
   }
 
-  tool(name: 'Pick an element' | 'Draw on the page'): Locator {
+  tool(name: 'Pick an element' | 'Draw on the page' | 'Screenshot'): Locator {
     return this.view.getByRole('group', { name: 'Tools' }).getByRole('button', { name });
+  }
+
+  /** What is said next to the tools about the screenshot: what one is, why there is none, what the last one came to. */
+  get shotLine(): Locator {
+    return this.view.getByRole('status', { name: 'About the screenshot' });
+  }
+
+  /** "Send a screenshot too", next to Send. */
+  get shotToo(): Locator {
+    return this.app.conversation.getByRole('button', { name: 'Send a screenshot too' });
+  }
+
+  /** The pictures that wait above the message box. */
+  get waitingPictures(): Locator {
+    return this.app.conversation.getByRole('list', { name: 'Pictures that go with your message' });
+  }
+
+  /** One of "Web", "iOS simulator" and "Android emulator". */
+  kind(name: 'Web' | 'iOS simulator' | 'Android emulator'): Locator {
+    return this.view.getByRole('group', { name: 'What to preview on' }).getByRole('button', { name });
+  }
+
+  /** The list of simulators or emulators a device tab offers. */
+  devices(kind: 'iOS simulators' | 'Android emulators'): Locator {
+    return this.view.getByRole('list', { name: kind });
+  }
+
+  /** The device a device tab shows: its name, the picture of its screen and what is said about it. */
+  device(name: string, kind: 'simulator' | 'emulator'): Locator {
+    return this.view.getByRole('region', { name: `${name}, ${kind}`, exact: true });
   }
 
   /**

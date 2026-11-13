@@ -13,8 +13,14 @@
 //! WebSocket is therefore just bytes going both ways after its first answer,
 //! and a file of any size never sits in memory. Only an HTML page is read
 //! whole, because the script tag has to go inside it.
+//!
+//! A screenshot is taken through the relay too (see `shots`): for the moment
+//! of one screenshot the relay serves a page of its own that holds the app's
+//! page in a frame of exactly the asked width, the way the interface shows it.
 
+use crate::devices::Devices;
 use crate::tasks::Manager;
+use crate::tools::Tools;
 use anyhow::{Result, anyhow, bail};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -45,6 +51,15 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const HOP_HEADER: &str = "X-Ae-Preview";
 /// How long the choices of the Preview view may be as stored text.
 const MAX_SETTINGS: usize = 16 * 1024;
+/// Under this path the relay serves the pages screenshots are taken of, each under a word only the core knows.
+const SHOT_PREFIX: &str = "/__ae_preview/shot/";
+/// How long after the app's page has loaded its picture is taken: what the page draws
+/// a moment later, from an answer it waited for, should be in the picture.
+const SETTLE: Duration = Duration::from_millis(1500);
+/// The smallest picture there is: what the relay answers with when the wait above is over.
+const TINY_GIF: &[u8] = b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x01D\x00;";
+/// A page of the app is at most this long as an address.
+const MAX_PATH: usize = 2048;
 
 /// The address of the app a relay passes requests to. Always on this computer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +129,82 @@ impl Target {
     }
 }
 
+/// Reads an address with the page it names: `localhost:3000/login?next=1` is the app
+/// `localhost:3000` and its page `/login?next=1`. The page of a bare address is `/`.
+pub fn split_address(text: &str) -> Result<(Target, String)> {
+    let target = Target::parse(text)?;
+    let text = text.trim();
+    let rest = if text.to_ascii_lowercase().starts_with("http://") { &text[7..] } else { text };
+    let after = rest.find(['/', '?', '#']).map_or("", |at| &rest[at..]);
+    let path = if after.starts_with('/') { after.to_string() } else { format!("/{after}") };
+    Ok((target, page_path(&path)?))
+}
+
+/// Checks the page of an app as an address inside it: it starts with one slash and is plain text.
+/// Anything else could name another site, or carry more than an address into a page or a command.
+pub fn page_path(path: &str) -> Result<String> {
+    let plain = path.chars().all(|c| !c.is_control() && !c.is_whitespace());
+    let inside = path.starts_with('/') && !path[1..].starts_with(['/', '\\']);
+    if !plain || !inside || path.len() > MAX_PATH || path.starts_with(OWN_PREFIX) {
+        bail!("\"{}\" is not a page of the app.", path.chars().take(80).collect::<String>());
+    }
+    Ok(path.to_string())
+}
+
+/// A page the relay serves for one screenshot: the app's page in a frame of one size.
+#[derive(Debug, Clone)]
+struct ShotPage {
+    width: u32,
+    height: u32,
+    path: String,
+    /// How high the browser's window was inside, as the page said once the app's page had loaded.
+    /// `None` until then: a picture taken before that shows a page that was still loading.
+    window_height: Option<u32>,
+}
+
+impl ShotPage {
+    /// The page itself. The frame is as wide as the screenshot, so the app's page is laid out at
+    /// that width whatever the browser's own window does (a window of Chrome is never narrower
+    /// than 500 pixels, so a phone's width cannot be asked of the window). When the app's page
+    /// has loaded, one more picture is asked of the relay, which answers after `SETTLE`: the
+    /// browser takes its screenshot when everything has loaded, so this is what makes it wait.
+    /// The asking also says how high the window is inside, so the core knows the frame fitted.
+    fn html(&self, word: &str) -> String {
+        let src = self.path.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;");
+        format!(
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>Screenshot</title>\
+             <style>html,body{{margin:0;overflow:hidden;background:#fff}}\
+             iframe{{position:absolute;left:0;top:0;width:{}px;height:{}px;border:0}}</style></head>\
+             <body><iframe id=\"page\" src=\"{src}\" sandbox=\"allow-scripts allow-same-origin allow-forms\"></iframe>\
+             <script>document.getElementById('page').addEventListener('load',function(){{\
+             var wait=new Image();wait.src='{SHOT_PREFIX}{word}/settle?h='+window.innerHeight;}});</script></body></html>",
+            self.width, self.height
+        )
+    }
+}
+
+/// The address of a page made for one screenshot. The relay stops serving it when this is dropped.
+pub struct ShotTicket {
+    relay: Arc<Relay>,
+    word: String,
+    /// Where a browser finds the page.
+    pub url: String,
+}
+
+impl ShotTicket {
+    /// How high the browser's window was inside when the app's page had loaded, in the page's pixels.
+    /// `None` when the app's page never finished loading.
+    pub fn window_height(&self) -> Option<u32> {
+        self.relay.shots.lock().unwrap().get(&self.word).and_then(|page| page.window_height)
+    }
+}
+
+impl Drop for ShotTicket {
+    fn drop(&mut self) {
+        self.relay.shots.lock().unwrap().remove(&self.word);
+    }
+}
+
 /// What the interface is told about a relay.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Opened {
@@ -130,6 +221,8 @@ struct Relay {
     target: Mutex<Target>,
     /// The addresses of the interfaces that asked for this relay. The page's script talks to these and to nobody else.
     parents: Mutex<Vec<String>>,
+    /// The pages being served for screenshots right now, by the word in their address.
+    shots: Mutex<HashMap<String, ShotPage>>,
     stop: watch::Sender<bool>,
     accepting: Mutex<Option<JoinHandle<()>>>,
 }
@@ -146,15 +239,47 @@ impl Relay {
     }
 }
 
-/// Every relay the core runs, by task.
-#[derive(Default)]
+/// Everything the Preview of every task runs: the relays, by task, and the devices the device tabs show.
 pub struct Previews {
     relays: Mutex<HashMap<String, Arc<Relay>>>,
+    /// Where the browser that takes screenshots is, and the tools of the device tabs.
+    tools: Tools,
+    /// The simulators and emulators that are shown.
+    pub devices: Arc<Devices>,
+}
+
+impl Default for Previews {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Previews {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_tools(Tools::from_env())
+    }
+
+    /// Previews that run the given programs and no others. Tests come in here with stand-ins.
+    pub fn with_tools(tools: Tools) -> Self {
+        Self { relays: Mutex::default(), devices: Arc::new(Devices::new(tools.clone())), tools }
+    }
+
+    pub fn tools(&self) -> &Tools {
+        &self.tools
+    }
+
+    /// Makes the relay of a task serve a page for one screenshot: the app's page at `path`, in a
+    /// frame `width` by `height`. The task's app must be on show: there is no relay otherwise.
+    pub fn shot_page(&self, task_id: &str, width: u32, height: u32, path: &str) -> Result<ShotTicket> {
+        let path = page_path(path)?;
+        let relay = self.relays.lock().unwrap().get(task_id).cloned();
+        let relay = relay
+            .ok_or_else(|| anyhow!("Show the app in the Preview first: there is no page to take a picture of."))?;
+        // Nobody but the core knows the word, so no other page can make the relay serve a frame of its choosing.
+        let word = uuid::Uuid::new_v4().simple().to_string();
+        relay.shots.lock().unwrap().insert(word.clone(), ShotPage { width, height, path, window_height: None });
+        let url = format!("http://127.0.0.1:{}{SHOT_PREFIX}{word}", relay.port);
+        Ok(ShotTicket { relay, word, url })
     }
 
     /// Starts the relay of a task, or points the one it has at another address.
@@ -181,6 +306,7 @@ impl Previews {
                     port: listener.local_addr()?.port(),
                     target: Mutex::new(target.clone()),
                     parents: Mutex::new(Vec::new()),
+                    shots: Mutex::default(),
                     stop,
                     accepting: Mutex::new(None),
                 });
@@ -214,20 +340,22 @@ impl Previews {
         self.relays.lock().unwrap().values().any(|relay| relay.port == port)
     }
 
-    /// Stops the relay of a task. When this returns, nothing listens on its port.
+    /// Stops the relay of a task and lets go of the device it shows. When this returns, nothing listens on its port.
     pub async fn close(&self, task_id: &str) {
         let relay = self.relays.lock().unwrap().remove(task_id);
         if let Some(relay) = relay {
             stop(relay).await;
         }
+        self.devices.close(task_id).await;
     }
 
-    /// Stops every relay. Called when the core shuts down.
+    /// Stops every relay and lets go of every device. Called when the core shuts down.
     pub async fn close_all(&self) {
         let all: Vec<Arc<Relay>> = self.relays.lock().unwrap().drain().map(|(_, relay)| relay).collect();
         for relay in all {
             stop(relay).await;
         }
+        self.devices.close_all().await;
     }
 }
 
@@ -495,12 +623,32 @@ async fn serve(relay: &Relay, client: TcpStream) -> io::Result<()> {
         .await;
     }
     if path.starts_with(OWN_PREFIX) {
-        let (path_only, _) = path.split_once('?').unwrap_or((&path, ""));
-        return if path_only == SCRIPT_PATH {
-            answer(&mut client_write, "200 OK", "text/javascript; charset=utf-8", relay.script().as_bytes()).await
-        } else {
-            answer(&mut client_write, "404 Not Found", "text/plain", b"The preview has no such file.").await
-        };
+        let (path_only, query) = path.split_once('?').unwrap_or((&path, ""));
+        if path_only == SCRIPT_PATH {
+            let script = relay.script();
+            return answer(&mut client_write, "200 OK", "text/javascript; charset=utf-8", script.as_bytes()).await;
+        }
+        // A page made for one screenshot, and the wait it asks for. Only a word the core handed out finds either.
+        if let Some(rest) = path_only.strip_prefix(SHOT_PREFIX) {
+            let (word, part) = rest.split_once('/').unwrap_or((rest, ""));
+            let page = relay.shots.lock().unwrap().get(word).cloned();
+            match (page, part) {
+                (Some(page), "") => {
+                    let html = page.html(word);
+                    return answer(&mut client_write, "200 OK", "text/html; charset=utf-8", html.as_bytes()).await;
+                }
+                (Some(_), "settle") => {
+                    let height = query.strip_prefix("h=").and_then(|digits| digits.parse::<u32>().ok());
+                    if let Some(page) = relay.shots.lock().unwrap().get_mut(word) {
+                        page.window_height = height.or(Some(0));
+                    }
+                    tokio::time::sleep(SETTLE).await;
+                    return answer(&mut client_write, "200 OK", "image/gif", TINY_GIF).await;
+                }
+                _ => {}
+            }
+        }
+        return answer(&mut client_write, "404 Not Found", "text/plain", b"The preview has no such file.").await;
     }
     if request.has(HOP_HEADER) {
         let page = problem_page("loop", "The preview points at itself", "Type the address of the running app.");
@@ -999,6 +1147,41 @@ mod tests {
         assert_eq!(read_body(&mut reader, Framing::Chunked).await.unwrap(), b"Hello, world");
         let mut cut = BufReader::new(&b"5\r\nHel"[..]);
         assert!(read_body(&mut cut, Framing::Chunked).await.is_err(), "a body that stops half way is an error");
+    }
+
+    #[test]
+    fn an_address_is_split_into_the_app_and_its_page() {
+        let split = |text: &str| split_address(text).map(|(target, path)| (target.authority(), path));
+        assert_eq!(split("localhost:3000").unwrap(), ("localhost:3000".into(), "/".into()));
+        assert_eq!(
+            split(" http://127.0.0.1:5173/login?next=/cart&x=1#top ").unwrap(),
+            ("127.0.0.1:5173".into(), "/login?next=/cart&x=1#top".into())
+        );
+        assert_eq!(split("localhost:3000?tab=2").unwrap(), ("localhost:3000".into(), "/?tab=2".into()));
+        assert!(split("example.com/login").is_err(), "the app must be on this computer");
+        assert!(split("localhost:3000/a b").is_err(), "an address has no spaces");
+    }
+
+    #[test]
+    fn only_a_page_of_the_app_is_a_page() {
+        assert_eq!(page_path("/login?a=1&b=2#x").unwrap(), "/login?a=1&b=2#x");
+        for other in
+            ["", "login", "//example.com/", "/\\example.com", "javascript:alert(1)", "/a\nb", "/__ae_preview/page.js"]
+        {
+            assert!(page_path(other).is_err(), "{other:?} must be refused");
+        }
+        assert!(page_path(&format!("/{}", "x".repeat(MAX_PATH))).is_err());
+    }
+
+    #[test]
+    fn the_page_for_a_screenshot_frames_the_apps_page_at_the_asked_size() {
+        let page = ShotPage { width: 320, height: 700, path: "/login?a=1&b=\"2\"<i>".into(), window_height: None };
+        let html = page.html("w0rd");
+        assert!(html.contains("width:320px;height:700px"), "{html}");
+        // What the address holds stays inside the address.
+        assert!(html.contains("src=\"/login?a=1&amp;b=&quot;2&quot;&lt;i&gt;\""), "{html}");
+        assert!(html.contains("wait.src='/__ae_preview/shot/w0rd/settle?h='+window.innerHeight"), "{html}");
+        assert!(!html.contains("allow-top-navigation") && !html.contains("allow-modals"), "{html}");
     }
 
     #[test]

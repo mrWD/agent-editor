@@ -18,7 +18,7 @@ import {
 } from '../core/store';
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
 import { teamOf, watchTeam } from '../core/team';
-import { clearPointed, pointedText } from '../core/previewState';
+import { clearPointed, pointedText, sendsShot, setSendsShot, shooterOf } from '../core/previewState';
 import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
 import { PlanAbout, planAboutText, PlanProposals, showBlock } from '../screens/Plan';
@@ -237,11 +237,37 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   // A sleeping task has no agent to ask; the core says so if the one that wakes takes none.
   const takesPictures = () => props.task.info.config?.images !== false;
 
-  const send = (instead?: string) => {
+  // "Send a screenshot too": there while the Preview shows a page, and on when the user said so and one can be taken.
+  const shooter = () => shooterOf(taskId());
+  const shotToo = () => sendsShot(taskId()) && shooter()?.refusal() === null;
+  const [shooting, setShooting] = createSignal(false);
+
+  const send = (instead?: string, shotTaken = false) => {
     const typed = (instead ?? draft()).trim();
     // A message of pictures alone needs no words.
     const pictures = instead === undefined ? pictureCount(taskId()) : 0;
-    if ((!typed && pictures === 0) || !canSend() || starting()) return;
+    if ((!typed && pictures === 0) || !canSend() || starting() || shooting()) return;
+    // The page is photographed first, as it is at this moment; the message goes once the pictures are in it.
+    const camera = instead === undefined && !shotTaken && shotToo() ? shooter() : null;
+    if (camera) {
+      const id = taskId();
+      setShooting(true);
+      setProblem(null);
+      void camera
+        .take()
+        .then(() => true)
+        .catch((error: unknown) => {
+          // Nothing was sent: the words are still in the box, to send again or without the screenshot.
+          const why = error instanceof Error ? error.message : String(error);
+          setProblem(`${why} Your message was not sent.`);
+          return false;
+        })
+        .then((taken) => {
+          setShooting(false);
+          if (taken && taskId() === id) send(undefined, true);
+        });
+      return;
+    }
     const quote = work().quote;
     // Code picked in the editor goes first, so the agent knows what the message is about.
     const said = quote
@@ -730,6 +756,11 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           <Show when={work().unsaved > 0 && canSend()}>
             <span class="fine">Your unsaved edits are saved when you send, so {name()} sees them.</span>
           </Show>
+          <Show when={shotToo()}>
+            <span class="fine" role="status" aria-label="About the screenshot that goes along">
+              {shooting() ? 'Taking the screenshot, then sending.' : `Goes with your message: ${shooter()!.words()}`}
+            </span>
+          </Show>
           <div class="composer-row">
             <Show when={sessionState() === 'running' || sessionState() === 'waiting_permission'}>
               <button type="button" class="btn ghost" onClick={() => act(() => cancelTurn(props.task.info.id))}>
@@ -747,12 +778,42 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               )}
             </Show>
             <AttachPictures taskId={taskId()} allowed={takesPictures()} agentName={name()} />
+            <Show when={shooter()}>
+              {(camera) => (
+                <button
+                  type="button"
+                  class="btn ghost shot-too"
+                  aria-pressed={shotToo()}
+                  disabled={camera().refusal() !== null}
+                  title={camera().refusal() ?? camera().words()}
+                  onClick={() => setSendsShot(taskId(), !sendsShot(taskId()))}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="2" y="3" width="12" height="10" rx="2" />
+                    <path d="M2 11l3.5-3.5L8 10l2.5-2.5L14 11" />
+                  </svg>
+                  Send a screenshot too
+                </button>
+              )}
+            </Show>
             <span class="grow" />
             <button
               type="button"
               class="btn strong"
               onClick={() => send()}
-              disabled={!canSend() || starting() || (draft().trim() === '' && pictureCount(taskId()) === 0)}
+              disabled={
+                !canSend() || starting() || shooting() || (draft().trim() === '' && pictureCount(taskId()) === 0)
+              }
             >
               Send
             </button>

@@ -419,3 +419,144 @@ export function themeNote(asked: Theme, ready: boolean, report: ThemeReport | nu
   }
   return null;
 }
+
+// ---------- screenshots ----------
+
+/** The highest page a screenshot can be asked of; the core says the same. */
+export const MAX_SHOT_HEIGHT = 4320;
+
+/** "screenshot, phone 320.png": what a picture of a frame is called in a message. */
+export function shotName(width: number): string {
+  return `screenshot, ${frameLabel(width)}.png`;
+}
+
+/** "phone 320", "phone 320 and tablet 768", "phone 320, tablet 768 and laptop 1024". */
+export function listed(names: string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Which frames get a picture when the message has room for `room` more:
+ * the narrowest first, which is the order they stand in.
+ */
+export function shotPlan(widths: number[], room: number): { take: number[]; left: number[] } {
+  const ascending = [...widths].sort((a, b) => a - b);
+  const fits = Math.max(0, room);
+  return { take: ascending.slice(0, fits), left: ascending.slice(fits) };
+}
+
+/**
+ * What a screenshot is, said wherever one is offered. It is not the frames as they stand:
+ * the core loads the page anew in a browser that starts empty.
+ */
+export const SHOT_IS_FRESH = 'It is the page loaded anew: not signed in, and without what you typed into the frames.';
+
+/** Why no screenshot can be taken, in words for the user. `null` when one can. */
+export function shotRefusal(known: {
+  /** What the core said about the browser; `null` while it has not said. */
+  tool: { browser: string | null; needs: string | null } | null;
+  takesPictures: boolean;
+  agentName: string;
+}): string | null {
+  // The same words the button for any picture has.
+  if (!known.takesPictures) return `${known.agentName} does not take pictures`;
+  if (!known.tool) return 'Looking for a browser to take screenshots with.';
+  if (!known.tool.browser) return known.tool.needs ?? 'A screenshot needs Chrome, Chromium or Edge on this computer.';
+  return null;
+}
+
+/** What is said about the frames a screenshot will be of, before it is taken. */
+export function shotWords(widths: number[], room: number, most: number): string {
+  const { take, left } = shotPlan(widths, room);
+  if (take.length === 0)
+    return `A message takes ${most} pictures at most. Leave one out to make room for a screenshot.`;
+  const of = listed(take.map(frameLabel));
+  if (left.length === 0) return `A screenshot of ${of}. ${SHOT_IS_FRESH}`;
+  return `A screenshot of ${of} only: a message takes ${most} pictures at most. ${SHOT_IS_FRESH}`;
+}
+
+/** What is said once the pictures are in the message. `loading` are the frames whose page had not finished loading. */
+export function shotDone(taken: number[], left: number[], loading: number[], browser: string, most: number): string {
+  const many = taken.length === 1 ? 'A screenshot is' : `${taken.length} screenshots are`;
+  const parts = [`${many} in your message: ${listed(taken.map(frameLabel))}, loaded anew in ${browser}.`];
+  if (left.length > 0) {
+    parts.push(`${listed(left.map(frameLabel))} did not fit: a message takes ${most} pictures at most.`);
+  }
+  if (loading.length > 0) {
+    parts.push(`The page was still loading on ${listed(loading.map(frameLabel))} when its picture was taken.`);
+  }
+  return parts.join(' ');
+}
+
+/** A picture as the core sends it. */
+export type Shot = { width: number; data: string; stillLoading: boolean };
+
+/** Reads the pictures the core took. Anything that is not a picture of a width is left out. */
+export function readShots(raw: unknown): Shot[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((one: unknown) => {
+    const shot = one as Record<string, unknown> | null;
+    if (!shot || typeof shot.width !== 'number' || typeof shot.data !== 'string' || !shot.data) return [];
+    return [{ width: shot.width, data: shot.data, stillLoading: shot.stillLoading === true }];
+  });
+}
+
+// ---------- the iOS simulator and the Android emulator ----------
+
+export type DeviceKind = 'ios' | 'android';
+
+/** A simulator or an emulator as the core lists it. */
+export type Device = {
+  /** What the system's own tool calls it. */
+  id: string;
+  name: string;
+  /** "iOS 27.0", "Android 15". */
+  system: string;
+  state: 'running' | 'off' | 'starting';
+};
+
+/** What the core found: the devices, or one sentence that says what is needed to have any. */
+export type Devices = { needs: string | null; devices: Device[] };
+
+export function readDevices(raw: unknown): Devices {
+  const data = (raw ?? {}) as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === 'string' ? value : '');
+  const devices = (Array.isArray(data.devices) ? data.devices : []).flatMap((one: unknown) => {
+    const device = (one ?? {}) as Record<string, unknown>;
+    const id = text(device.id);
+    if (!id) return [];
+    const state = device.state === 'running' || device.state === 'off' ? device.state : 'starting';
+    return [{ id, name: text(device.name) || id, system: text(device.system), state } satisfies Device];
+  });
+  const needs = text(data.needs) || null;
+  // Nothing listed and nothing said would leave the tab empty: say at least that.
+  return { needs: needs ?? (devices.length === 0 ? 'No device was found.' : null), devices };
+}
+
+/** The words of each kind of device, so the two tabs read alike. */
+export function deviceWords(kind: DeviceKind): {
+  /** "simulator" or "emulator". */
+  one: string;
+  /** "iOS simulators" or "Android emulators". */
+  many: string;
+  /** Where one taps and types. */
+  window: string;
+} {
+  return kind === 'ios'
+    ? { one: 'simulator', many: 'iOS simulators', window: 'the Simulator window' }
+    : { one: 'emulator', many: 'Android emulators', window: "the emulator's own window" };
+}
+
+/** What the button of a listed device says, and whether it can be pressed. */
+export function deviceButton(device: Device): { label: string; can: boolean } {
+  if (device.state === 'running') return { label: 'Show', can: true };
+  if (device.state === 'off') return { label: 'Start and show', can: true };
+  return { label: 'Starting', can: false };
+}
+
+/** "iOS 27.0 · running": what stands next to a listed device's name. */
+export function deviceLine(device: Device): string {
+  const state = device.state === 'running' ? 'running' : device.state === 'off' ? 'off' : 'starting';
+  return device.system ? `${device.system} · ${state}` : state;
+}

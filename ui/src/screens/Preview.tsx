@@ -13,7 +13,10 @@ import {
 } from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
 import { Icon, clock } from '../components/bits';
+import { addPictures, pictureCount } from '../components/Pictures';
+import { DeviceView } from '../components/PreviewDevice';
 import { core } from '../core/client';
+import { MAX_PICTURES } from '../core/pictures';
 import {
   BEZEL,
   cornerRadius,
@@ -23,12 +26,19 @@ import {
   joinAddress,
   layoutFrames,
   markLabel,
+  MAX_SHOT_HEIGHT,
   parseWidth,
   PRESET_WIDTHS,
   readElement,
   readSettings,
+  readShots,
   readThemeReport,
   scaleLabel,
+  shotDone,
+  shotName,
+  shotPlan,
+  shotRefusal,
+  shotWords,
   splitAddress,
   themeNote,
   themeOf,
@@ -39,8 +49,8 @@ import {
   type Theme,
   type ThemeReport,
 } from '../core/preview';
-import { addDrawing, parentAsked, pointedOf, setLive, setPicked } from '../core/previewState';
-import { runStart, runState, type RunState, type Task } from '../core/store';
+import { addDrawing, parentAsked, pointedOf, setLive, setPicked, setShooter } from '../core/previewState';
+import { agentOf, runStart, runState, type RunState, type Task } from '../core/store';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -66,6 +76,8 @@ type FrameState = {
   hot: boolean;
   /** The relay's own page is shown instead of the app, and why. */
   problem: string | null;
+  /** The page of the app the frame is on, as the page's script says. `null` until it has. */
+  path: string | null;
   report: ThemeReport | null;
   /** Whether the picked element was found in this frame. `null` before the page has said. */
   found: boolean | null;
@@ -78,6 +90,7 @@ const freshFrame = (): FrameState => ({
   answers: 0,
   hot: false,
   problem: null,
+  path: null,
   report: null,
   found: null,
 });
@@ -149,6 +162,22 @@ const PickIcon = () => (
     <path d="M3 3l4.2 10 1.5-4.3L13 7.2 3 3z" />
   </svg>
 );
+const ShotIcon = () => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="2" y="4" width="12" height="9" rx="2" />
+    <circle cx="8" cy="8.5" r="2.2" />
+  </svg>
+);
 const DrawIcon = () => (
   <svg
     width="14"
@@ -189,6 +218,13 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   const [widthProblem, setWidthProblem] = createSignal<string | null>(null);
   const [starting, setStarting] = createSignal<string | null>(null);
   const [reloadedAt, setReloadedAt] = createSignal<number | null>(null);
+  /** What the core said about the browser screenshots are taken with. `null` until it has. */
+  const [shotTool, setShotTool] = createSignal<{ browser: string | null; needs: string | null } | null>(null);
+  const [shooting, setShooting] = createSignal(false);
+  /** What the last screenshot came to, said next to the tools for as long as nothing has changed since (`when`). */
+  const [shotSaid, setShotSaid] = createSignal<{ text: string; failed: boolean; when: string } | null>(null);
+  /** Goes up with each press of Reload on a device tab: the address is opened on the device again. */
+  const [deviceReloads, setDeviceReloads] = createSignal(0);
   const [stage, setStage] = createSignal({ width: 0, height: 0 });
   /** Counts the times the core was reached anew, so the relay is asked for again after a restart. */
   const [links, setLinks] = createSignal(0);
@@ -364,7 +400,11 @@ export function PreviewView(props: { task: Task }): JSX.Element {
         setFrames(key, (before) => ({ answers: (before?.answers ?? 0) + 1, silent: false }));
         break;
       case 'info':
-        setFrames(key, { hot: data.hot === true, problem: typeof data.problem === 'string' ? data.problem : null });
+        setFrames(key, {
+          hot: data.hot === true,
+          problem: typeof data.problem === 'string' ? data.problem : null,
+          path: typeof data.path === 'string' && data.path.startsWith('/') ? data.path : null,
+        });
         break;
       case 'theme':
         setFrames(key, 'report', readThemeReport(data));
@@ -411,6 +451,76 @@ export function PreviewView(props: { task: Task }): JSX.Element {
     };
   };
 
+  // ----- screenshots -----
+
+  const loadShotTool = () => {
+    core
+      .request<{ browser: string | null; needs: string | null }>('shots.state', { taskId })
+      .then(setShotTool)
+      // An older core that knows no screenshots: the tool stays off, with the reason.
+      .catch(() => setShotTool({ browser: null, needs: null }));
+  };
+  const shotRefused = () =>
+    shotRefusal({
+      tool: shotTool(),
+      takesPictures: props.task.info.config?.images !== false,
+      agentName: agentOf(props.task)?.name ?? props.task.info.agentId,
+    });
+  /** How many more pictures the unsent message takes. */
+  const shotRoom = () => MAX_PICTURES - pictureCount(taskId);
+  /** The frames on show and the pictures that wait: when either changes, what was said about the last screenshot is old. */
+  const shotMoment = () => `${shown().join(' ')}|${pictureCount(taskId)}`;
+  /** What the last screenshot came to, while that still describes what is on screen. */
+  const lastShot = () => (shotSaid()?.when === shotMoment() ? shotSaid() : null);
+
+  /**
+   * Has the core take a picture of the page at each width shown and puts the pictures into the unsent
+   * message. The core loads the page anew for it: each frame's own page, in each frame's own theme.
+   */
+  const takeShots = async (): Promise<string> => {
+    const plan = shotPlan(shown(), shotRoom());
+    const typed = parts()?.path ?? '/';
+    if (plan.take.length === 0) throw new Error(shotWords(shown(), shotRoom(), MAX_PICTURES));
+    const answer = await core.request<{ browser: string; shots: unknown }>('shots.take', {
+      taskId,
+      shots: plan.take.map((width) => ({
+        width,
+        height: Math.min(pageHeight(), MAX_SHOT_HEIGHT),
+        theme: themeOf(settings, width),
+        // A frame may have gone on to another page of the app than the one that was typed.
+        path: frames[String(width)]?.path ?? typed,
+      })),
+    });
+    const shots = readShots(answer.shots);
+    const files = shots.map((shot) => {
+      const bytes = Uint8Array.from(atob(shot.data), (letter) => letter.charCodeAt(0));
+      return new File([bytes], shotName(shot.width), { type: 'image/png' });
+    });
+    await addPictures(taskId, files);
+    return shotDone(
+      shots.map((shot) => shot.width),
+      plan.left,
+      shots.filter((shot) => shot.stillLoading).map((shot) => shot.width),
+      answer.browser,
+      MAX_PICTURES,
+    );
+  };
+
+  /** The Screenshot tool: the pictures wait above the message box, where each can be left out. */
+  const shoot = async () => {
+    if (shooting() || shotRefused() !== null) return;
+    setShooting(true);
+    setShotSaid(null);
+    try {
+      const text = await takeShots();
+      setShotSaid({ text, failed: false, when: shotMoment() });
+    } catch (error) {
+      setShotSaid({ text: message(error), failed: true, when: shotMoment() });
+    } finally {
+      setShooting(false);
+    }
+  };
+
   // ----- starting the project -----
 
   const start = async (service: string) => {
@@ -437,10 +547,12 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       await loadRun();
       setLoaded(true);
     })();
+    loadShotTool();
 
     const stopEvents = core.onEvent((event) => {
       if (event.event === 'link.open') {
         void loadRun();
+        loadShotTool();
         setLinks((n) => n + 1);
         return;
       }
@@ -477,6 +589,7 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       window.removeEventListener('keydown', onKey);
       observer.disconnect();
       setLive(taskId, null);
+      setShooter(taskId, null);
     });
   });
 
@@ -500,11 +613,83 @@ export function PreviewView(props: { task: Task }): JSX.Element {
     setLive(taskId, showing ? (allHot ? 'itself' : 'reloaded') : null);
   });
 
+  // While a page is on show, the conversation can ask for its picture at the moment a message is sent.
+  createEffect(() => {
+    const showing = kind() === 'web' && pageUrl() !== null && shown().length > 0;
+    setShooter(
+      taskId,
+      showing
+        ? {
+            refusal: shotRefused,
+            words: () => shotWords(shown(), shotRoom(), MAX_PICTURES),
+            take: async () => {
+              await takeShots();
+            },
+          }
+        : null,
+    );
+  });
+
+  /** What is said about the screenshot next to its tool: why there is none, what the last one came to, or what one is. */
+  const shotLine = () => {
+    if (shotRefused()) return shotRefused()!;
+    if (shooting()) return 'Loading the page anew at each width to take its picture.';
+    return lastShot()?.text ?? shotWords(shown(), shotRoom(), MAX_PICTURES);
+  };
+
   const hint = () => {
     if (tool() === 'pick') return 'Click anything in the page. The pick is marked on every width.';
     if (tool() === 'draw') return 'Draw on the page of one width. The drawing goes along with your next message.';
     return 'Pick an element or draw on the page to talk about it.';
   };
+
+  /** What stands in the place of the page when no app is running: how to start one. */
+  const NothingRuns = (): JSX.Element => (
+    <div class="center-note">
+      <Show
+        when={waiting()}
+        fallback={
+          <>
+            <h2>Nothing is running</h2>
+            <Show
+              when={commands().length > 0}
+              fallback={
+                <p>
+                  This project has no dev script in package.json. Start the app in the terminal, then type its address
+                  above.
+                </p>
+              }
+            >
+              <p>Start the project here, or type the address of an app that runs already.</p>
+              <div class="actions">
+                <For each={commands().slice(0, 3)}>
+                  {(service, index) => (
+                    <button
+                      type="button"
+                      class="btn tall"
+                      classList={{ primary: index() === 0 }}
+                      title={service.runs}
+                      disabled={starting() !== null}
+                      onClick={() => void start(service.name)}
+                    >
+                      {starting() === service.name ? `Starting ${service.name}` : `Start ${service.name}`}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </>
+        }
+      >
+        {(service) => (
+          <>
+            <h2>{service().name} is starting</h2>
+            <p>The page shows as soon as it says where it serves. Its output is in the Run tab.</p>
+          </>
+        )}
+      </Show>
+    </div>
+  );
 
   function Frame(frameProps: { width: number }): JSX.Element {
     // eslint-disable-next-line solid/reactivity -- a frame is made anew for another width, so the width never changes under it
@@ -735,6 +920,11 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           <Show when={pageUrl() && shown().length > 0}>
             <span class="fine">{scaleLabel(layout().scale)}</span>
           </Show>
+        </Show>
+        <Show when={loaded()}>
+          <Show when={kind() !== 'web'}>
+            <span class="grow" />
+          </Show>
           <span class="preview-address">
             <input
               class="mono"
@@ -745,15 +935,30 @@ export function PreviewView(props: { task: Task }): JSX.Element {
               value={address() ?? ''}
               onChange={(event) => commitAddress(event.currentTarget.value)}
             />
-            <button
-              type="button"
-              aria-label="Reload the preview"
-              title="Load every frame anew"
-              disabled={!pageUrl()}
-              onClick={() => reloadAll(false)}
+            <Show
+              when={kind() === 'web'}
+              fallback={
+                <button
+                  type="button"
+                  aria-label="Open the address again"
+                  title="Open the address on the device again"
+                  disabled={!address()}
+                  onClick={() => setDeviceReloads((n) => n + 1)}
+                >
+                  <ReloadIcon />
+                </button>
+              }
             >
-              <ReloadIcon />
-            </button>
+              <button
+                type="button"
+                aria-label="Reload the preview"
+                title="Load every frame anew"
+                disabled={!pageUrl()}
+                onClick={() => reloadAll(false)}
+              >
+                <ReloadIcon />
+              </button>
+            </Show>
           </span>
         </Show>
       </div>
@@ -778,8 +983,28 @@ export function PreviewView(props: { task: Task }): JSX.Element {
               <DrawIcon />
               Draw on the page
             </button>
+            <button
+              type="button"
+              disabled={
+                !pageUrl() || shotRefused() !== null || shooting() || shotPlan(shown(), shotRoom()).take.length === 0
+              }
+              aria-busy={shooting()}
+              title={shotRefused() ?? shotWords(shown(), shotRoom(), MAX_PICTURES)}
+              onClick={() => void shoot()}
+            >
+              <ShotIcon />
+              {shooting() ? 'Taking a screenshot' : 'Screenshot'}
+            </button>
           </div>
           <span class="fine grow">{hint()}</span>
+          <span
+            class="fine preview-shot-line"
+            classList={{ failed: lastShot()?.failed === true && !shooting() && !shotRefused() }}
+            role="status"
+            aria-label="About the screenshot"
+          >
+            {shotLine()}
+          </span>
         </div>
       </Show>
       <Show when={widthProblem() ?? problem()}>
@@ -790,66 +1015,25 @@ export function PreviewView(props: { task: Task }): JSX.Element {
 
       <div class="preview-stage" ref={stageEl}>
         <Switch>
-          <Match when={kind() === 'ios'}>
-            <div class="center-note">
-              <h2>The iOS simulator is not available yet</h2>
-              <p>Only web pages can be previewed for now.</p>
-            </div>
-          </Match>
-          <Match when={kind() === 'android'}>
-            <div class="center-note">
-              <h2>The Android emulator is not available yet</h2>
-              <p>Only web pages can be previewed for now.</p>
-            </div>
-          </Match>
           <Match when={!loaded()}>
             <p class="bottom-note">Reading the preview of this task</p>
           </Match>
+          <Match when={kind() !== 'web'}>
+            <Show when={kind()} keyed>
+              {(device) => (
+                <DeviceView
+                  taskId={taskId}
+                  kind={device === 'ios' ? 'ios' : 'android'}
+                  address={address()}
+                  reloads={deviceReloads()}
+                >
+                  <NothingRuns />
+                </DeviceView>
+              )}
+            </Show>
+          </Match>
           <Match when={!address()}>
-            <div class="center-note">
-              <Show
-                when={waiting()}
-                fallback={
-                  <>
-                    <h2>Nothing is running</h2>
-                    <Show
-                      when={commands().length > 0}
-                      fallback={
-                        <p>
-                          This project has no dev script in package.json. Start the app in the terminal, then type its
-                          address above.
-                        </p>
-                      }
-                    >
-                      <p>Start the project here, or type the address of an app that runs already.</p>
-                      <div class="actions">
-                        <For each={commands().slice(0, 3)}>
-                          {(service, index) => (
-                            <button
-                              type="button"
-                              class="btn tall"
-                              classList={{ primary: index() === 0 }}
-                              title={service.runs}
-                              disabled={starting() !== null}
-                              onClick={() => void start(service.name)}
-                            >
-                              {starting() === service.name ? `Starting ${service.name}` : `Start ${service.name}`}
-                            </button>
-                          )}
-                        </For>
-                      </div>
-                    </Show>
-                  </>
-                }
-              >
-                {(service) => (
-                  <>
-                    <h2>{service().name} is starting</h2>
-                    <p>The page shows as soon as it says where it serves. Its output is in the Run tab.</p>
-                  </>
-                )}
-              </Show>
-            </div>
+            <NothingRuns />
           </Match>
           <Match when={!pageUrl()}>
             <Show when={!problem()}>

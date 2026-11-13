@@ -4,7 +4,7 @@ import { createServer } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { callsOf, STAND_INS, writeStandIns, type StandIn } from './standins';
+import { callsOf, NAMED_STAND_INS, STAND_INS, writeStandIns, type StandIn } from './standins';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const UI_DIR = path.resolve(here, '../..');
@@ -109,6 +109,10 @@ export class Core {
       TMPDIR: os.tmpdir(),
       LANG: 'en_US.UTF-8',
       AE_LINEAR_URL: LINEAR_URL,
+      // The browser that takes screenshots, Xcode's xcrun and Android's adb are stand-ins: no test starts the real ones.
+      AE_BROWSER: path.join(this.toolsDir, 'browser'),
+      AE_XCRUN: path.join(this.toolsDir, 'xcrun'),
+      AE_ADB: path.join(this.toolsDir, 'adb'),
       AE_MOCK_DELAY_MS: String(options.mockDelayMs ?? 30),
       // The core looks at what is due (automations, requests that merge by themselves) often, so tests need not wait.
       AE_WATCH_EVERY_MS: '1500',
@@ -187,6 +191,12 @@ export class Core {
     if (first !== this.toolsDir) throw new Error('The stand-ins must be first on the PATH of the core');
     for (const name of STAND_INS) {
       if (!existsSync(path.join(first, name))) throw new Error(`The stand-in for ${name} is missing`);
+    }
+    // A program the core is pointed at is the only one it uses, there or not: it must point into the stand-ins.
+    for (const name of NAMED_STAND_INS) {
+      if (this.env[`AE_${name.toUpperCase()}`] !== path.join(first, name)) {
+        throw new Error(`The core must be pointed at the stand-in for ${name}`);
+      }
     }
     if ('LINEAR_API_KEY' in this.env) throw new Error('The core must not be given a Linear key');
     if (this.env.AE_LINEAR_URL !== LINEAR_URL) throw new Error('The core must not be able to reach Linear');

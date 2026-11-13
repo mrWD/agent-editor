@@ -300,6 +300,8 @@ async fn converse(socket: WebSocket, state: AppState) {
     let mut attached = Attached::new();
     // The files this window has open in language servers are closed when it goes away.
     let window = state.lsp.window();
+    // So is the simulator or emulator its Preview shows.
+    let watching = state.previews.devices.window();
     // Commands run in lanes: one lane per kind of command and task. Inside a
     // lane they run one after another, so their answers come in the order they
     // were asked (the interface counts on "the last answer is the newest").
@@ -325,6 +327,9 @@ async fn converse(socket: WebSocket, state: AppState) {
                         // A language server is shared by every window, so it is told which one is speaking.
                         if method.starts_with("lsp.") && let Some(given) = params.as_object_mut() {
                             given.insert("window".into(), json!(window.id()));
+                        }
+                        if method.starts_with("devices.") && let Some(given) = params.as_object_mut() {
+                            given.insert("window".into(), json!(watching.id()));
                         }
                         if !method.starts_with("terminal.") {
                             let lane = lanes.entry(lane_of(&method, &params)).or_insert_with(|| {
@@ -1123,6 +1128,10 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         "lsp.start" | "lsp.send" | "lsp.setFormatOnSave" => state.lsp.command(method, params).await,
         "preview.state" | "preview.open" | "preview.close" | "preview.remember" => {
             crate::preview::command(&state.previews, manager, method, params).await
+        }
+        "shots.state" | "shots.take" => crate::shots::command(&state.previews, manager, method, params).await,
+        "devices.list" | "devices.open" | "devices.screen" | "devices.front" | "devices.close" => {
+            crate::devices::command(&state.previews, manager, method, params).await
         }
 
         "search.files" | "search.text" => {
