@@ -277,8 +277,28 @@ fn fake_linear() -> FakeLinear {
                 .unwrap_or_default();
             seen.lock().unwrap().push((key.clone(), body.clone()));
 
-            let (status, answer) = if key != "lin_test_key" {
+            let (status, answer) = if key != "lin_test_key" && key != "lin_read_only" {
                 ("401 Unauthorized", json!({ "errors": [{ "message": "Authentication required" }] }))
+            } else if body.contains("issueUpdate") && key == "lin_read_only" {
+                // What Linear says to a key that was made without write access.
+                (
+                    "200 OK",
+                    json!({ "errors": [{ "message": "Invalid scope: `write` or `issues:create` required" }], "data": null }),
+                )
+            } else if body.contains("issue(id") && body.contains("APP-214") {
+                // The issue by itself comes with what is attached to it; the lists do not.
+                (
+                    "200 OK",
+                    json!({ "data": { "issue": {
+                    "id": "uuid-214", "identifier": "APP-214", "title": "Login allows unlimited attempts",
+                    "url": "https://linear.app/x/issue/APP-214", "description": "Limit it to five a minute.",
+                    "updatedAt": "2026-11-12T19:05:30.000Z", "state": { "name": "Todo", "type": "unstarted" },
+                    "assignee": null, "labels": { "nodes": [] },
+                    "attachments": { "nodes": [
+                        { "title": "Error: too many logins", "url": "https://sentry.io/organizations/x/issues/7/" }
+                    ] }
+                } } }),
+                )
             } else if body.contains("workflowStates") {
                 (
                     "200 OK",
@@ -379,6 +399,13 @@ async fn linear_issues_are_listed_and_moved_when_a_task_starts() {
     assert_eq!(task["issue"]["source"], "linear");
     let seen = until(&mut events, &id, |e| is(e, "tracker")).await;
     assert_eq!(seen.last().unwrap()["text"], "The issue is now “In Progress” in Linear.");
+    // What is attached to the issue reached the agent with its text: it may be all there is to go on.
+    let said = seen.iter().find(|e| is(e, "user_message")).expect("the first message")["text"].as_str().unwrap();
+    assert!(said.contains("Limit it to five a minute."), "{said}");
+    assert!(
+        said.contains("Attached to the issue:\n- Error: too many logins: https://sentry.io/organizations/x/issues/7/"),
+        "{said}"
+    );
     let asked = linear.asked.lock().unwrap().clone();
     let update = asked.iter().find(|(_, body)| body.contains("issueUpdate")).expect("the issue was moved");
     assert!(update.1.contains("uuid-214") && update.1.contains("s-progress"), "{}", update.1);
@@ -633,4 +660,52 @@ async fn an_agent_sets_the_editor_up_from_what_stands_and_what_the_user_said() {
     let text = first["text"].as_str().unwrap();
     assert!(text.starts_with(ae_core::setup::SETUP_PROMPT), "{text}");
     assert!(text.ends_with("What my team uses: Linear team APP, our own GitLab"), "{text}");
+}
+
+#[tokio::test]
+async fn a_linear_key_that_may_only_read_is_said_in_words_once_and_not_tried_again() {
+    let sandbox = Sandbox::new("linear-read-only");
+    let linear = fake_linear();
+    let missing = PathBuf::from("/nonexistent/ae-test/tool");
+    let hosts = Hosts::with(missing.clone(), missing.clone(), missing, linear.url.clone());
+    let state = AppState::new(sandbox.manager_with(hosts));
+    let manager = &state.manager;
+    let project = manager.add_project(&git_project(&sandbox).to_string_lossy(), None).unwrap();
+    dispatch(&state, "integrations.setLinearTeam", &json!({ "projectId": project.id, "team": "APP" })).await.unwrap();
+    dispatch(&state, "integrations.setLinearKey", &json!({ "key": "lin_read_only" })).await.unwrap();
+    let status = dispatch(&state, "integrations.status", &json!({})).await.unwrap();
+    assert_eq!((status["linear"]["hasKey"].clone(), status["linear"]["readOnly"].clone()), (json!(true), json!(false)));
+
+    // The task starts all the same; that the issue was not moved is said with the way to mend it.
+    let mut events = manager.subscribe();
+    let start = json!({ "projectId": project.id, "key": "APP-214", "agentId": "mock" });
+    let task = dispatch(&state, "issues.start", &start).await.unwrap();
+    let id = task["id"].as_str().unwrap().to_string();
+    let seen = until(&mut events, &id, |e| is(e, "tracker")).await;
+    let told = seen.last().unwrap();
+    let text = told["text"].as_str().unwrap();
+    assert!(text.starts_with("The issue was not moved in Linear: the key kept here may only read."), "{text}");
+    assert!(text.contains("write access"), "{text}");
+    assert!(!text.contains("Invalid scope"), "Linear's own words are not the user's: {text}");
+    assert_eq!(told["failed"], true);
+    // From now on the screens can say so before anything is started.
+    assert_eq!(dispatch(&state, "integrations.status", &json!({})).await.unwrap()["linear"]["readOnly"], true);
+
+    // The next task does not ask Linear to move anything, and says so in a line that is no failure.
+    dispatch(&state, "tasks.archive", &json!({ "taskId": id })).await.unwrap();
+    let tries = |linear: &FakeLinear| {
+        linear.asked.lock().unwrap().iter().filter(|(_, body)| body.contains("issueUpdate")).count()
+    };
+    let before = tries(&linear);
+    let mut events = manager.subscribe();
+    let again = dispatch(&state, "issues.start", &start).await.unwrap();
+    let again_id = again["id"].as_str().unwrap().to_string();
+    let seen = until(&mut events, &again_id, |e| is(e, "tracker")).await;
+    assert_eq!(seen.last().unwrap()["text"], "The issue stays as it is in Linear: the key kept here may only read.");
+    assert!(seen.last().unwrap().get("failed").is_none());
+    assert_eq!(tries(&linear), before);
+
+    // Another key is another story: what was learned about the old one is forgotten.
+    dispatch(&state, "integrations.setLinearKey", &json!({ "key": "lin_test_key" })).await.unwrap();
+    assert_eq!(dispatch(&state, "integrations.status", &json!({})).await.unwrap()["linear"]["readOnly"], false);
 }

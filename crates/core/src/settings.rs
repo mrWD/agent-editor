@@ -320,10 +320,30 @@ impl Manager {
         self.broadcast("settings.changed", json!({ "agents": true }));
     }
 
-    /// The agent a new task starts with, when the user picked one and it is still there.
-    pub fn default_agent(&self) -> Option<String> {
+    /// The agent the user picked in Settings for new tasks, when it is still there.
+    fn chosen_agent(&self) -> Option<String> {
         let id = self.store().setting(DEFAULT_AGENT).ok().flatten()?;
         self.registry().get(&id).map(|agent| agent.id.clone())
+    }
+
+    /// The agent a new task starts with: the one picked in Settings; else the agent with a model
+    /// behind it that was given a task last. `None` leaves it to the interface, which takes the first
+    /// one that is installed: on a new computer that is the practice agent, as it should be. Once a
+    /// real agent has been used, the practice agent no longer takes real work by default.
+    pub fn default_agent(&self) -> Option<String> {
+        self.chosen_agent().or_else(|| self.agent_used_last())
+    }
+
+    /// The agent of the newest open task whose agent has a model behind it and is still installed.
+    fn agent_used_last(&self) -> Option<String> {
+        let registry = self.registry();
+        let tasks = self.store().tasks().ok()?;
+        tasks
+            .iter()
+            .rev()
+            .filter_map(|task| registry.get(&task.agent_id))
+            .find(|agent| agent.available && agent.spends_tokens)
+            .map(|agent| agent.id.clone())
     }
 
     /// The agents as the interface lists them wherever one is picked.
@@ -346,7 +366,8 @@ impl Manager {
     fn agents_for_settings(&self) -> Vec<Value> {
         let changed = self.changed_commands();
         let own = self.own_agents();
-        let default = self.default_agent();
+        // Settings shows what was chosen there, not what a new task falls back to.
+        let default = self.chosen_agent();
         let tasks = self.store().tasks().unwrap_or_default();
         self.registry()
             .list()
@@ -528,7 +549,7 @@ impl Manager {
     pub fn settings(&self) -> Value {
         json!({
             "agents": self.agents_for_settings(),
-            "defaultAgent": self.default_agent(),
+            "defaultAgent": self.chosen_agent(),
             "notifications": self.notifications_as_set(),
             "keepAwake": self.keep_awake(),
             "formatOnSave": self.new_projects_format(),

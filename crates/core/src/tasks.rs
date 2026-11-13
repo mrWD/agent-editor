@@ -310,6 +310,14 @@ impl Manager {
                 );
             }
             if last_state.is_some_and(|state| state != "asleep") {
+                // The last run ended without a word. The task says so, not only that it sleeps.
+                self.emit(
+                    &row.id,
+                    json!({
+                        "type": "tracker",
+                        "text": "The editor stopped without warning while this task’s agent was running. Nothing said so far is lost: your next message starts the agent again."
+                    }),
+                );
                 self.emit(&row.id, json!({ "type": "state", "state": TaskState::Asleep }));
             }
         }
@@ -1168,6 +1176,18 @@ impl Manager {
 
     /// Stops every agent. Called when the core shuts down.
     pub async fn stop_all(&self) {
+        // A task whose agent is stopped here says why: otherwise it is just found asleep later.
+        let live: Vec<String> = self.live.read().unwrap().keys().cloned().collect();
+        let seated: Vec<String> = self.seated.read().unwrap().keys().cloned().collect();
+        for task_id in live.iter().chain(seated.iter()) {
+            self.emit(
+                task_id,
+                json!({
+                    "type": "tracker",
+                    "text": "The editor was closed, so this task’s agent was stopped. Nothing said so far is lost: your next message starts it again."
+                }),
+            );
+        }
         self.stop_checks(None);
         // Nothing of the core's may outlive it, the helper that keeps the computer awake least of all.
         self.awake.stop();

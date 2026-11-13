@@ -9,7 +9,7 @@
 //! Everything here blocks and may use the network. Call it from `spawn_blocking`.
 
 use anyhow::{Context, Result, anyhow, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -51,6 +51,9 @@ pub struct Remote {
     /// The owner and the repository: `owner/name`, or `group/subgroup/name` on GitLab.
     pub slug: String,
 }
+
+/// What moving an issue fails with when the Linear key may only read.
+pub const READ_ONLY_KEY: &str = "the Linear key kept here may only read";
 
 /// Reads `git@github.com:owner/repo.git`, `https://gitlab.com/group/repo` and the like.
 /// `None` for an address that is not on GitHub or GitLab, such as a folder on disk.
@@ -118,6 +121,18 @@ pub struct Issue {
     pub assignee: Option<String>,
     /// When it last changed, in milliseconds.
     pub updated_at: u64,
+    /// What is attached to it in the tracker: a title and an address each. Linear
+    /// keeps here what other services say about the issue, such as the error in
+    /// Sentry it was made from; an issue may have nothing but that.
+    #[serde(default)]
+    pub links: Vec<IssueLink>,
+}
+
+/// Something attached to an issue.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueLink {
+    pub title: String,
+    pub url: String,
 }
 
 /// How the automatic checks of a request stand.
@@ -281,6 +296,7 @@ pub fn parse_github_issues(json: &str) -> Result<Vec<Issue>> {
                 labels: names(item, "labels", "name"),
                 assignee: names(item, "assignees", "login").into_iter().next(),
                 updated_at: parse_time(&text_of(item, "updatedAt")),
+                links: vec![],
             }
         })
         .collect())
@@ -304,6 +320,7 @@ pub fn parse_gitlab_issues(json: &str) -> Result<Vec<Issue>> {
                 labels: names(item, "labels", "name"),
                 assignee: names(item, "assignees", "username").into_iter().next(),
                 updated_at: parse_time(&text_of(item, "updated_at")),
+                links: vec![],
             }
         })
         .collect())
@@ -434,6 +451,14 @@ pub fn parse_linear_issues(answer: &Value) -> Result<Vec<Issue>> {
                 .unwrap_or_default(),
             assignee: item.pointer("/assignee/name").and_then(Value::as_str).map(str::to_string),
             updated_at: parse_time(&text_of(item, "updatedAt")),
+            links: item
+                .pointer("/attachments/nodes")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|link| IssueLink { title: text_of(link, "title"), url: text_of(link, "url") })
+                .filter(|link| !link.url.is_empty())
+                .collect(),
         })
         .collect())
 }
@@ -667,8 +692,11 @@ impl Hosts {
 
     /// One issue, by the name people call it ("APP-214").
     pub fn linear_issue(&self, key: &str, identifier: &str) -> Result<Issue> {
+        // One issue is asked for with what is attached to it. The lists are not: a hundred
+        // issues with their attachments is more than Linear answers in one question.
         let query = "query($id: String!) { issue(id: $id) { id identifier title url description updatedAt \
-                     state { name type } assignee { name } labels { nodes { name } } } }";
+                     state { name type } assignee { name } labels { nodes { name } } \
+                     attachments(first: 10) { nodes { title url } } } }";
         parse_linear_issues(&self.linear(key, query, json!({ "id": identifier }))?)?
             .into_iter()
             .next()
@@ -725,6 +753,10 @@ impl Hosts {
         )?;
         if answer.pointer("/data/issueUpdate/success").and_then(Value::as_bool) != Some(true) {
             let reason = answer.pointer("/errors/0/message").and_then(Value::as_str).unwrap_or("no reason given");
+            // A key that may only read is the user's to replace, and is told apart from every other refusal.
+            if reason.contains("Invalid scope") {
+                bail!("{READ_ONLY_KEY}");
+            }
             bail!("Linear did not move the issue: {reason}");
         }
         Ok(text_of(state, "name"))

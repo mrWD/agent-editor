@@ -154,6 +154,11 @@ async fn stopping_the_core_stops_every_agent_and_every_terminal() {
 
     core.stop().await.unwrap();
 
+    // The task says why its agent is gone: found asleep later, it would otherwise say nothing.
+    let history = manager.history(&id).unwrap();
+    let why = history.iter().rev().find(|event| event["type"] == "tracker").expect("the task was told");
+    assert!(why["text"].as_str().unwrap().starts_with("The editor was closed, so this task’s agent was stopped."));
+
     for _ in 0..100 {
         if running() == 0 {
             break;
