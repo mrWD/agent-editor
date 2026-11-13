@@ -354,6 +354,20 @@ impl Store {
         Ok(())
     }
 
+    /// Stores many events of one task at once, all or none: a conversation that is brought in whole.
+    pub fn insert_events(&self, task_id: &str, events: &[(u64, u64, Value)]) -> Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let all = conn.transaction()?;
+        {
+            let mut insert = all.prepare("INSERT INTO events (task_id, seq, at, body) VALUES (?1, ?2, ?3, ?4)")?;
+            for (seq, at, body) in events {
+                insert.execute(params![task_id, *seq as i64, *at as i64, body.to_string()])?;
+            }
+        }
+        all.commit()?;
+        Ok(())
+    }
+
     /// Every event of a task, oldest first.
     pub fn events(&self, task_id: &str) -> Result<Vec<Value>> {
         let conn = self.conn.lock().unwrap();

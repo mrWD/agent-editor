@@ -200,7 +200,9 @@ impl Manager {
                 Some(key) => self.hosts.linear_issues(&key, team),
                 None => Err(anyhow!("Linear is not connected yet. Paste a key above.")),
             },
-            Source::Host(remote) => self.hosts.issues(remote),
+            Source::Host(remote) => {
+                self.hosts.issues(remote).map_err(|error| crate::hosts::said_plainly(remote, error))
+            }
             Source::None => Ok(vec![]),
         };
         let (kind, label) = match &source {
@@ -437,7 +439,13 @@ impl Manager {
     // ----- merge requests -----
 
     /// The working copy of a task, its branch and where its repository lives.
-    fn request_place(&self, task_id: &str) -> Result<(TaskRow, PathBuf, String, Remote)> {
+    /// The number of a task's merge request, when it was read not long ago. Nobody is asked for it here.
+    pub(crate) fn request_number(&self, task_id: &str) -> Option<u64> {
+        let known = self.remembered.requests.lock().unwrap();
+        known.get(task_id).and_then(|(_, request)| request.as_ref()).map(|request| request.number)
+    }
+
+    pub(crate) fn request_place(&self, task_id: &str) -> Result<(TaskRow, PathBuf, String, Remote)> {
         let task = self.store().task(task_id)?;
         let Some(branch) = task.branch.clone() else {
             bail!("This task works in a folder without git, so it has no branch to merge");
@@ -499,7 +507,8 @@ impl Manager {
             Some((at, request)) if !fresh && at.elapsed() < REQUEST_TTL => request,
             _ => {
                 let asked = Instant::now();
-                let request = self.hosts.request(&remote, &branch)?;
+                let request =
+                    self.hosts.request(&remote, &branch).map_err(|error| crate::hosts::said_plainly(&remote, error))?;
                 self.remember_request(task_id, request.clone(), asked);
                 // What is known may be newer than this answer: that is what is shown.
                 self.remembered.requests.lock().unwrap().get(task_id).map_or(request, |(_, known)| known.clone())

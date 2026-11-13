@@ -548,11 +548,118 @@ export function deviceWords(kind: DeviceKind): {
     : { one: 'emulator', many: 'Android emulators', window: "the emulator's own window" };
 }
 
+/** One step towards having a device to show: what to do, and the command for it when there is one. */
+export type DeviceStep = { text: string; command?: string };
+
+const SYSTEM_IMAGE = 'system-images;android-35;google_apis;arm64-v8a';
+
+/**
+ * How to get what a device tab says is missing, step by step. Read from the
+ * sentence the core gave: it names the one thing that is missing first. An
+ * empty list when the sentence is about something else.
+ */
+export function deviceSetup(kind: DeviceKind, needs: string | null): DeviceStep[] {
+  const said = needs ?? '';
+  if (kind === 'ios') {
+    if (said.includes('needs Xcode')) {
+      return [
+        {
+          text: 'Install Xcode from the App Store and open it once. It offers to install the iOS platform: that is what brings the simulators.',
+        },
+        {
+          text: 'If the command line tools were on this Mac before Xcode, point them at Xcode:',
+          command: 'sudo xcode-select -s /Applications/Xcode.app/Contents/Developer',
+        },
+        { text: 'Then press Look again.' },
+      ];
+    }
+    if (said.includes('no iOS simulator yet')) {
+      return [{ text: 'In Xcode: Window, Devices and Simulators, Simulators, then the plus at the bottom left.' }];
+    }
+    return [];
+  }
+  const anEmulator: DeviceStep[] = [
+    {
+      text: 'Make an emulator. In Android Studio: More Actions, Virtual Device Manager, Create. Or from a terminal (on an Intel computer write x86_64 for arm64-v8a):',
+      command: `sdkmanager "${SYSTEM_IMAGE}"`,
+    },
+    { text: 'and', command: `avdmanager create avd -n Pixel_7 -d pixel_7 -k "${SYSTEM_IMAGE}"` },
+    { text: 'Then press Look again: it is listed here and started from here.' },
+  ];
+  if (said.includes('needs adb')) {
+    return [
+      {
+        text: 'Android Studio brings everything: install it, then in More Actions, SDK Manager, SDK Tools tick Android SDK Platform-Tools and Android Emulator.',
+      },
+      {
+        text: 'Without Android Studio, the command line tools are enough:',
+        command: 'brew install --cask android-commandlinetools',
+      },
+      { text: 'then adb and the emulator itself:', command: 'sdkmanager "platform-tools" "emulator"' },
+      ...anEmulator,
+    ];
+  }
+  if (said.includes('has no emulator yet')) return anEmulator;
+  if (said.includes('No Android emulator is running')) {
+    return [
+      { text: 'Start one from the Device Manager of Android Studio, then press Look again.' },
+      {
+        text: 'To start emulators from here, this computer also needs the emulator program of the Android tools:',
+        command: 'sdkmanager "emulator"',
+      },
+    ];
+  }
+  return [];
+}
+
 /** What the button of a listed device says, and whether it can be pressed. */
 export function deviceButton(device: Device): { label: string; can: boolean } {
   if (device.state === 'running') return { label: 'Show', can: true };
   if (device.state === 'off') return { label: 'Start and show', can: true };
   return { label: 'Starting', can: false };
+}
+
+/** What is passed on to a device: a touch on its picture, typed text, one of its buttons. */
+export type DeviceTouch =
+  | { what: 'tap'; x: number; y: number }
+  | { what: 'swipe'; x: number; y: number; x2: number; y2: number }
+  | { what: 'text'; text: string }
+  | { what: 'key'; key: DeviceKey };
+
+export type DeviceKey = 'home' | 'back' | 'recent' | 'enter' | 'delete';
+
+/** The buttons a device of each kind has. An iPhone has no Back and no Recent: both are swipes there. */
+export function deviceKeys(kind: DeviceKind): { key: DeviceKey; label: string }[] {
+  const home = { key: 'home' as const, label: 'Home' };
+  return kind === 'ios' ? [home] : [{ key: 'back', label: 'Back' }, home, { key: 'recent', label: 'Recent' }];
+}
+
+/** How far the pointer may move, in the pixels of the page, and the touch is still a tap. */
+const TAP_SLACK = 8;
+
+/**
+ * What a press on the picture of a screen is on the device: a tap where it was
+ * made, or a swipe when the pointer moved. Places are parts of the screen from
+ * 0 to 1, so they hold whatever size the picture is drawn at. `null` for a
+ * picture that has no size yet.
+ */
+export function touchOn(
+  box: { left: number; top: number; width: number; height: number },
+  down: { x: number; y: number },
+  up: { x: number; y: number },
+): DeviceTouch | null {
+  if (box.width <= 0 || box.height <= 0) return null;
+  const part = (at: number, start: number, size: number) => Math.min(1, Math.max(0, (at - start) / size));
+  const round = (value: number) => Math.round(value * 10000) / 10000;
+  const [x, y] = [round(part(down.x, box.left, box.width)), round(part(down.y, box.top, box.height))];
+  if (Math.hypot(up.x - down.x, up.y - down.y) <= TAP_SLACK) return { what: 'tap', x, y };
+  return {
+    what: 'swipe',
+    x,
+    y,
+    x2: round(part(up.x, box.left, box.width)),
+    y2: round(part(up.y, box.top, box.height)),
+  };
 }
 
 /** "iOS 27.0 · running": what stands next to a listed device's name. */

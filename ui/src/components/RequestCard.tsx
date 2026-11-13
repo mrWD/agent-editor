@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createKept } from '../core/kept';
 import { createStore, reconcile } from 'solid-js/store';
 import { go, taskHref } from '../app/router';
 import { checksOf } from '../core/checks';
@@ -62,7 +63,8 @@ export function RequestCard(props: {
 }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task, so the id never changes under it
   const taskId = props.task.info.id;
-  const [info, setInfo] = createSignal<RequestInfo | null>(null);
+  // What the request looked like last time is there at once; it is asked anew behind that.
+  const [info, setInfo] = createKept<RequestInfo | null>(`task:${taskId}:request`, null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [form, setForm] = createSignal(false);
   const [title, setTitle] = createSignal('');

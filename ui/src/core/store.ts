@@ -1,6 +1,8 @@
 import { createSignal } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { core, type CoreEvent } from './client';
+import type { ClaudeSession } from './imports';
+import { forget } from './kept';
 import { setWork } from './work';
 
 export type AgentDef = {
@@ -669,6 +671,7 @@ function onEvent(event: CoreEvent) {
       return;
     }
     case 'task.archived':
+      forget(`task:${event.data.taskId}:`);
       waitingForHistory.delete(event.data.taskId);
       setState('tasks', event.data.taskId, undefined!);
       void reloadAgents().catch(() => {});
@@ -728,6 +731,22 @@ export async function createTask(projectId: string, agentId: string, text: strin
  */
 export async function startSetup(projectId: string, agentId: string, text: string): Promise<string> {
   const info = await core.request<TaskInfo>('setup.start', { projectId, agentId, text });
+  if (!state.tasks[info.id]) {
+    addTask(info);
+    await loadHistory(info.id, info.state);
+  }
+  return info.id;
+}
+
+/** The conversations Claude Code had in a project's folder, newest first. */
+export async function claudeSessions(projectId: string): Promise<ClaudeSession[]> {
+  const found = await core.request<{ sessions: ClaudeSession[] }>('import.claude.list', { projectId });
+  return found.sessions;
+}
+
+/** Makes a task of one conversation of Claude Code and returns the task's id. */
+export async function bringIn(projectId: string, sessionId: string): Promise<string> {
+  const info = await core.request<TaskInfo>('import.claude.take', { projectId, sessionId });
   if (!state.tasks[info.id]) {
     addTask(info);
     await loadHistory(info.id, info.state);

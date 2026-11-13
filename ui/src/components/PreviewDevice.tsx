@@ -2,12 +2,16 @@ import { createEffect, createSignal, For, Match, on, onCleanup, onMount, Show, S
 import { core } from '../core/client';
 import {
   deviceButton,
+  deviceKeys,
   deviceLine,
+  deviceSetup,
   deviceWords,
   readDevices,
+  touchOn,
   type Device,
   type DeviceKind,
   type Devices,
+  type DeviceTouch,
 } from '../core/preview';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -23,16 +27,31 @@ const EVERY_MS = 1000;
 /** A device that gave no picture this many times in a row is no longer on show. One slow answer is not the end of it. */
 const GIVES_UP_AFTER = 3;
 
+/** How soon after a touch the screen is asked for again: the device needs a moment to draw what the touch did. */
+const AFTER_TOUCH_MS = 250;
+
 /** The device a tab shows, as the core said when it opened the address on it. */
-type Shown = { id: string; name: string; address: string; startedHere: boolean };
+type Shown = {
+  id: string;
+  name: string;
+  address: string;
+  startedHere: boolean;
+  /** Whether a touch on the picture can be passed on to the device. */
+  touch?: boolean;
+  /** What this computer needs for that, when it cannot. */
+  touchNeeds?: string | null;
+};
 
 /**
  * A device tab of the Preview: the iOS simulator or the Android emulator.
  *
  * A device cannot be put into a page. What is shown is a picture of its screen,
  * asked of the core again about once a second for as long as the tab is on
- * screen; tapping and typing happen in the device's own window. Leaving the tab
- * tells the core to let the device go.
+ * screen. A press on the picture is a tap on the device and a drag is a swipe;
+ * text is typed into a field under it, next to the device's own buttons. A
+ * simulator takes that only on a Mac with `idb`; without it the tab says so and
+ * tapping stays in the Simulator window. Leaving the tab tells the core to let
+ * the device go.
  */
 export function DeviceView(props: {
   taskId: string;
@@ -53,6 +72,12 @@ export function DeviceView(props: {
   const [problem, setProblem] = createSignal<string | null>(null);
   const [picture, setPicture] = createSignal<string | null>(null);
   const [takenAt, setTakenAt] = createSignal<number | null>(null);
+  /** What is being typed for the device. */
+  const [typed, setTyped] = createSignal('');
+  /** Whether the device was last made dark from here. Nobody knows how it looked before. */
+  const [dark, setDark] = createSignal<boolean | null>(null);
+  /** Where on the page a press on the picture began. */
+  let pressed: { x: number; y: number } | null = null;
   /** The device that is shown or being opened, to open the address on it again. */
   let current: Device | null = null;
   /** Whether the core was ever asked to open a device: only then is there something to let go. */
@@ -150,12 +175,14 @@ export function DeviceView(props: {
     setProblem(null);
     try {
       const opened = await core.request<Shown>('devices.open', { taskId, kind, id: device.id, address });
-      if (gone) return;
+      // The tab was left, or "Another device" was pressed while this was on its way: the core lets the
+      // device go right after, so it is not put back on show.
+      if (gone || current !== device) return;
       if (shown()?.id !== opened.id) forgetPicture();
       setShown(opened);
       void watch();
     } catch (error) {
-      if (gone) return;
+      if (gone || current !== device) return;
       setProblem(message(error));
       // What it could not open it does not show; the list says what is there now.
       if (!shown()) void look();
@@ -170,12 +197,86 @@ export function DeviceView(props: {
     setShown(null);
     forgetPicture();
     current = null;
+    // What was typed and how the device was made to look were this device's: the next one starts clean.
+    setTyped('');
+    setDark(null);
     if (asked) await core.request('devices.close', { taskId }).catch(() => {});
   };
 
   const front = () => {
     setProblem(null);
     core.request('devices.front', { taskId }).catch((error) => setProblem(message(error)));
+  };
+
+  /** The command that was copied last, so its button can say so for a moment. */
+  const [copied, setCopied] = createSignal<string | null>(null);
+  const copy = async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(command);
+      setTimeout(() => copied() === command && setCopied(null), 2000);
+    } catch {
+      // No clipboard here: the command stands on the page to be selected by hand.
+    }
+  };
+
+  /** Passes a touch on to the device, and looks at its screen again a moment later. */
+  const touch = async (what: DeviceTouch) => {
+    setProblem(null);
+    try {
+      await core.request('devices.input', { taskId, ...what });
+      clearTimeout(timer);
+      timer = setTimeout(() => void watch(), AFTER_TOUCH_MS);
+      return true;
+    } catch (error) {
+      if (!gone) setProblem(message(error));
+      return false;
+    }
+  };
+
+  /** The picture without its frame, as it stands on the page. */
+  const screenBox = (image: HTMLImageElement) => {
+    const box = image.getBoundingClientRect();
+    return {
+      left: box.left + image.clientLeft,
+      top: box.top + image.clientTop,
+      width: image.clientWidth,
+      height: image.clientHeight,
+    };
+  };
+
+  const onPress = (event: PointerEvent & { currentTarget: HTMLImageElement }) => {
+    if (event.button !== 0) return;
+    pressed = { x: event.clientX, y: event.clientY };
+    // The drag may end outside the picture: its end is still told to the picture.
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const onRelease = (event: PointerEvent & { currentTarget: HTMLImageElement }) => {
+    const began = pressed;
+    pressed = null;
+    if (!began) return;
+    const what = touchOn(screenBox(event.currentTarget), began, { x: event.clientX, y: event.clientY });
+    if (what) void touch(what);
+  };
+
+  const type = async (event: SubmitEvent) => {
+    event.preventDefault();
+    const text = typed();
+    if (text && (await touch({ what: 'text', text }))) setTyped('');
+  };
+
+  const setScheme = (toDark: boolean) => {
+    setProblem(null);
+    core
+      .request('devices.scheme', { taskId, scheme: toDark ? 'dark' : 'light' })
+      .then(() => {
+        setDark(toDark);
+        clearTimeout(timer);
+        timer = setTimeout(() => void watch(), AFTER_TOUCH_MS);
+      })
+      .catch((error) => setProblem(message(error)));
   };
 
   onMount(() => {
@@ -207,7 +308,10 @@ export function DeviceView(props: {
   createEffect(
     on(
       () => [props.reloads, props.address] as const,
-      () => {
+      (now, before) => {
+        // The address is worked out anew each time the state of what runs is read, and mostly comes out
+        // the same: only a press on Reload or another address opens it on the device again.
+        if (before && now[0] === before[0] && now[1] === before[1]) return;
         if (!shown()) return;
         // The app is gone: there is nothing to show on the device, so it is let go.
         if (!props.address) void leave();
@@ -226,6 +330,32 @@ export function DeviceView(props: {
         <div class="center-note">
           <h2>No {words.one} to show</h2>
           <p>{found()!.needs}</p>
+          <Show when={deviceSetup(kind, found()!.needs).length > 0}>
+            <ol class="device-steps" aria-label={`How to get ${kind === 'ios' ? 'a simulator' : 'an emulator'}`}>
+              <For each={deviceSetup(kind, found()!.needs)}>
+                {(step) => (
+                  <li>
+                    <span>{step.text}</span>
+                    <Show when={step.command}>
+                      {(command) => (
+                        <span class="device-command">
+                          <code>{command()}</code>
+                          <button
+                            type="button"
+                            class="btn tiny ghost"
+                            aria-label={`Copy the command: ${command()}`}
+                            onClick={() => void copy(command())}
+                          >
+                            {copied() === command() ? 'Copied' : 'Copy'}
+                          </button>
+                        </span>
+                      )}
+                    </Show>
+                  </li>
+                )}
+              </For>
+            </ol>
+          </Show>
           <div class="actions">
             <button type="button" class="btn small" onClick={() => void look()}>
               Look again
@@ -249,13 +379,13 @@ export function DeviceView(props: {
               </button>
             </div>
             <p class="fine device-note">
-              This is a picture of the {words.one}'s screen, taken again every second. Tap and type in {words.window}.
-              <Show when={kind === 'ios'}>
-                {' '}
-                {device().startedHere
-                  ? 'Agent Editor started this simulator and shuts it down when you leave this tab.'
-                  : 'It was running already, so it stays on when you leave this tab.'}
-              </Show>
+              This is a picture of the {words.one}'s screen, taken again every second.{' '}
+              {device().touch
+                ? 'Press on it to tap, drag to swipe, and type in the field under it.'
+                : (device().touchNeeds ?? `Tap and type in ${words.window}.`)}{' '}
+              {device().startedHere
+                ? `Agent Editor started this ${words.one} and shuts it down when you leave this tab.`
+                : 'It was running already, so it stays on when you leave this tab.'}
             </p>
             <Show when={problem()}>
               <p class="notice danger" role="alert">
@@ -271,8 +401,61 @@ export function DeviceView(props: {
                   </p>
                 }
               >
-                <img src={picture()!} alt={`The screen of ${device().name}`} />
+                <img
+                  src={picture()!}
+                  alt={`The screen of ${device().name}`}
+                  classList={{ touchable: Boolean(device().touch) }}
+                  draggable={false}
+                  onPointerDown={(event) => device().touch && onPress(event)}
+                  onPointerUp={(event) => device().touch && onRelease(event)}
+                  onPointerCancel={() => (pressed = null)}
+                />
               </Show>
+            </div>
+            <div class="device-keys" role="group" aria-label={`The buttons of ${device().name}`}>
+              <Show when={device().touch}>
+                <For each={deviceKeys(kind)}>
+                  {(one) => (
+                    <button type="button" class="btn small" onClick={() => void touch({ what: 'key', key: one.key })}>
+                      {one.label}
+                    </button>
+                  )}
+                </For>
+                <form class="device-type" onSubmit={(event) => void type(event)}>
+                  <input
+                    type="text"
+                    aria-label={`Type on ${device().name}`}
+                    placeholder="Type on the device"
+                    autocomplete="off"
+                    spellcheck={false}
+                    value={typed()}
+                    onInput={(event) => setTyped(event.currentTarget.value)}
+                  />
+                  <button type="submit" class="btn small" disabled={!typed()}>
+                    Type
+                  </button>
+                </form>
+                <button type="button" class="btn small ghost" onClick={() => void touch({ what: 'key', key: 'enter' })}>
+                  Enter
+                </button>
+                <button
+                  type="button"
+                  class="btn small ghost"
+                  aria-label="Delete the letter before the cursor"
+                  onClick={() => void touch({ what: 'key', key: 'delete' })}
+                >
+                  Delete
+                </button>
+              </Show>
+              <span class="grow" />
+              <div class="switcher" role="group" aria-label={`How ${device().name} looks`}>
+                <button type="button" aria-pressed={dark() === false} onClick={() => setScheme(false)}>
+                  Light
+                </button>
+                <button type="button" aria-pressed={dark() === true} onClick={() => setScheme(true)}>
+                  Dark
+                </button>
+              </div>
             </div>
             <div class="statusline device-status">
               <span>
@@ -303,7 +486,9 @@ export function DeviceView(props: {
           <h2>Pick {kind === 'ios' ? 'a simulator' : 'an emulator'}</h2>
           <p>
             It opens {props.address}, and its screen is shown here as a picture that is taken again every second.
-            Tapping and typing happen in {words.window}.
+            {kind === 'android'
+              ? ' A press on the picture is a tap on the emulator. One that is off is started here and shut down again when you leave this tab.'
+              : ' One that is off is started here and shut down again when you leave this tab.'}
           </p>
           <Show when={problem()}>
             <p class="notice danger" role="alert">

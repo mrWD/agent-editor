@@ -437,6 +437,40 @@ textarea::placeholder {
 .card.setup .grow {
   flex: 1 1 auto;
 }
+/* The conversations of Claude Code that can be brought in: what was said first, then when and where. */
+.bring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 46vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.bring-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.bring-what {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bring-title {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .new-task label.title {
   font-family: var(--display);
   font-weight: 600;
@@ -1416,6 +1450,9 @@ textarea::placeholder {
 }
 .banner .grow {
   flex: 1 1 240px;
+  /* What a tool said may hold an address of a hundred letters without a space: it breaks where it must. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .banner.review {
   border-color: var(--agent-line);
@@ -5792,6 +5829,65 @@ button.picked-source:hover {
   background: var(--line-strong);
   object-fit: contain;
 }
+/* How to get a device, when there is none to show: steps with the commands to copy. */
+.device-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 76ch;
+  margin: 4px 0;
+  padding-left: 20px;
+  color: var(--text-2);
+  text-align: left;
+}
+.device-command {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.device-command code {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground-deep);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+/* A picture that passes a press on to the device says so with the pointer, and is never dragged away as an image. */
+.device-screen img.touchable {
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* The device's own buttons, the field that types on it, and how it looks. */
+.device-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.device-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.device-type input {
+  width: 200px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground-deep);
+  color: var(--text);
+  font-size: 13px;
+}
 .device-status {
   margin: 0 -16px -16px;
 }
@@ -6012,6 +6108,111 @@ button.picked-source:hover {
   gap: 4px;
   margin: 0;
   padding-left: 18px;
+}
+
+/* ---------- The pipeline of a branch ---------- */
+
+.pipe-run {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--line-soft);
+}
+.pipe-run-head,
+.pipe-stage-head,
+.pipe-job {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.pipe-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 14px;
+}
+.pipe-stage-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+/* "14 went well": words to press, not a button to look at. */
+.pipe-fold {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pipe-fold:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.pipe-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0 0 2px 2px;
+  list-style: none;
+  font-size: 13px;
+}
+.pipe-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  text-decoration: none;
+}
+.pipe-name:hover {
+  text-decoration: underline;
+}
+.pipe-name.strong {
+  font-weight: 500;
+}
+.pipe-job .fine {
+  flex: 1 1 auto;
+}
+/* Where a job stands, as a dot: the colours of good and bad news, the accent for what is going on. */
+/* How the pipeline stands, in one line at the head of the column: a press goes down to its card. */
+.pipe-brief {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: left;
+}
+.pipe-brief:hover {
+  color: var(--text);
+}
+.pipe-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-dashed);
+}
+.pipe-dot.passed {
+  background: var(--green);
+}
+.pipe-dot.failed {
+  background: var(--red);
+}
+.pipe-dot.running,
+.pipe-dot.pending {
+  background: var(--accent);
+}
+.pipe-dot.manual {
+  background: transparent;
+  border: 2px solid var(--accent);
 }
 
 /* ---------- The practice agent says what it is ---------- */

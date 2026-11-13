@@ -115,6 +115,8 @@ export class Core {
       AE_BROWSER: path.join(this.toolsDir, 'browser'),
       AE_XCRUN: path.join(this.toolsDir, 'xcrun'),
       AE_ADB: path.join(this.toolsDir, 'adb'),
+      AE_EMULATOR: path.join(this.toolsDir, 'emulator'),
+      AE_IDB: path.join(this.toolsDir, 'idb'),
       AE_MOCK_DELAY_MS: String(options.mockDelayMs ?? 30),
       // An agent that runs in a terminal is taken to be done after this much quiet. Short, so tests need not wait.
       AE_TERMINAL_QUIET_MS: '500',

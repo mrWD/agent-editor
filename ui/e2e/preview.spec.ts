@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   APP_FILE,
   expect,
+  setAvds,
   setEmulators,
   setSimulators,
   simulatorRuns,
@@ -782,7 +783,9 @@ test.describe('The iOS simulator and the Android emulator', () => {
       /^iPad AiriOS 27\.0 · runningShow$/,
       /^iPhone 17 ProiOS 27\.0 · offStart and show$/,
     ]);
-    await expect(preview.view).toContainText('Tapping and typing happen in the Simulator window.');
+    await expect(preview.view).toContainText(
+      'One that is off is started here and shut down again when you leave this tab.',
+    );
     expect(core.calls('xcrun')).toEqual(['simctl list devices available -j']);
     // The widths and the tools are the web page's; the address is still there to be changed.
     await expect(preview.widths).toHaveCount(0);
@@ -796,7 +799,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     expect(simulatorRuns(core.toolsDir, PHONE)).toBe(true);
     expect(standInNote(core.toolsDir, 'xcrun', `${PHONE}.url`)).toBe(`http://${shop.address}/login?next=1&tab=2`);
     await expect(device).toContainText(
-      "This is a picture of the simulator's screen, taken again every second. Tap and type in the Simulator window.",
+      "This is a picture of the simulator's screen, taken again every second. Press on it to tap, drag to swipe, and type in the field under it.",
     );
     await expect(device).toContainText(
       'Agent Editor started this simulator and shuts it down when you leave this tab.',
@@ -814,7 +817,29 @@ test.describe('The iOS simulator and the Android emulator', () => {
     await expect(device).toContainText(`${shop.address}/login?next=1&tab=2 on iPhone 17 Pro`);
     expect(asked(`simctl io ${PHONE} screenshot --type=png /`)).toBeGreaterThanOrEqual(2);
 
-    // The Simulator window is where one taps: a button brings it forward.
+    // PV-30: a press on the picture is a tap on the simulator, where it was made. This Mac has idb, which
+    // counts in points: the picture has three pixels to one.
+    // (Pressed in the middle of a pixel of the picture, which is drawn at its own size: on the very
+    // line between two pixels a browser may round either way.)
+    await screen.click({ position: { x: 30.5, y: 65.5 } });
+    await expect.poll(() => core.calls('idb')).toContain(`ui tap --udid ${PHONE} 10 22`);
+    const keys = device.getByRole('group', { name: 'The buttons of iPhone 17 Pro' });
+    await keys.getByRole('textbox', { name: 'Type on iPhone 17 Pro' }).fill('привет, it’s me');
+    await keys.getByRole('button', { name: 'Type', exact: true }).click();
+    await expect.poll(() => core.calls('idb')).toContain(`ui text --udid ${PHONE} -- привет, it’s me`);
+    await expect(keys.getByRole('textbox', { name: 'Type on iPhone 17 Pro' })).toHaveValue('');
+    await keys.getByRole('button', { name: 'Home' }).click();
+    await expect.poll(() => core.calls('idb')).toContain(`ui button --udid ${PHONE} HOME`);
+    // An iPhone has no Back and no Recent.
+    await expect(keys.getByRole('button', { name: 'Back' })).toHaveCount(0);
+    // Dark is the simulator's own setting, and the button says which was asked for last.
+    const looks = keys.getByRole('group', { name: 'How iPhone 17 Pro looks' });
+    await expect(looks.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'false');
+    await looks.getByRole('button', { name: 'Dark' }).click();
+    await expect.poll(() => asked(`simctl ui ${PHONE} appearance dark`)).toBe(1);
+    await expect(looks.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
+
+    // The Simulator window is there as well: a button brings it forward.
     await device.getByRole('button', { name: 'Bring the Simulator forward' }).click();
     await expect.poll(() => asked(`open -a Simulator --args -CurrentDeviceUDID ${PHONE}`)).toBe(1);
 
@@ -916,7 +941,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     // The emulator under the name it was given. The phone on a cable is not an emulator and is not offered.
     const rows = preview.devices('Android emulators').getByRole('listitem');
     await expect(rows).toHaveText([/^Pixel 9 API 35Android 15 · runningShow$/]);
-    await expect(preview.view).toContainText("Tapping and typing happen in the emulator's own window.");
+    await expect(preview.view).toContainText('A press on the picture is a tap on the emulator.');
 
     await rows.getByRole('button', { name: 'Show Pixel 9 API 35' }).click();
     const device = preview.device('Pixel 9 API 35', 'emulator');
@@ -926,9 +951,49 @@ test.describe('The iOS simulator and the Android emulator', () => {
       .poll(() => screen.evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight]))
       .toEqual([54, 120]);
     await expect(device).toContainText(
-      "This is a picture of the emulator's screen, taken again every second. Tap and type in the emulator's own window.",
+      "This is a picture of the emulator's screen, taken again every second. Press on it to tap, drag to swipe, and type in the field under it. It was running already, so it stays on when you leave this tab.",
     );
     await expect(device.getByRole('button', { name: 'Bring the Simulator forward' })).toHaveCount(0);
+
+    // PV-31: a press on the picture lands on the emulator where it was made, in the pixels of its screen;
+    // a drag is a swipe from where it began to where it ended.
+    const did = (call: string) => expect.poll(() => core.calls('adb')).toContain(`-s emulator-5554 shell ${call}`);
+    await screen.click({ position: { x: 27.5, y: 60.5 } });
+    await did('input tap 27 60');
+    const box = (await screen.boundingBox())!;
+    // The picture stands inside a frame ten pixels wide; each place is the middle of one of its pixels.
+    const [left, top] = [box.x + 10 + 27.5, box.y + 10];
+    await app.page.mouse.move(left, top + 90.5);
+    await app.page.mouse.down();
+    await app.page.mouse.move(left, top + 60.5, { steps: 3 });
+    await app.page.mouse.move(left, top + 30.5, { steps: 3 });
+    await app.page.mouse.up();
+    await did('input swipe 27 90 27 30 250');
+    // Typed text goes with Enter in the field; the buttons are the emulator's own.
+    const keys = device.getByRole('group', { name: 'The buttons of Pixel 9 API 35' });
+    const field = keys.getByRole('textbox', { name: 'Type on Pixel 9 API 35' });
+    await expect(keys.getByRole('button', { name: 'Type', exact: true })).toBeDisabled();
+    await field.fill('shop at 5');
+    await field.press('Enter');
+    await did("input text 'shop%sat%s5'");
+    await expect(field).toHaveValue('');
+    for (const [name, code] of [
+      ['Back', 'KEYCODE_BACK'],
+      ['Home', 'KEYCODE_HOME'],
+      ['Recent', 'KEYCODE_APP_SWITCH'],
+      ['Enter', 'KEYCODE_ENTER'],
+      ['Delete the letter before the cursor', 'KEYCODE_DEL'],
+    ]) {
+      await keys.getByRole('button', { name: name!, exact: true }).click();
+      await did(`input keyevent ${code}`);
+    }
+    await keys.getByRole('button', { name: 'Dark' }).click();
+    await did('cmd uimode night yes');
+    // What an emulator cannot take is said, and the text stays in the field to be changed.
+    await field.fill('привет');
+    await field.press('Enter');
+    await expect(device.getByRole('alert')).toContainText('An emulator takes only plain Latin letters');
+    await expect(field).toHaveValue('привет');
 
     // "localhost" on the emulator is the emulator: the app's port is passed on to this computer, and the
     // address is opened there as one word.
@@ -979,18 +1044,92 @@ test.describe('The iOS simulator and the Android emulator', () => {
     await expect(preview.view).toContainText(
       'The iOS simulator needs Xcode on this Mac: install it from the App Store and open it once.',
     );
+    // PV-40: what to do about it stands under the sentence, step by step, with the command to copy.
+    const forIos = preview.view.getByRole('list', { name: 'How to get a simulator' });
+    await expect(forIos.getByRole('listitem')).toHaveCount(3);
+    await expect(forIos).toContainText('sudo xcode-select -s /Applications/Xcode.app/Contents/Developer');
 
-    // No emulator runs; then adb itself is not there.
+    // No emulator runs and the Device Manager has none to start; then adb itself is not there.
     await preview.kind('Android emulator').click();
     await expect(preview.view.getByRole('heading', { name: 'No emulator to show' })).toBeVisible();
     await expect(preview.view).toContainText(
-      'No Android emulator is running: start one from the Device Manager of Android Studio.',
+      'Android has no emulator yet: make one in the Device Manager of Android Studio.',
     );
     rmSync(path.join(core.toolsDir, 'adb'));
     await again.click();
     await expect(preview.view).toContainText(
       'The Android emulator needs adb, which comes with Android Studio (SDK Platform-Tools in its SDK Manager).',
     );
+    const forAndroid = preview.view.getByRole('list', { name: 'How to get an emulator' });
+    await expect(forAndroid).toContainText('brew install --cask android-commandlinetools');
+    await expect(forAndroid).toContainText('avdmanager create avd -n Pixel_7');
+    await expect(
+      forAndroid.getByRole('button', { name: 'Copy the command: sdkmanager "platform-tools" "emulator"' }),
+    ).toBeVisible();
     await expect(preview.view.getByRole('img')).toHaveCount(0);
+  });
+
+  test('PV-29 an Android emulator that is off is started from the tab and shut down again when the tab is left', async ({
+    app,
+    core,
+    project,
+  }) => {
+    setEmulators(core.toolsDir, [{ serial: 'emulator-5554', name: 'Pixel_9_API_35' }]);
+    setAvds(core.toolsDir, ['Pixel_9_API_35', 'Tablet_API_34']);
+    const preview = await openPreview(app, (await project()).dir, shop.address);
+    const started = (call: string) => core.calls('emulator').filter((one) => one.startsWith(call)).length;
+
+    await preview.kind('Android emulator').click();
+    // The one that runs, then the one the Device Manager knows and nobody started. Looking starts nothing.
+    const rows = preview.devices('Android emulators').getByRole('listitem');
+    await expect(rows).toHaveText([
+      /^Pixel 9 API 35Android 15 · runningShow$/,
+      /^Tablet API 34Android · offStart and show$/,
+    ]);
+    expect(started('-avd')).toBe(0);
+
+    await rows.getByRole('button', { name: 'Start and show Tablet API 34' }).click();
+    const device = preview.device('Tablet API 34', 'emulator');
+    await expect(device.getByRole('img', { name: 'The screen of Tablet API 34' })).toBeVisible();
+    await expect(device).toContainText('Agent Editor started this emulator and shuts it down when you leave this tab.');
+    expect(core.calls('emulator')).toContain('-avd Tablet_API_34');
+    // Reload opens the address again on the emulator that runs by now: it is not started twice.
+    await preview.view.getByRole('button', { name: 'Open the address again' }).click();
+    await expect
+      .poll(() => core.calls('adb').filter((call) => call.startsWith('-s emulator-5556 shell am start')).length)
+      .toBe(2);
+    expect(started('-avd')).toBe(1);
+
+    // Leaving the tab shuts down what the core started, and only that.
+    await preview.kind('Web').click();
+    await expect.poll(() => core.calls('adb')).toContain('-s emulator-5556 emu kill');
+    expect(core.calls('adb')).not.toContain('-s emulator-5554 emu kill');
+  });
+
+  test('PV-32 on a Mac without idb the simulator tab says what tapping needs, and its picture takes no press', async ({
+    app,
+    core,
+    project,
+  }) => {
+    rmSync(path.join(core.toolsDir, 'idb'));
+    setSimulators(core.toolsDir, [{ udid: PAD, name: 'iPad Air', running: true }]);
+    const preview = await openPreview(app, (await project()).dir, shop.address);
+    await preview.kind('iOS simulator').click();
+    await preview.devices('iOS simulators').getByRole('button', { name: 'Show iPad Air' }).click();
+    const device = preview.device('iPad Air', 'simulator');
+    const screen = device.getByRole('img', { name: 'The screen of iPad Air' });
+    await expect(screen).toBeVisible();
+    await expect(device).toContainText('Tapping a simulator from here needs idb on this Mac');
+    await expect(device).toContainText("Until then, tap and type in the Simulator's own window.");
+    const keys = device.getByRole('group', { name: 'The buttons of iPad Air' });
+    await expect(keys.getByRole('button', { name: 'Home' })).toHaveCount(0);
+    await expect(keys.getByRole('textbox')).toHaveCount(0);
+    await screen.click();
+    await expect(device.getByRole('alert')).toHaveCount(0);
+    // How it looks is Xcode's own to change, with or without idb.
+    await keys.getByRole('button', { name: 'Light' }).click();
+    await expect.poll(() => core.calls('xcrun')).toContain(`simctl ui ${PAD} appearance light`);
+    await device.getByRole('button', { name: 'Bring the Simulator forward' }).click();
+    await expect.poll(() => core.calls('xcrun')).toContain(`open -a Simulator --args -CurrentDeviceUDID ${PAD}`);
   });
 });

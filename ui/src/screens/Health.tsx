@@ -1,4 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { whenLabel } from '../components/bits';
 import { core } from '../core/client';
@@ -27,7 +28,8 @@ export function missingHeadline(count: number): string {
 
 /** What each project is missing, and the checks every task of it must pass. */
 export function Health(): JSX.Element {
-  const [health, setHealth] = createSignal<HealthState | null>(null);
+  // What was read last time is shown at once; it is read again behind that.
+  const [health, setHealth] = createKept<HealthState | null>('health', null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal<string | null>(null);
   const [agentId, setAgentId] = createSignal('');

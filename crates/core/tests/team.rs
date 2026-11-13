@@ -216,9 +216,55 @@ async fn a_team_that_cannot_be_is_refused() {
     };
     assert!(refused("nobody", "mock").await.contains("No such agent"));
     assert!(refused("mock", "mock-missing").await.contains("not available on this computer"));
+    // A program in a terminal answers where the editor cannot read: its plan could not be handed on,
+    // and its verdict would never be seen.
+    assert_eq!(
+        refused("mock-terminal", "mock").await,
+        "Practice agent in a terminal runs in a terminal, where the editor cannot read its answer, so it cannot plan for a team. It can build: pick another agent to plan."
+    );
+    let as_reviewer =
+        manager.team_start(&id, "mock", "mock", Some("mock-terminal"), None).await.unwrap_err().to_string();
+    assert!(as_reviewer.contains("so it cannot review for a team"), "{as_reviewer}");
     assert!(manager.team_pause(&id, true).is_err());
     assert!(manager.team_stop(&id).is_err());
     assert_eq!(Value::Null, serde_json::to_value(manager.team(&id)).unwrap());
+}
+
+/// A program in a terminal can build: its work is in the files, whatever it writes on its screen.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_program_in_a_terminal_builds_for_a_team_between_two_agents_that_speak_the_protocol() {
+    let sandbox = Sandbox::new("team-terminal");
+    let (manager, id, _root) = started(&sandbox, "Take the login limit from config").await;
+    // The terminals of the core, as the server has them, and a short quiet so the builder's turn ends soon.
+    let state = ae_core::server::AppState::new(manager.clone());
+    manager.set_terminal_quiet(Duration::from_millis(300));
+
+    manager.team_start(&id, "mock", "mock-terminal", Some("mock-modes"), None).await.unwrap();
+    at_rest(&manager, &id).await;
+    assert_eq!(
+        states(&manager, &id),
+        pairs(&[("plan", "done"), ("build", "done"), ("review", "done"), ("checks", "skipped")])
+    );
+    let history = manager.history(&id).unwrap();
+    let handed: Vec<&str> =
+        history.iter().filter(|e| is(e, "agent_switched")).map(|e| e["to"].as_str().unwrap()).collect();
+    assert_eq!(handed, ["mock-terminal", "mock-modes"], "the planner had the task already");
+
+    // The builder was a program in a terminal of the task, and was told the plan there.
+    let started: Vec<bool> = history.iter().filter(|e| is(e, "agent_started")).map(|e| e["terminal"] == true).collect();
+    assert_eq!(started.iter().filter(|in_terminal| **in_terminal).count(), 1, "{started:?}");
+    // It said nothing the editor could read, and the reviewer is told so instead of being handed nothing.
+    let told: Vec<String> = history
+        .iter()
+        .filter(|e| e["update"]["sessionUpdate"] == "agent_thought_chunk")
+        .filter_map(|e| e["update"]["content"]["text"].as_str().map(str::to_string))
+        .collect();
+    let review = told.iter().find(|text| text.contains("You are the reviewer")).expect("the reviewer was asked");
+    assert!(review.contains("What Practice agent in a terminal said it did:\n(it said nothing)"), "{review}");
+    // The terminal of the builder went with it when the reviewer took the task.
+    assert!(state.terminals.find(&id, ae_core::terminals::AGENT).is_none());
+    manager.stop_all().await;
 }
 
 #[tokio::test]

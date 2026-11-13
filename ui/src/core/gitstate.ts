@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, type Accessor } from 'solid-js';
 import { core } from './client';
+import { createKept } from './kept';
 import { gitState, type GitState } from './store';
 
 export type GitWatch = {
@@ -16,7 +17,8 @@ export type GitWatch = {
  * It is read again whenever the core says the files or the branch changed.
  */
 export function watchGit(taskId: string): GitWatch {
-  const [state, setState] = createSignal<GitState | null>(null);
+  // What was read last time is there at once when the task is opened again; it is read anew behind that.
+  const [state, setState] = createKept<GitState | null>(`task:${taskId}:git`, null);
   const [problem, setProblem] = createSignal<string | null>(null);
   let asked = 0;
 

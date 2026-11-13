@@ -1,4 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createKept } from '../core/kept';
 import { ago, Chip } from '../components/bits';
 import { core } from '../core/client';
 import {
@@ -42,7 +43,8 @@ type Trigger = AutomationWhen['kind'];
 
 /** Work that starts without the user. */
 export function Automations(): JSX.Element {
-  const [list, setList] = createSignal<Automation[] | null>(null);
+  // What was read last time is shown at once; it is read again behind that.
+  const [list, setList] = createKept<Automation[] | null>('automations', null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [form, setForm] = createSignal(false);
   const [busy, setBusy] = createSignal(false);

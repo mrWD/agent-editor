@@ -12,6 +12,7 @@ import {
   type JSX,
 } from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
+import { createKept } from '../core/kept';
 import { Icon, clock } from '../components/bits';
 import { addPictures, pictureCount } from '../components/Pictures';
 import { DeviceView } from '../components/PreviewDevice';
@@ -209,7 +210,9 @@ export function PreviewView(props: { task: Task }): JSX.Element {
    * a choice made earlier would be overwritten by what was stored.
    */
   const [loaded, setLoaded] = createSignal(false);
-  const [run, setRun] = createSignal<RunState | null>(null);
+  // What ran last time is there at once; it is asked anew behind that. The way to the page is not kept:
+  // it is closed when this view goes, and opened anew when it comes.
+  const [run, setRun] = createKept<RunState | null>(`task:${taskId}:preview.run`, null);
   const [relay, setRelay] = createSignal<Relay | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [kind, setKind] = createSignal<Kind>('web');

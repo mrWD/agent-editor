@@ -280,3 +280,107 @@ test.describe('Rows are as tall as what they say', () => {
     expect((await automation.boundingBox())!.height).toBeLessThan(100);
   });
 });
+
+test.describe('Coming back to a screen', () => {
+  /** The words a screen shows while it has nothing yet. */
+  const EMPTY = [
+    'Reading the issues',
+    'Looking at the projects',
+    'Reading the automations',
+    'Reading what the agents cost',
+    'Reading the settings',
+    'Reading the changes',
+    'Reading the code',
+    'Reading what this project can run',
+  ];
+
+  /** From now on, notes every one of those words that is ever drawn, however briefly. */
+  const watch = (app: App) =>
+    app.page.evaluate((words) => {
+      const seen = new Set<string>();
+      const look = () => {
+        const text = document.body.innerText;
+        for (const word of words) if (text.includes(word)) seen.add(word);
+      };
+      new MutationObserver(look).observe(document.body, { childList: true, subtree: true, characterData: true });
+      (window as unknown as { emptySeen: Set<string> }).emptySeen = seen;
+    }, EMPTY);
+  const seenEmpty = (app: App) =>
+    app.page.evaluate(() => [...(window as unknown as { emptySeen: Set<string> }).emptySeen]);
+
+  test('W-18 a section opens on what it showed last time, never on an empty screen', async ({ app, project }) => {
+    const shop = await project();
+    await app.openHome();
+    await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
+    const sections = app.page.getByRole('navigation', { name: 'Sections' });
+    const visit = async (name: string, shows: string | RegExp) => {
+      await sections.getByRole('link', { name }).click();
+      await expect(app.page.getByRole('main')).toContainText(shows);
+    };
+    const all = async () => {
+      await visit('Issues', 'Synced');
+      await visit('Health', /missing|Nothing is missing/i);
+      await visit('Automations', 'When a merge request is merged');
+      await visit('Agents', 'Practice agent');
+      await app.page.getByRole('link', { name: 'Settings' }).click();
+      await expect(app.page.getByRole('main')).toContainText('Where the data lives');
+    };
+
+    // The first time each one has to read: that is where the words of an empty screen belong.
+    await all();
+    await watch(app);
+    // The second time each is there at once.
+    await all();
+    expect(await seenEmpty(app)).toEqual([]);
+  });
+
+  test('W-19 the views of a task open on what they showed last time too', async ({ app, project }) => {
+    const shop = await project();
+    await app.openHome();
+    const taskId = await app.createTask({ text: unique('Change the limit'), folder: shop.dir, until: 'question' });
+    await app.answer('Allow this edit');
+    await app.turnEnds();
+    const all = async () => {
+      await app.showView('Changes');
+      await expect(app.page.getByText('Not committed').first()).toBeVisible();
+      await app.showView('Map');
+      await expect(app.page.getByRole('region', { name: 'Map of this task' })).toContainText('rateLimit.ts');
+      await app.showView('Code');
+      await app.openBottom('Run');
+      await expect(app.bottom).toContainText(/dev|compose/i);
+    };
+    await all();
+    // Away from the task altogether, and back: the task's screen is made anew.
+    await app.goHome();
+    await app.openTask(taskId);
+    await watch(app);
+    await all();
+    expect(await seenEmpty(app)).toEqual([]);
+  });
+});
+
+test.describe('Setting the editor up with an agent', () => {
+  test.use({ freshCore: true });
+
+  test('W-17 the offer is a button on the home screen and never a form that opens by itself', async ({ app }) => {
+    await app.openHome();
+    // An editor with nothing in it yet: the first run has its own dialogs, so this one waits to be asked for.
+    const offer = app.page.getByRole('button', { name: 'Set up with an agent' });
+    const form = app.page.getByRole('form', { name: 'Set up the editor with an agent' });
+    await expect(offer).toBeVisible();
+    await expect(form).toHaveCount(0);
+
+    await offer.click();
+    await expect(form.getByRole('textbox', { name: 'What does your team use?' })).toBeVisible();
+    // Without a project there is only a folder to give, and starting without one says so.
+    await expect(form.getByRole('combobox', { name: 'Project the agent works from' })).toHaveValue('__new__');
+    await form.getByRole('button', { name: 'Start setting up' }).click();
+    await expect(form.getByRole('alert')).toHaveText(
+      'Give the folder of one of your repositories, for example /Users/you/code/app.',
+    );
+    // It can always be put away again.
+    await form.getByRole('button', { name: 'Not now' }).click();
+    await expect(form).toHaveCount(0);
+    await expect(offer).toBeVisible();
+  });
+});

@@ -243,8 +243,30 @@ impl Request {
     }
 }
 
-/// Seconds since 1970 for a time like `2026-11-12T19:05:30Z`. Zero when it cannot be read.
-fn parse_time(text: &str) -> u64 {
+/// Whether a tool's complaint means that the host has no such repository, or none this account may
+/// see: the two are told alike, on purpose.
+fn no_such_repository(complaint: &str) -> bool {
+    let said = complaint.to_lowercase();
+    said.contains("http 404")
+        || said.contains("404 project not found")
+        || said.contains("could not resolve to a repository")
+}
+
+/// What a host's tool complained of, in a sentence a person can act on where the tool gave an
+/// address and a code. Anything else is passed on as the tool said it.
+pub(crate) fn said_plainly(remote: &Remote, error: anyhow::Error) -> anyhow::Error {
+    if !no_such_repository(&format!("{error:#}")) {
+        return error;
+    }
+    anyhow!(
+        "{} knows no repository {} that this account can see. Push the project there first, or sign in to an account that can see it.",
+        remote.kind.name(),
+        remote.slug
+    )
+}
+
+/// Milliseconds since 1970 for a time like `2026-11-12T19:05:30Z`. Zero when it cannot be read.
+pub(crate) fn parse_time(text: &str) -> u64 {
     let digits = |from: usize, len: usize| text.get(from..from + len).and_then(|part| part.parse::<i64>().ok());
     let (Some(year), Some(month), Some(day)) = (digits(0, 4), digits(5, 2), digits(8, 2)) else {
         return 0;
@@ -516,7 +538,7 @@ impl Hosts {
 
     /// Runs one of the tools against one server and returns what it printed, or its complaint as the error. Without it `gh` asks github.com and `glab` asks gitlab.com,
     /// whatever server the project lives on: a company's own GitLab answers "not found" and "not signed in".
-    fn run_at(&self, kind: HostKind, host: Option<&str>, args: &[&str]) -> Result<String> {
+    pub(crate) fn run_at(&self, kind: HostKind, host: Option<&str>, args: &[&str]) -> Result<String> {
         let tool = self.tool(kind);
         let name = if kind == HostKind::GitHub { "gh" } else { "glab" };
         let mut command = Command::new(tool);
@@ -984,6 +1006,26 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_repository_the_host_does_not_know_is_said_in_a_sentence_and_other_trouble_as_it_was() {
+        assert!(no_such_repository(
+            "failed to get runs: HTTP 404: Not Found (https://api.github.com/repos/x/y/actions/runs)"
+        ));
+        assert!(no_such_repository("GraphQL: Could not resolve to a Repository with the name 'x/y'. (repository)"));
+        assert!(no_such_repository("glab: 404 Project Not Found (HTTP 404)"));
+        assert!(!no_such_repository("HTTP 401: Bad credentials"));
+        let remote = Remote { kind: HostKind::GitHub, host: "github.com".into(), slug: "x/y".into() };
+        assert_eq!(
+            said_plainly(&remote, anyhow!("GraphQL: Could not resolve to a Repository with the name 'x/y'."))
+                .to_string(),
+            "GitHub knows no repository x/y that this account can see. Push the project there first, or sign in to an account that can see it."
+        );
+        assert_eq!(
+            said_plainly(&remote, anyhow!("HTTP 401: Bad credentials")).to_string(),
+            "HTTP 401: Bad credentials"
+        );
+    }
 
     #[test]
     fn reads_where_a_repository_lives_from_its_address() {

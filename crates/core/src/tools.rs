@@ -1,5 +1,6 @@
 //! Programs of this computer the core runs for a moment and waits for: a
-//! browser that takes one screenshot, `xcrun`, `adb`.
+//! browser that takes one screenshot, `xcrun`, `adb`, `idb`. One is started and
+//! left to itself: an Android emulator, which is a window of its own.
 //!
 //! Each run has a time limit. When it is over, one way or the other, the whole
 //! family of processes the program started is stopped, so a browser's helpers
@@ -25,7 +26,7 @@ const OUTPUT_PATIENCE: Duration = Duration::from_millis(1500);
 
 /// Where the programs the Preview runs are. `None` means: look for it on this computer.
 ///
-/// Tests name stand-ins here, and so do `AE_BROWSER`, `AE_XCRUN` and `AE_ADB`.
+/// Tests name stand-ins here, and so do `AE_BROWSER`, `AE_XCRUN`, `AE_ADB`, `AE_EMULATOR` and `AE_IDB`.
 /// A program that is named is the only one used, even when it is not there:
 /// a test must never fall through to the real Chrome, Xcode or Android tools.
 #[derive(Debug, Clone, Default)]
@@ -33,6 +34,11 @@ pub struct Tools {
     pub browser: Option<PathBuf>,
     pub xcrun: Option<PathBuf>,
     pub adb: Option<PathBuf>,
+    /// Android's `emulator`, which lists the emulators that are off and starts one. It is looked for
+    /// only when `adb` was not named: next to a stand-in for `adb` nothing real is ever started.
+    pub emulator: Option<PathBuf>,
+    /// `idb`, which taps and types on an iOS simulator. Looked for only when `xcrun` was not named.
+    pub idb: Option<PathBuf>,
     /// How long any one run may take, instead of each kind's own limit. For tests of a program that hangs.
     pub patience: Option<Duration>,
 }
@@ -41,7 +47,14 @@ impl Tools {
     /// What the environment names. Read once, when the core starts.
     pub fn from_env() -> Self {
         let named = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
-        Self { browser: named("AE_BROWSER"), xcrun: named("AE_XCRUN"), adb: named("AE_ADB"), patience: None }
+        Self {
+            browser: named("AE_BROWSER"),
+            xcrun: named("AE_XCRUN"),
+            adb: named("AE_ADB"),
+            emulator: named("AE_EMULATOR"),
+            idb: named("AE_IDB"),
+            patience: None,
+        }
     }
 
     /// The limit of one run: the kind's own, unless a test set another.
@@ -203,6 +216,36 @@ async fn ended(child: &mut Child, pid: Option<u32>) {
 #[cfg(not(unix))]
 async fn ended(child: &mut Child, _pid: Option<u32>) {
     let _ = child.wait().await;
+}
+
+/// Starts a program that goes on by itself in a window of its own: an emulator. It is not waited for
+/// and not stopped with the question that started it. The caller gets the handle to see whether it
+/// ended at once, and to collect it when it does end.
+pub(crate) fn start_apart(program: &Path, args: Vec<OsString>) -> Result<std::process::Child> {
+    let mut command = std::process::Command::new(program);
+    command.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    for (name, _) in std::env::vars_os() {
+        if name.to_string_lossy().starts_with("AE_") {
+            command.env_remove(&name);
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // A group of its own: stopping the core's own family does not take the emulator with it.
+        command.process_group(0);
+        // It lives for hours: it must not hold the output of another program that was being started
+        // at the same moment, or whoever reads that output to its end would wait as long.
+        // SAFETY: the function only calls `fcntl`, which is safe between `fork` and `exec`.
+        unsafe { command.pre_exec(crate::acp::leave_others_streams) };
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NEW_PROCESS_GROUP: Ctrl+C in the core's console is not passed on to it.
+        command.creation_flags(0x0000_0200);
+    }
+    command.spawn().with_context(|| format!("Could not start {}", program.display()))
 }
 
 /// The first of `places` that is a file.

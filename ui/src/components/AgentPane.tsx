@@ -185,21 +185,37 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   const modelOption = () => options().find((option) => isModel(option) && !isMode(option));
   const otherOptions = () => options().filter((option) => !isMode(option) && !isModel(option));
   const [moreOpen, setMoreOpen] = createSignal(false);
-  const [setting, setSetting] = createSignal(false);
+  /**
+   * A piece of the pane's state that belongs to one task. The pane stays while the task on screen
+   * changes, so what was typed for one task, what is still being done for it and what went wrong
+   * there must not show under another: each task reads its own, and what ends later for a task that
+   * is no longer on screen is written to that task.
+   */
+  function ofTask<T>(start: T) {
+    const [all, setAll] = createSignal<Record<string, T>>({});
+    const get = () => all()[taskId()] ?? start;
+    const set = (value: T, id: string = taskId()) => setAll((before) => ({ ...before, [id]: value }));
+    return [get, set] as const;
+  }
+  const [setting, setSetting] = ofTask(false);
   const pick = (option: ConfigOption, value: string) => {
     if (value === option.currentValue) return;
     setSetting(true);
     const id = taskId();
-    void act(() => setTaskOption(id, option.id, value)).finally(() => setSetting(false));
+    void act(() => setTaskOption(id, option.id, value)).finally(() => setSetting(false, id));
   };
 
   const lookingBack = () => work().lookBack !== null;
   const team = () => teamOf(taskId());
   const [teamOpen, setTeamOpen] = createSignal(false);
+  // Keep the newest line in view, unless the user has scrolled up to read.
+  let pinnedToEnd = true;
   // The team of the task on screen is kept current for as long as the pane shows it.
   createEffect(
     on(taskId, (id) => {
       setTeamOpen(false);
+      // Another task opens at the end of its conversation, wherever the last one was scrolled to.
+      pinnedToEnd = true;
       onCleanup(watchTeam(id));
     }),
   );
@@ -215,7 +231,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
     if (to === agentId()) return;
     setSetting(true);
     const id = taskId();
-    void act(() => switchAgent(id, to)).finally(() => setSetting(false));
+    void act(() => switchAgent(id, to)).finally(() => setSetting(false, id));
   };
 
   const usage = () => props.task.usage;
@@ -228,13 +244,11 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   };
   const inFolder = (path: string | null): path is string => Boolean(path) && !/^([a-zA-Z]:)?[\\/]/.test(path!);
 
-  const [draft, setDraft] = createSignal('');
-  const [problem, setProblem] = createSignal<string | null>(null);
-  const [starting, setStarting] = createSignal(false);
+  const [draft, setDraft] = ofTask('');
+  const [problem, setProblem] = ofTask<string | null>(null);
+  const [starting, setStarting] = ofTask(false);
   let feedEl: HTMLDivElement | undefined;
 
-  // Keep the newest line in view, unless the user has scrolled up to read.
-  let pinnedToEnd = true;
   const onScroll = () => {
     if (!feedEl) return;
     pinnedToEnd = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40;
@@ -249,11 +263,13 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   );
 
   const act = async (work: () => Promise<unknown>) => {
-    setProblem(null);
+    // What goes wrong is said under the task it was asked for, also when another is on screen by then.
+    const id = taskId();
+    setProblem(null, id);
     try {
       await work();
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error));
+      setProblem(error instanceof Error ? error.message : String(error), id);
     }
   };
 
@@ -263,7 +279,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   // "Send a screenshot too": there while the Preview shows a page, and on when the user said so and one can be taken.
   const shooter = () => shooterOf(taskId());
   const shotToo = () => sendsShot(taskId()) && shooter()?.refusal() === null;
-  const [shooting, setShooting] = createSignal(false);
+  const [shooting, setShooting] = ofTask(false);
 
   const send = (instead?: string, shotTaken = false) => {
     const typed = (instead ?? draft()).trim();
@@ -282,11 +298,11 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         .catch((error: unknown) => {
           // Nothing was sent: the words are still in the box, to send again or without the screenshot.
           const why = error instanceof Error ? error.message : String(error);
-          setProblem(`${why} Your message was not sent.`);
+          setProblem(`${why} Your message was not sent.`, id);
           return false;
         })
         .then((taken) => {
-          setShooting(false);
+          setShooting(false, id);
           if (taken && taskId() === id) send(undefined, true);
         });
       return;
@@ -320,7 +336,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         putBack(id, shown);
         throw error;
       }
-    }).finally(() => setStarting(false));
+    }).finally(() => setStarting(false, id));
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -546,6 +562,14 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         {(notice) => (
           <p class="notice" classList={{ danger: notice().tone === 'danger' }}>
             {notice().text}
+          </p>
+        )}
+      </Match>
+      {/* What the editor did outside the conversation, or learned there: an issue moved, a job started again. */}
+      <Match when={entry.kind === 'tracker' && entry}>
+        {(said) => (
+          <p class="notice" classList={{ danger: said().failed }}>
+            {said().text}
           </p>
         )}
       </Match>
@@ -776,7 +800,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
                 </Show>
               </span>
               <Suspense>
-                <TerminalView taskId={taskId()} visible attach={termId} follow />
+                <TerminalView taskId={taskId()} visible attach={termId} follow quiet />
               </Suspense>
             </section>
           )}

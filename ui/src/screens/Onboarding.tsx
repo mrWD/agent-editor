@@ -399,6 +399,18 @@ export function Onboarding(): JSX.Element {
     }
   };
 
+  // A press beside the dialog leaves the keyboard on nothing at all: Escape and Tab still mean the dialog.
+  // While the hints are up the dialog is not there, and they look after their own keys.
+  const outside = (event: KeyboardEvent) => {
+    // A key the hints or the dialog itself already took is not taken twice: Escape that ended the hints
+    // has just brought the dialog back, and must not put it aside in the same breath.
+    if (event.defaultPrevented) return;
+    if (!onboardingOpen() || touring() || !dialog || dialog.contains(event.target as Node)) return;
+    onKeyDown(event);
+  };
+  document.addEventListener('keydown', outside);
+  onCleanup(() => document.removeEventListener('keydown', outside));
+
   const service = (name: string, tool: ToolState, gives: string) => (
     <div class="first-row" role="group" aria-label={name}>
       <div class="first-what">

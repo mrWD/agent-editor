@@ -53,6 +53,17 @@ export const DEV_SCRIPT = "printf 'ready\\n  Local: http://localhost:4567/\\n'; 
 
 export type GithubIssue = { number: number; title: string; body?: string; labels?: string[] };
 
+/** How a run of GitHub Actions, or one job of it, stands. */
+export type RunState = 'success' | 'failure' | 'cancelled' | 'skipped' | 'running';
+/** One run of a workflow as the `gh` stand-in knows it. Runs of the newest commit are the pipeline. */
+export type WorkflowRun = {
+  id: number;
+  name: string;
+  state: RunState;
+  commit?: string;
+  jobs: { id: number; name: string; state: RunState }[];
+};
+
 export type ProjectOptions = {
   /** The start of the folder's name. A short tag is added, so every project has a name of its own. */
   name?: string;
@@ -139,6 +150,36 @@ export class Project {
   setReviewThreads(number: number, threads: ReviewThread[]) {
     if (!this.slug) throw new Error('Only a project with a GitHub address has pull requests');
     writeFileSync(path.join(ghState(this.core.toolsDir, this.slug), `threads-${number}.json`), threadsAnswer(threads));
+  }
+
+  /**
+   * Says which runs GitHub Actions has for the branches of this project, newest first, each with
+   * its jobs. The stand-in answers `gh run list` and `gh run view` from it, and a run started
+   * again there is a run in progress.
+   */
+  setRuns(runs: WorkflowRun[]) {
+    if (!this.slug) throw new Error('Only a project with a GitHub address has runs');
+    const state = ghState(this.core.toolsDir, this.slug);
+    const status = (how: RunState) =>
+      how === 'running' ? { status: 'in_progress', conclusion: '' } : { status: 'completed', conclusion: how };
+    // Status right before conclusion and no spaces: the stand-in rewrites the pair as text.
+    const listed = runs.map((run) => ({
+      databaseId: run.id,
+      workflowName: run.name,
+      url: `https://github.com/${this.slug}/actions/runs/${run.id}`,
+      headSha: run.commit ?? '0123456789abcdef0123456789abcdef01234567',
+      ...status(run.state),
+    }));
+    writeFileSync(path.join(state, 'runs.json'), JSON.stringify(listed));
+    for (const run of runs) {
+      const jobs = run.jobs.map((job) => ({
+        databaseId: job.id,
+        name: job.name,
+        url: `https://github.com/${this.slug}/actions/runs/${run.id}/job/${job.id}`,
+        ...status(job.state),
+      }));
+      writeFileSync(path.join(state, `jobs-${run.id}.json`), JSON.stringify({ jobs }));
+    }
   }
 
   /** Changes the pull request of a branch behind the core's back, as GitHub does when checks or reviews move. */

@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { recall, remember } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, span as lengthOf, whenLabel } from '../components/bits';
 import { core } from '../core/client';
@@ -110,7 +111,10 @@ export function SpanView(props: { task: Task; mode: 'visit' | 'branch' }): JSX.E
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task
   const taskId = props.task.info.id;
   const agentName = () => agentOf(props.task)?.name ?? 'the agent';
-  const [files, setFiles] = createSignal<SpanFile[] | null>(null);
+  // What each of the two looks showed last time is there at once; it is read anew behind that.
+  const keptFiles = (mode: Span) => `task:${taskId}:span.${mode}`;
+  // eslint-disable-next-line solid/reactivity -- only where it starts: the effect below follows the mode from then on
+  const [files, setFiles] = createSignal<SpanFile[] | null>(recall<SpanFile[]>(keptFiles(props.mode)));
   const [problem, setProblem] = createSignal<string | null>(null);
   const [since, setSince] = createSignal<Since | null>(null);
   const [open, setOpen] = createSignal<Record<string, FileDiff | 'loading' | { problem: string }>>({});
@@ -142,7 +146,7 @@ export function SpanView(props: { task: Task; mode: 'visit' | 'branch' }): JSX.E
       ]);
       if (mode !== from()) return;
       setProblem(null);
-      setFiles(listed.files);
+      setFiles(remember(keptFiles(mode), listed.files));
       setSince(told);
       // The files that were open stay open with fresh lines; with none open, the first one is shown.
       const shown = Object.keys(open()).filter((path) => listed.files.some((file) => file.path === path));
@@ -157,8 +161,8 @@ export function SpanView(props: { task: Task; mode: 'visit' | 'branch' }): JSX.E
   };
 
   createEffect(
-    on(from, () => {
-      setFiles(null);
+    on(from, (mode) => {
+      setFiles(recall<SpanFile[]>(keptFiles(mode)));
       setOpen({});
       void load();
     }),

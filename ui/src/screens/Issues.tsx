@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, Chip, StageGlyph } from '../components/bits';
 import { core } from '../core/client';
@@ -36,14 +37,15 @@ type Filter = 'open' | 'free';
  * with one press.
  */
 export function Issues(): JSX.Element {
-  const [projects, setProjects] = createSignal<ProjectIssues[] | null>(null);
-  const [mine, setMine] = createSignal<LinearMine>(null);
-  const [account, setAccount] = createSignal<LinearAccount | null>(null);
+  // What was read last time is shown at once; it is read again behind that.
+  const [projects, setProjects] = createKept<ProjectIssues[] | null>('issues.projects', null);
+  const [mine, setMine] = createKept<LinearMine>('issues.mine', null);
+  const [account, setAccount] = createKept<LinearAccount | null>('issues.account', null);
   const [accountProblem, setAccountProblem] = createSignal<string | null>(null);
   /** For each of the user's Linear issues, the project its task would start in. */
-  const [placeOf, setPlaceOf] = createSignal<Record<string, string>>({});
-  const [services, setServices] = createSignal<Integrations | null>(null);
-  const [syncedAt, setSyncedAt] = createSignal<number | null>(null);
+  const [placeOf, setPlaceOf] = createKept<Record<string, string>>('issues.placeOf', {});
+  const [services, setServices] = createKept<Integrations | null>('issues.services', null);
+  const [syncedAt, setSyncedAt] = createKept<number | null>('issues.syncedAt', null);
   const [syncing, setSyncing] = createSignal(false);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [filter, setFilter] = createSignal<Filter>('open');
@@ -56,8 +58,15 @@ export function Issues(): JSX.Element {
   const agents = () => state.agents.filter((agent) => agent.available);
   const chosenAgent = () => agentId() || defaultAgentId();
 
+  // One reading at a time. A reading asked for while one is on its way is not dropped: what the one
+  // on its way brings may be older than what it was asked for (a key that was just saved), so another
+  // follows it.
+  let again = false;
   const sync = async () => {
-    if (syncing()) return;
+    if (syncing()) {
+      again = true;
+      return;
+    }
     setSyncing(true);
     setProblem(null);
     try {
@@ -83,6 +92,10 @@ export function Issues(): JSX.Element {
       setProblem(message(error));
     } finally {
       setSyncing(false);
+      if (again) {
+        again = false;
+        void sync();
+      }
     }
   };
 
