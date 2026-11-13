@@ -1,6 +1,6 @@
 //! The one window of the app.
 
-use crate::{Shell, links};
+use crate::{Shell, links, zoom};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::window::Color;
 use tauri::{AppHandle, Manager, Theme, WebviewUrl, WebviewWindowBuilder};
@@ -15,7 +15,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     let (for_links, for_new_windows) = (app.clone(), app.clone());
     let previews = shell.core.lock().unwrap().as_ref().map(|core| core.state().previews.clone());
 
-    WebviewWindowBuilder::new(app, MAIN, WebviewUrl::External(shell.address.clone()))
+    let opened = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::External(shell.address.clone()))
         .title("Agent Editor")
         // A first-time size; after that the window opens the way it was left.
         .inner_size(1280.0, 820.0)
@@ -49,7 +49,32 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build()?;
+    // The interface comes back as large as it was left. A window opened again while the app runs gets it too.
+    let zoom = *shell.zoom.lock().unwrap();
+    if zoom != zoom::ACTUAL
+        && let Err(error) = opened.set_zoom(zoom)
+    {
+        tracing::warn!("Could not draw the interface at {zoom}: {error}");
+    }
     Ok(())
+}
+
+/// Draws the interface one step larger or smaller, or at the size it was designed for, and notes it for next time.
+pub fn zoom(app: &AppHandle, to: Option<zoom::Step>) {
+    let Some(shell) = app.try_state::<Shell>() else { return };
+    let mut current = shell.zoom.lock().unwrap();
+    let next = to.map_or(zoom::ACTUAL, |step| zoom::step(*current, step));
+    if next == *current {
+        return;
+    }
+    if let Some(window) = app.get_webview_window(MAIN)
+        && let Err(error) = window.set_zoom(next)
+    {
+        tracing::warn!("Could not draw the interface at {next}: {error}");
+        return;
+    }
+    *current = next;
+    zoom::remember(&shell.data_dir, next);
 }
 
 /// Brings the window to the front, opening it again when it was closed while the app kept running.
