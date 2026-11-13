@@ -827,6 +827,28 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             tokio::task::spawn_blocking(move || manager.set_auto_merge(&task_id, options)).await??;
             Ok(json!({}))
         }
+        "rules.list" => manager.all_rules(),
+        "rules.add" => {
+            let agents: Vec<String> = params
+                .get("agents")
+                .and_then(Value::as_array)
+                .map(|list| list.iter().filter_map(|id| id.as_str().map(str::to_string)).collect())
+                .unwrap_or_default();
+            let from = params.get("from").and_then(Value::as_str).unwrap_or("you");
+            let rule = manager.rule_add(text_param(params, "scope")?, text_param(params, "text")?, from, agents)?;
+            Ok(json!({ "rule": rule }))
+        }
+        "rules.remove" => {
+            manager.rule_remove(text_param(params, "scope")?, text_param(params, "id")?)?;
+            Ok(json!({}))
+        }
+        "rules.offers" => {
+            let project = text_param(params, "projectId")?;
+            if let Some(on) = params.get("on").and_then(Value::as_bool) {
+                manager.set_rule_offers(project, on)?;
+            }
+            Ok(json!({ "on": manager.rule_offers(project) }))
+        }
         "health.get" => {
             let manager = manager.clone();
             tokio::task::spawn_blocking(move || manager.health()).await?

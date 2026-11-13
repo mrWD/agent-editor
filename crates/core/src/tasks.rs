@@ -77,6 +77,9 @@ struct Live {
     /// True when the agent takes settings through `session/set_config_option`;
     /// older agents only know `session/set_mode`.
     has_config_options: bool,
+    /// The project's rules as this session was last told them. They are told
+    /// again only when they have changed.
+    rules_told: Mutex<Option<String>>,
 }
 
 impl Live {
@@ -494,6 +497,7 @@ impl Manager {
             options: Mutex::new(options_of(&session)),
             commands: Mutex::new(json!([])),
             has_config_options,
+            rules_told: Mutex::new(None),
         });
         for params in &replayed {
             live.note_config(params.get("update").unwrap_or(&Value::Null));
@@ -839,6 +843,21 @@ impl Manager {
         };
         if !edited.is_empty() {
             sent = format!("{}\n\n{sent}", manual_edit_note(&edited));
+        }
+        // What stands for the whole task goes in front: the plan the agent must keep to,
+        // and the project's rules, told once to each session and again when they change.
+        if let Some(note) = self.plan_note(task_id) {
+            sent = format!("{note}\n\n{sent}");
+        }
+        let rules = self.rules_note(&row.project_id, &row.agent_id);
+        {
+            let mut told = live.rules_told.lock().unwrap();
+            if *told != rules {
+                if let Some(note) = &rules {
+                    sent = format!("{note}\n\n{sent}");
+                }
+                *told = rules;
+            }
         }
 
         self.emit(task_id, json!({ "type": "user_message", "text": text, "edited": edited }));
