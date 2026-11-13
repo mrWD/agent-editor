@@ -514,6 +514,35 @@ impl Manager {
         due
     }
 
+    /// Looks again at every request that was open when last seen, and returns
+    /// the tasks whose request is merged now. Used to notice a merge that was
+    /// made on the host, not from here.
+    pub fn merged_since_last_look(&self) -> Vec<String> {
+        let mut merged = Vec::new();
+        for task in self.store().tasks().unwrap_or_default() {
+            let known = self.remembered.requests.lock().unwrap().get(&task.id).cloned();
+            let Some((_, Some(last))) = known else { continue };
+            if last.state == "merged" {
+                merged.push(task.id);
+                continue;
+            }
+            if last.state != "open" {
+                continue;
+            }
+            let root = PathBuf::from(&task.cwd);
+            let (Some(branch), Some(remote)) = (task.branch.clone(), remote_of(&root)) else { continue };
+            let asked = Instant::now();
+            let Ok(request) = self.hosts.request(&remote, &branch) else { continue };
+            let is_merged = request.as_ref().is_some_and(|request| request.state == "merged");
+            self.remember_request(&task.id, request, asked);
+            if is_merged {
+                self.broadcast("mr.changed", json!({ "taskId": task.id }));
+                merged.push(task.id);
+            }
+        }
+        merged
+    }
+
     /// Called when a request that was due did not merge after all.
     pub fn auto_merge_failed(&self, task_id: &str, why: &str) {
         let _ = self.store().set_setting(&auto_merge_key(task_id), None);

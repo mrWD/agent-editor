@@ -27,6 +27,8 @@ async function taskWithAChange(app: App, shop: Project, title: string, change = 
 async function openRequest(app: App, message: string) {
   await app.git.getByRole('radio', { name: 'Push and open a pull request' }).check();
   await app.git.getByRole('textbox', { name: 'Commit message' }).fill(message);
+  // The choice holds only once the core has said where the project lives; until then it falls back.
+  await expect(commitButton(app)).toHaveText('Commit 1 file, push and open a pull request');
   await commitButton(app).click();
   await expect(app.request).toContainText(/Number \d+ · open/);
 }

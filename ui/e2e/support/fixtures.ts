@@ -15,6 +15,10 @@ type Options = {
   mockDelayMs: number;
   /** A core whose practice agent ends at once. */
   brokenAgent: boolean;
+  /** A core whose practice agent pretends each turn costs this many dollars. */
+  practiceCost: number;
+  /** A core with a second practice agent. */
+  twoAgents: boolean;
 };
 
 type PerTest = {
@@ -35,6 +39,8 @@ export const test = base.extend<Options & PerTest, PerWorker>({
   freshCore: [false, { option: true }],
   mockDelayMs: [DEFAULT_DELAY, { option: true }],
   brokenAgent: [false, { option: true }],
+  practiceCost: [0, { option: true }],
+  twoAgents: [false, { option: true }],
 
   workerCore: [
     // eslint-disable-next-line no-empty-pattern -- Playwright reads the names of the fixtures from this pattern
@@ -46,9 +52,9 @@ export const test = base.extend<Options & PerTest, PerWorker>({
     { scope: 'worker' },
   ],
 
-  core: async ({ workerCore, freshCore, mockDelayMs, brokenAgent }, use, testInfo) => {
-    const own = freshCore || brokenAgent || mockDelayMs !== DEFAULT_DELAY;
-    const core = own ? await Core.start({ mockDelayMs, brokenAgent }) : await workerCore.get();
+  core: async ({ workerCore, freshCore, mockDelayMs, brokenAgent, practiceCost, twoAgents }, use, testInfo) => {
+    const own = freshCore || brokenAgent || mockDelayMs !== DEFAULT_DELAY || practiceCost > 0 || twoAgents;
+    const core = own ? await Core.start({ mockDelayMs, brokenAgent, practiceCost, twoAgents }) : await workerCore.get();
     const logFrom = core.log.length;
     await use(core);
     if (testInfo.status !== testInfo.expectedStatus) {

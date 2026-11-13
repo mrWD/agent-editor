@@ -66,7 +66,17 @@ pub fn registry() -> Registry {
     let script = format!("sh -c 'sleep 30; true' \"$0\" & '{}' \"$0\"; true", wrapped.program);
     wrapped.args = vec!["-c".into(), script, wrapped_marker()];
     wrapped.program = "/bin/sh".into();
+    // A practice agent that says each turn cost a quarter, to try adding up cost. Nothing is charged.
+    let mut paid = practice("mock-paid", None);
+    paid.env.push(("AE_MOCK_COST".into(), "0.25".into()));
+    paid.name = "Paid practice agent".into();
+    paid.spends_tokens = true;
+    let mut missing = practice("mock-missing", None);
+    missing.available = false;
+    missing.note = Some("Install it first".into());
     Registry::with(vec![
+        paid,
+        missing,
         practice("mock", None),
         practice("mock-load", Some("AE_MOCK_LOAD")),
         practice("mock-modes", Some("AE_MOCK_MODES")),

@@ -22,6 +22,7 @@ import { Chip, Icon, modKey } from '../components/bits';
 import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
 import { core } from '../core/client';
+import { checksOf, watchChecks } from '../core/checks';
 import { problemCount } from '../core/problems';
 import { arrive, leave } from '../core/visits';
 import {
@@ -57,6 +58,7 @@ import {
 import { watchGit, type GitWatch } from '../core/gitstate';
 import { EditorHost, type FileMeta } from '../editor/host';
 import { ChangesView } from './Changes';
+import { ChecksView } from './Checks';
 import { LookBackView } from './LookBack';
 import { SpanView } from './Span';
 import { languageOf } from '../editor/languages';
@@ -78,7 +80,6 @@ const notBuilt: Partial<Record<View, { milestone: string; what: string }>> = {
   plan: { milestone: 'M6', what: 'The flowchart the task is built from.' },
   preview: { milestone: 'M7', what: 'The running app on several devices at once.' },
   map: { milestone: 'M7', what: 'Diagrams of the code this task touches.' },
-  checks: { milestone: 'M5', what: 'The list of what must be true before the task is done.' },
 };
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
@@ -1013,6 +1014,9 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
   createEffect(() => setUncommitted(props.task.info.id, git.state()?.files.length ?? 0));
   const lookingBack = () => workOf(props.task.info.id).lookBack !== null;
   const changesMode = () => workOf(props.task.info.id).changes;
+  // The checks are kept current for as long as the task is on screen: their count is in the switcher.
+  // eslint-disable-next-line solid/reactivity -- this component is made anew for each task
+  onCleanup(watchChecks(props.task.info.id));
 
   return (
     <>
@@ -1026,7 +1030,10 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
           <ChangesView task={props.task} git={git} />
         </Show>
       </Show>
-      <Show when={props.view !== 'code' && props.view !== 'changes' && !lookingBack()}>
+      <Show when={props.view === 'checks' && !lookingBack()}>
+        <ChecksView task={props.task} />
+      </Show>
+      <Show when={props.view !== 'code' && props.view !== 'changes' && props.view !== 'checks' && !lookingBack()}>
         <section class="center">
           <div class="center-note">
             <h2>{viewNames[props.view]} is not built yet</h2>
@@ -1110,6 +1117,15 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
                   <Show when={view === 'code' && workOf(props.id).unsaved > 0}>
                     <span class="count" title="files with unsaved edits">
                       {workOf(props.id).unsaved}
+                    </span>
+                  </Show>
+                  <Show when={view === 'checks' && (checksOf(props.id)?.total ?? 0) > 0}>
+                    <span
+                      class="count plain"
+                      classList={{ bad: (checksOf(props.id)?.failed ?? 0) > 0 }}
+                      title="lines of “Done when” that are done"
+                    >
+                      {checksOf(props.id)!.done} of {checksOf(props.id)!.total}
                     </span>
                   </Show>
                   <Show when={view === 'changes' && (uncommitted[props.id] ?? 0) > 0}>

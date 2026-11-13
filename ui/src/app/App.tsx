@@ -2,6 +2,8 @@ import { createMemo, ErrorBoundary, lazy, Match, Suspense, Switch, type JSX } fr
 import { Header } from '../components/Header';
 import { ProjectsRail } from '../components/ProjectsRail';
 import { SearchPalette } from '../components/SearchPalette';
+import { Agents } from '../screens/Agents';
+import { Automations } from '../screens/Automations';
 import { Home } from '../screens/Home';
 import { Issues } from '../screens/Issues';
 import { route, type View } from './router';
@@ -11,8 +13,6 @@ const TaskScreen = lazy(() => import('../screens/Task').then((module) => ({ defa
 
 const sections = {
   health: { title: 'Health', what: 'What each project is missing, and the checks every task must pass.' },
-  automations: { title: 'Automations', what: 'What happens by itself, such as the clean-up after a merge.' },
-  agents: { title: 'Agents', what: 'Limits, cost and who is doing what.' },
 } as const;
 
 /** A section that is drawn in the design but not built yet says so plainly. */
@@ -72,6 +72,12 @@ export function App(): JSX.Element {
           </Match>
           <Match when={route().page === 'issues'}>
             <Issues />
+          </Match>
+          <Match when={route().page === 'automations'}>
+            <Automations />
+          </Match>
+          <Match when={route().page === 'agents'}>
+            <Agents />
           </Match>
           <Match when={route().page in sections}>
             <NotBuilt page={route().page as keyof typeof sections} />

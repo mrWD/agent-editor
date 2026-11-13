@@ -9,6 +9,8 @@ import {
   rewindTo,
   setTaskOption,
   spentOn,
+  state,
+  switchAgent,
   type ConfigOption,
   type Diff,
   type FeedItem,
@@ -17,7 +19,7 @@ import {
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
 import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
-import { ago, Check, Chip, clock, Ring, RingDot } from './bits';
+import { ago, Check, Chip, clock, money, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
 import { WhereStopped } from './WhereStopped';
 
@@ -91,12 +93,6 @@ function gitVerb(action: string): string {
 const isMode = (option: ConfigOption) => option.category === 'mode' || option.id === 'mode';
 const isModel = (option: ConfigOption) => option.category === 'model' || option.id === 'model';
 
-/** "$0.27", or "less than $0.01" for the small change agents report. */
-export function money(amount: number, currency: string): string {
-  const sign = currency === 'USD' ? '$' : `${currency} `;
-  return amount > 0 && amount < 0.01 ? `less than ${sign}0.01` : `${sign}${amount.toFixed(2)}`;
-}
-
 /** One setting of the agent as a drop-down list. */
 function OptionSelect(props: {
   option: ConfigOption;
@@ -163,6 +159,15 @@ export function AgentPane(props: { task: Task }): JSX.Element {
 
   const lookingBack = () => work().lookBack !== null;
   const since = () => sinceOf(taskId());
+
+  // Any other agent that is installed can take the task over.
+  const others = () => state.agents.filter((one) => one.available && one.id !== agentId());
+  const hand = (to: string) => {
+    if (to === agentId()) return;
+    setSetting(true);
+    const id = taskId();
+    void act(() => switchAgent(id, to)).finally(() => setSetting(false));
+  };
 
   const usage = () => props.task.usage;
   const contextShare = () => Math.min(100, Math.round((usage()!.used / usage()!.size) * 100));
@@ -424,7 +429,21 @@ export function AgentPane(props: { task: Task }): JSX.Element {
       <div class="agent-head">
         <span class="agent-name">
           <Chip agentId={agentId()} short={short()} />
-          {name()}
+          <Show when={others().length > 0} fallback={name()}>
+            <select
+              class="pick agent-pick"
+              aria-label="The agent of this task"
+              title="Hand this task to another agent. It is told what was said so far."
+              disabled={setting() || !canSend()}
+              value={agentId()}
+              onChange={(event) => hand(event.currentTarget.value)}
+            >
+              <option value={agentId()} selected>
+                {name()}
+              </option>
+              <For each={others()}>{(other) => <option value={other.id}>{other.name}</option>}</For>
+            </select>
+          </Show>
         </span>
         <Show when={modelOption()}>
           {(option) => (

@@ -2635,3 +2635,208 @@ button.search-link:hover {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* ---------- Checks ---------- */
+
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.check-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+.check-row:hover {
+  background: var(--panel);
+}
+.check-row[aria-current='true'] {
+  background: var(--raised);
+}
+.check-row .fine {
+  flex-basis: 100%;
+  padding-left: 24px;
+}
+.check-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.check-mark {
+  flex: none;
+  width: 16px;
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+.check-mark.done {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.check-mark.bad {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.check-mark.busy {
+  background: rgba(245, 181, 68, 0.14);
+  color: var(--accent);
+}
+.check-mark.open,
+.check-mark.off {
+  color: var(--text-3);
+}
+.check-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.check-detail .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.check-command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.check-command code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.check-output {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--ground-deep);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.switcher .count.bad {
+  color: var(--red);
+}
+.agent-name .agent-pick {
+  height: 26px;
+  margin: 0 -4px 0 0;
+  padding-left: 0;
+  border: 0;
+}
+
+/* ---------- Agents ---------- */
+
+.agent-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+.agent-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+.text-bad {
+  color: var(--red);
+}
+.budget-row {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.cost-row .name {
+  flex: 1 1 200px;
+}
+.cost-agents {
+  display: flex;
+  gap: 4px;
+}
+.cost-row.total {
+  font-weight: 600;
+}
+
+/* ---------- Automations ---------- */
+
+.auto-form {
+  gap: 6px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.auto-form label {
+  color: var(--text-2);
+}
+.auto-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.auto-projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 4px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.auto-projects legend {
+  padding: 0 4px;
+  color: var(--text-2);
+}
+.auto-form .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.auto-item {
+  align-items: center;
+}
+.auto-what {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.auto-what .soft {
+  font-size: 13px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.auto-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.auto-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

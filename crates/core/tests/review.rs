@@ -253,3 +253,53 @@ async fn lines_that_two_open_tasks_both_change_are_found() {
     until(&mut events, &task.row.id, |e| state_is(e, "idle")).await;
     assert!(manager.overlaps(&task.row.id).unwrap()["overlaps"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_request_merged_on_the_host_is_cleaned_up_only_when_asked_and_safe() {
+    use ae_core::automations::{Then, When};
+    let sandbox = Sandbox::new("merged-elsewhere");
+    let (state, tools, id) = with_request(&sandbox, GREEN).await;
+    let manager = &state.manager;
+    let task = manager.task(&id).unwrap();
+    let cwd = PathBuf::from(&task.row.cwd);
+    // Somebody merges the request on GitHub.
+    std::fs::write(tools.join("pull.json"), pull(GREEN).replace("\"OPEN\"", "\"MERGED\"")).unwrap();
+
+    // The automation is off: nothing is asked and nothing is touched.
+    assert!(manager.merged_elsewhere().is_empty());
+    assert!(cwd.is_dir());
+
+    // On, but the working copy holds work that is nowhere else: it holds back and says so.
+    manager.automation_turn("clean-up", true).unwrap();
+    std::fs::write(cwd.join("NOTES.md"), "not committed\n").unwrap();
+    assert!(manager.merged_elsewhere().is_empty());
+    let held = manager.automations().remove(0);
+    assert!(held.last_note.unwrap().contains("1 files are not committed"));
+    let told = manager.history(&id).unwrap().into_iter().rev().find(|e| is(e, "tracker")).unwrap();
+    assert_eq!(told["text"], "Not cleaned up by itself: 1 files are not committed");
+    // One merge is handled once: it does not nag on every look.
+    assert!(manager.merged_elsewhere().is_empty());
+    assert_eq!(manager.history(&id).unwrap().iter().filter(|e| is(e, "tracker") && e["failed"] == true).count(), 1);
+
+    // An automation of the user's own for the same moment runs the checks.
+    manager.check_add(&id, "Always fine", "true").unwrap();
+    manager
+        .automation_save(None, "Check on merge", When::Merged, Then::RunChecks { which: "all".into() }, vec![])
+        .unwrap();
+    assert!(manager.on_request_event(&id, true).is_empty(), "the copy is still not clean");
+    for _ in 0..200 {
+        if manager.checks_state(&id).unwrap()["done"] == 1 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert_eq!(manager.checks_state(&id).unwrap()["done"], 1);
+
+    // With nothing to lose the task is handed back for cleaning up.
+    std::fs::remove_file(cwd.join("NOTES.md")).unwrap();
+    assert_eq!(manager.on_request_event(&id, true), vec![id.clone()]);
+    let done = manager.automations().remove(0);
+    assert!(done.last_note.unwrap().starts_with("Cleaned up “"));
+    // It ran three times today: held back twice, then done.
+    assert_eq!(done.runs_that_day, 3);
+}

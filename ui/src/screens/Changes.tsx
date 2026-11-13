@@ -245,9 +245,12 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
   const commit = () =>
     // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
     act('commit', async () => {
-      const next = await gitCommit(taskId, text(), picks(), { amend: amend(), push: after() !== 'stop' });
+      // What to do after the commit is read once, at the press. While the commit runs the
+      // view reads the git state again, and for a moment that can reset the choice on screen.
+      const then = after();
+      const next = await gitCommit(taskId, text(), picks(), { amend: amend(), push: then !== 'stop' });
       props.git.show(next);
-      if (after() === 'request') {
+      if (then === 'request') {
         // The request says what the commits say, as written by the core from the commits and the issue.
         const info = await getRequest(taskId, true);
         if (!info.request) await createRequest(taskId, info.defaults?.title ?? text(), info.defaults?.body ?? '');

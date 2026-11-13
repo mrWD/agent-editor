@@ -42,6 +42,10 @@ export type CoreOptions = {
   mockDelayMs?: number;
   /** Start the core with a practice agent that ends at once, to see what a failed start does. */
   brokenAgent?: boolean;
+  /** What the practice agent pretends each turn costs, in dollars. Nothing is charged. */
+  practiceCost?: number;
+  /** Add a second practice agent, so a task can be handed from one agent to another. */
+  twoAgents?: boolean;
 };
 
 export type TaskInfo = {
@@ -104,11 +108,15 @@ export class Core {
       LANG: 'en_US.UTF-8',
       AE_LINEAR_URL: LINEAR_URL,
       AE_MOCK_DELAY_MS: String(options.mockDelayMs ?? 30),
+      // The core looks at what is due (automations, requests that merge by themselves) often, so tests need not wait.
+      AE_WATCH_EVERY_MS: '1500',
       GIT_CONFIG_GLOBAL: gitConfig,
       GIT_CONFIG_NOSYSTEM: '1',
       NPM_CONFIG_UPDATE_NOTIFIER: 'false',
     };
     if (options.brokenAgent) this.env.AE_MOCK_AGENT = '/usr/bin/false';
+    if (options.practiceCost) this.env.AE_MOCK_COST = String(options.practiceCost);
+    if (options.twoAgents) this.env.AE_MOCK_TWIN = '1';
   }
 
   static async start(options: CoreOptions = {}): Promise<Core> {

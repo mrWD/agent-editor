@@ -6,8 +6,10 @@
 
 pub mod acp;
 pub mod agents;
+pub mod automations;
 pub mod changes;
 pub mod checkpoints;
+pub mod checks;
 pub mod fileops;
 pub mod files;
 pub mod git;
@@ -24,5 +26,6 @@ pub mod startup;
 pub mod store;
 pub mod tasks;
 pub mod terminals;
+pub mod usage;
 
 pub use startup::{Core, DEFAULT_PORT, Desktop, Options, Port, default_data_dir, log_to_stdout, run, start};

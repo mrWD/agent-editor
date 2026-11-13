@@ -171,6 +171,8 @@ pub struct Manager {
     manual: Mutex<HashMap<String, BTreeSet<String>>>,
     /// Tasks whose user is in the middle of a run of edits by hand: one checkpoint covers the run.
     pub(crate) hand_edits: Mutex<std::collections::HashSet<String>>,
+    /// The checks that were run in each task, and how they ended.
+    pub checks: crate::checks::Checks,
     /// The way out to GitHub, GitLab, Linear and Docker.
     pub(crate) hosts: Hosts,
     /// What was last read from those services, so screens do not ask them on every look.
@@ -208,6 +210,7 @@ impl Manager {
             seqs: Mutex::new(HashMap::new()),
             manual: Mutex::new(HashMap::new()),
             hand_edits: Mutex::new(Default::default()),
+            checks: Default::default(),
             hosts,
             remembered: Default::default(),
             events,
@@ -262,6 +265,11 @@ impl Manager {
     /// Live events, already wrapped for the interface.
     pub fn subscribe(&self) -> broadcast::Receiver<Value> {
         self.events.subscribe()
+    }
+
+    /// Writes one setting down. For the few places outside this crate's modules that keep a note.
+    pub(crate) fn store_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.store.set_setting(key, Some(value))
     }
 
     pub(crate) fn store(&self) -> &Store {
@@ -988,6 +996,7 @@ impl Manager {
 
     /// Stops every agent. Called when the core shuts down.
     pub async fn stop_all(&self) {
+        self.stop_checks(None);
         let all: Vec<_> = self.live.read().unwrap().values().cloned().collect();
         for live in all {
             live.conn.kill().await;

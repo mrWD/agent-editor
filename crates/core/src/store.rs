@@ -365,6 +365,19 @@ impl Store {
     }
 }
 
+/// One event that says something about cost, with the task it belongs to.
+#[derive(Debug, Clone)]
+pub struct UsageRow {
+    pub task_id: String,
+    /// The task's agent now. Who it was at the time is read from the events themselves.
+    pub agent_id: String,
+    pub project_id: String,
+    pub title: String,
+    pub archived: bool,
+    pub at: u64,
+    pub body: Value,
+}
+
 /// The files of a task as they were at one moment. See `checkpoints`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointRow {
@@ -457,6 +470,43 @@ impl Store {
             params![task_id, after, upto],
         )?;
         Ok(())
+    }
+
+    /// Gives a task to another agent. The old agent's session means nothing to the new one.
+    pub fn set_task_agent(&self, id: &str, agent_id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("UPDATE tasks SET agent_id = ?2, agent_session = NULL WHERE id = ?1", params![id, agent_id])?;
+        Ok(())
+    }
+
+    /// Every note an agent left about cost and limits, and every start of an
+    /// agent, for all tasks ever, archived ones too: task by task, in order.
+    pub fn usage_events(&self) -> Result<Vec<UsageRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut statement = conn.prepare(
+            "SELECT e.task_id, t.agent_id, t.project_id, t.title, t.archived_at IS NOT NULL, e.at, e.body
+             FROM events e JOIN tasks t ON t.id = e.task_id
+             WHERE e.body LIKE '%\"usage_update\"%' OR e.body LIKE '%\"agent_started\"%'
+             ORDER BY e.task_id, e.seq",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, bool>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        })?;
+        let mut found = Vec::new();
+        for row in rows {
+            let (task_id, agent_id, project_id, title, archived, at, body) = row?;
+            let Ok(body) = serde_json::from_str(&body) else { continue };
+            found.push(UsageRow { task_id, agent_id, project_id, title, archived, at: at as u64, body });
+        }
+        Ok(found)
     }
 
     /// Forgets the session the agent had for a task, so the next agent is told the conversation instead.

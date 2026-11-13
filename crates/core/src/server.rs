@@ -33,8 +33,12 @@ use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 use tower_http::services::{ServeDir, ServeFile};
 
-/// How often the requests that merge by themselves are looked at.
-const AUTO_MERGE_EVERY: std::time::Duration = std::time::Duration::from_secs(45);
+/// How often the core looks at what may be due: requests that merge by
+/// themselves, automations. `AE_WATCH_EVERY_MS` shortens it for tests.
+fn watch_every() -> std::time::Duration {
+    let ms = std::env::var("AE_WATCH_EVERY_MS").ok().and_then(|text| text.parse::<u64>().ok()).unwrap_or(45_000);
+    std::time::Duration::from_millis(ms.max(200))
+}
 
 /// What every request handler can reach.
 #[derive(Clone)]
@@ -55,10 +59,31 @@ impl AppState {
         let state = self.clone();
         runtime.spawn(async move {
             loop {
-                tokio::time::sleep(AUTO_MERGE_EVERY).await;
+                tokio::time::sleep(watch_every()).await;
                 state.auto_merge_round().await;
+                state.automations_round().await;
             }
         });
+    }
+
+    /// Lets the automations do what is due: by the clock, by a new issue, by a
+    /// request that was merged on its host.
+    pub async fn automations_round(&self) {
+        self.manager.automations_tick(crate::tasks::now_ms()).await;
+        let manager = self.manager.clone();
+        let Ok(clean) = tokio::task::spawn_blocking(move || manager.merged_elsewhere()).await else { return };
+        self.clean_up_all(clean).await;
+    }
+
+    /// Finishes tasks an automation decided to clean up: stops what they run,
+    /// removes the working copy and the branch, archives them.
+    async fn clean_up_all(&self, tasks: Vec<String>) {
+        for task_id in tasks {
+            self.stop_everything(&task_id).await;
+            if let Err(error) = self.manager.clean_up(&task_id, true, true).await {
+                tracing::debug!("Could not clean up {task_id}: {error:#}");
+            }
+        }
     }
 
     /// Merges every request that was asked to merge by itself and can merge
@@ -89,6 +114,7 @@ impl AppState {
         if port.is_some_and(|port| std::env::var("PORT").ok().as_deref() == Some(port.to_string().as_str())) {
             own.push("PORT".into());
         }
+        manager.checks.set_scrub(own.clone());
         let terminals = Arc::new(Terminals::without(own));
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
         Self { manager, terminals, search: Arc::new(Search::new()), runner, desktop: None }
@@ -112,6 +138,7 @@ impl AppState {
     /// Stops what a task runs and removes its containers and volumes. For a task that is finished for good.
     async fn stop_everything(&self, task_id: &str) {
         self.terminals.close_task(task_id);
+        self.manager.stop_checks(Some(task_id));
         if let Ok((project, root)) = self.run_place(task_id) {
             let runner = self.runner.clone();
             let id = task_id.to_string();
@@ -359,6 +386,11 @@ fn parse(text: &str) -> Result<(Value, String, Value), Value> {
 /// Which lane a command runs in: its kind (the part before the dot) and its task.
 fn lane_of(method: &str, params: &Value) -> String {
     let kind = method.split('.').next().unwrap_or_default();
+    // What is asked about requests is one lane for all tasks: the overview of
+    // every task's request and a fresh look at one of them must not overtake each other.
+    if kind == "mr" {
+        return "mr:".to_string();
+    }
     let task = params.get("taskId").and_then(Value::as_str).unwrap_or_default();
     format!("{kind}:{task}")
 }
@@ -743,8 +775,12 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             let task_id = text_param(params, "taskId")?.to_string();
             let title = text_param(params, "title")?.to_string();
             let body = params.get("body").and_then(Value::as_str).unwrap_or_default().to_string();
-            let manager = manager.clone();
-            let request = tokio::task::spawn_blocking(move || manager.open_request(&task_id, &title, &body)).await??;
+            let blocking = manager.clone();
+            let id = task_id.clone();
+            let request = tokio::task::spawn_blocking(move || blocking.open_request(&id, &title, &body)).await??;
+            // The automations that wait for a request to open get their turn.
+            let waiting = manager.clone();
+            let _ = tokio::task::spawn_blocking(move || waiting.on_request_event(&task_id, false)).await;
             Ok(json!({ "request": request }))
         }
         "mr.comments" => {
@@ -769,6 +805,102 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             });
             let manager = manager.clone();
             tokio::task::spawn_blocking(move || manager.set_auto_merge(&task_id, options)).await??;
+            Ok(json!({}))
+        }
+        "automations.list" => Ok(json!({ "automations": manager.automations() })),
+        "automations.turn" => {
+            let on = params.get("on").and_then(Value::as_bool).unwrap_or(true);
+            manager.automation_turn(text_param(params, "id")?, on)?;
+            Ok(json!({}))
+        }
+        "automations.save" => {
+            let when = serde_json::from_value(params.get("when").cloned().unwrap_or(Value::Null))
+                .map_err(|_| anyhow!("Say what sets the automation off"))?;
+            let then = serde_json::from_value(params.get("then").cloned().unwrap_or(Value::Null))
+                .map_err(|_| anyhow!("Say what the automation does"))?;
+            let projects: Vec<String> = params
+                .get("projects")
+                .and_then(Value::as_array)
+                .map(|list| list.iter().filter_map(|id| id.as_str().map(str::to_string)).collect())
+                .unwrap_or_default();
+            let id = manager.automation_save(
+                params.get("id").and_then(Value::as_str),
+                text_param(params, "name")?,
+                when,
+                then,
+                projects,
+            )?;
+            Ok(json!({ "id": id }))
+        }
+        "automations.remove" => {
+            manager.automation_remove(text_param(params, "id")?)?;
+            Ok(json!({}))
+        }
+        "automations.clock" => {
+            let offset = params
+                .get("utcOffsetMinutes")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| anyhow!("Missing parameter: utcOffsetMinutes"))?;
+            manager.set_clock(offset)?;
+            Ok(json!({}))
+        }
+        "usage.summary" => {
+            let since = |name: &str| params.get(name).and_then(Value::as_u64).unwrap_or(0);
+            let (day, week) = (since("dayStart"), since("weekStart"));
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.usage_summary(day, week)).await?
+        }
+        "usage.budget" => {
+            // `daily: null` takes the budget away; a missing `daily` leaves it as it is.
+            let daily = params.get("daily").map(Value::as_f64);
+            manager.set_budget(daily, params.get("ask").and_then(Value::as_bool))?;
+            Ok(manager.budget())
+        }
+        "tasks.switchAgent" => {
+            let task = manager.switch_agent(text_param(params, "taskId")?, text_param(params, "agentId")?).await?;
+            Ok(json!(task))
+        }
+        "checks.state" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.checks_state(&task_id)).await?
+        }
+        "checks.run" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let only = params.get("id").and_then(Value::as_str).map(str::to_string);
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.checks_run(&task_id, only.as_deref())).await??;
+            Ok(json!({}))
+        }
+        "checks.stop" => {
+            manager.check_stop(text_param(params, "taskId")?, text_param(params, "id")?)?;
+            Ok(json!({}))
+        }
+        "checks.turn" => {
+            let on = params.get("on").and_then(Value::as_bool).unwrap_or(true);
+            manager.check_turn(text_param(params, "taskId")?, text_param(params, "id")?, on)?;
+            Ok(json!({}))
+        }
+        "checks.add" => {
+            let title = params.get("title").and_then(Value::as_str).unwrap_or_default();
+            manager.check_add(text_param(params, "taskId")?, title, text_param(params, "command")?)?;
+            Ok(json!({}))
+        }
+        "checks.remove" => {
+            manager.check_remove(text_param(params, "taskId")?, text_param(params, "id")?)?;
+            Ok(json!({}))
+        }
+        "checks.addLine" => {
+            manager.line_add(text_param(params, "taskId")?, text_param(params, "text")?)?;
+            Ok(json!({}))
+        }
+        "checks.setLine" => {
+            let done = params.get("done").and_then(Value::as_bool).unwrap_or(true);
+            manager.line_set(text_param(params, "taskId")?, text_param(params, "id")?, done)?;
+            Ok(json!({}))
+        }
+        "checks.removeLine" => {
+            manager.line_remove(text_param(params, "taskId")?, text_param(params, "id")?)?;
             Ok(json!({}))
         }
         "overlaps.list" => {
@@ -796,6 +928,11 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             if delete_branch || archive {
                 state.stop_everything(&task_id).await;
                 manager.clean_up(&task_id, delete_branch, archive).await?;
+            }
+            if !archive {
+                // The task is still there: the automations that wait for a merge get their turn.
+                let _ = manager.store_setting(&format!("task.{task_id}.mergeHandled"), "1");
+                state.clean_up_all(manager.on_request_event(&task_id, true)).await;
             }
             Ok(json!({ "request": request }))
         }

@@ -1,5 +1,7 @@
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 import { go, taskHref } from '../app/router';
+import { checksOf } from '../core/checks';
 import { core } from '../core/client';
 import { refreshRequests } from '../core/requests';
 import {
@@ -69,10 +71,17 @@ export function RequestCard(props: {
   const [squash, setSquash] = createSignal(true);
   const [remove, setRemove] = createSignal(true);
   const [archive, setArchive] = createSignal(true);
-  const [comments, setComments] = createSignal<ReviewComment[]>([]);
+  // Kept by id: reading the comments again leaves the rows on screen as they are,
+  // so a reply that is being typed, or a press that is on its way, is not lost.
+  const [commentList, setCommentList] = createStore<{ list: ReviewComment[] }>({ list: [] });
+  const comments = () => commentList.list;
+  const setComments = (list: ReviewComment[]) => setCommentList('list', reconcile(list, { key: 'id' }));
   const [replyTo, setReplyTo] = createSignal<string | null>(null);
   const [reply, setReply] = createSignal('');
   const agentName = () => agentOf(props.task)?.name ?? 'the agent';
+  /** The checks run on this computer. A failed one stands in the way of the merge. */
+  const local = () => checksOf(taskId);
+  const redHere = () => (local()?.failed ?? 0) > 0;
   const canAsk = () => props.task.info.state === 'idle' || props.task.info.state === 'asleep';
 
   const loadComments = async () => {
@@ -348,6 +357,17 @@ export function RequestCard(props: {
             </Show>
 
             <h3 class="git-sub">Before it can merge</h3>
+            <Show when={(local()?.total ?? 0) > 0}>
+              <Gate
+                state={redHere() ? 'bad' : (local()!.running ?? 0) > 0 ? 'wait' : 'good'}
+                title="Checks here"
+                note={
+                  redHere()
+                    ? `${local()!.failed} failed on this computer. See the Checks view.`
+                    : `${local()!.done} of ${local()!.total} lines of “Done when” are done`
+                }
+              />
+            </Show>
             <Show when={(props.overlaps ?? 0) > 0}>
               <Gate
                 state="wait"
@@ -451,10 +471,15 @@ export function RequestCard(props: {
                 </button>
               </p>
             </Show>
-            <button type="button" class="btn primary tall" disabled={Boolean(busy()) || !info()!.ready} onClick={merge}>
+            <button
+              type="button"
+              class="btn primary tall"
+              disabled={Boolean(busy()) || !info()!.ready || redHere()}
+              onClick={merge}
+            >
               {busy() === 'merge' ? 'Merging' : 'Merge now'}
             </button>
-            <Show when={!info()!.ready}>
+            <Show when={!info()!.ready || redHere()}>
               <span class="fine">Merge now unlocks when nothing above stands in the way.</span>
             </Show>
           </Show>

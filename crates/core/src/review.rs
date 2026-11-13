@@ -121,6 +121,7 @@ fn committed_text(root: &Path, path: &str) -> Result<Option<String>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(root)
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .args(["show", &format!("HEAD:./{path}")])
         .output()
         .context("Could not run git")?;
@@ -138,6 +139,8 @@ fn changed_in_git(root: &Path) -> Result<Vec<String>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(root)
+        // Only looking: it must not take the index lock, or a commit started at this moment fails.
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
         .output()
         .context("Could not run git")?;
@@ -255,6 +258,8 @@ impl Manager {
     /// Tells every interface that the marks of these files changed.
     pub fn announce_review(&self, task_id: &str, paths: &[String]) {
         if !paths.is_empty() {
+            // A check that passed before this says nothing about the files as they are now.
+            self.checks.note_change(task_id);
             self.broadcast("review.changed", json!({ "taskId": task_id, "paths": paths }));
         }
     }

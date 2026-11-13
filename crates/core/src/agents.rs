@@ -43,6 +43,7 @@ impl Registry {
     /// Looks for every known agent.
     pub fn detect() -> Self {
         let mut agents = vec![Self::mock()];
+        agents.extend(Self::mock_twin());
         let npx = which::which("npx").ok();
         agents.push(Self::via_npx(
             &npx,
@@ -84,8 +85,23 @@ impl Registry {
             env: vec![],
             available,
             note: (!available).then(|| "Build it with: cargo build -p ae-mock-agent".into()),
-            spends_tokens: false,
+            // With `AE_MOCK_COST` set it pretends each turn costs that much, so cost and
+            // budgets can be tried without an account. Nothing is ever charged.
+            spends_tokens: std::env::var("AE_MOCK_COST")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok())
+                .is_some_and(|c| c > 0.0),
         }
+    }
+
+    /// A second practice agent, there only when `AE_MOCK_TWIN=1`: handing a task
+    /// from one agent to another can then be tried without any account.
+    fn mock_twin() -> Option<AgentDef> {
+        if std::env::var("AE_MOCK_TWIN").ok().as_deref() != Some("1") {
+            return None;
+        }
+        let first = Self::mock();
+        Some(AgentDef { id: "mock-2".into(), name: "Second practice agent".into(), short: "P2".into(), ..first })
     }
 
     fn via_npx(

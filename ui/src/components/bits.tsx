@@ -51,6 +51,12 @@ export function span(ms: number): string {
   return `${Math.round(hours / 24)} days`;
 }
 
+/** "$0.27", or "less than $0.01" for the small change agents report. */
+export function money(amount: number, currency: string): string {
+  const sign = currency === 'USD' ? '$' : `${currency} `;
+  return amount > 0 && amount < 0.01 ? `less than ${sign}0.01` : `${sign}${amount.toFixed(2)}`;
+}
+
 /** The two-letter mark of whoever wrote or did something. */
 export function Chip(props: { agentId: string; short: string; flat?: boolean; label?: string }): JSX.Element {
   const tone = () => (['claude', 'codex', 'gemini', 'you'].includes(props.agentId) ? props.agentId : '');

@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import { go, taskHref } from '../app/router';
-import { ago, Chip } from '../components/bits';
+import { ago, Chip, money } from '../components/bits';
 import { refreshRequests, requests, stageOfTask } from '../core/requests';
 import { chooseFolder, shellMark } from '../core/shell';
 import {
@@ -18,6 +18,7 @@ import {
   tasksNewestFirst,
   type FeedItem,
   type Task,
+  usageSummary,
 } from '../core/store';
 
 const words = ['Nothing', 'One thing', 'Two things', 'Three things', 'Four things', 'Five things'];
@@ -79,6 +80,8 @@ function NewTask(): JSX.Element {
   });
 
   const chosen = () => state.agents.find((agent) => agent.id === agentId());
+  /** Set when the day's budget is spent: what to tell the user before the second press. */
+  const [overBudget, setOverBudget] = createSignal<string | null>(null);
   const addingFolder = () => projectId() === NEW_FOLDER;
 
   // Only the desktop app has a folder dialog. In a browser the path is typed, and typing works in the app too.
@@ -119,6 +122,18 @@ function NewTask(): JSX.Element {
     setProblem(null);
     setBusy(true);
     try {
+      // Once the day's budget is spent, a task that costs money is started only on a second, knowing press.
+      if (chosen()!.spendsTokens && overBudget() === null) {
+        const usage = await usageSummary().catch(() => null);
+        const daily = usage?.budget.daily ?? null;
+        if (usage && usage.budget.ask && daily !== null && usage.today >= daily) {
+          setOverBudget(
+            `You have spent ${money(usage.today, usage.currency)} today; your daily budget is ${money(daily, usage.currency)}.`,
+          );
+          return;
+        }
+      }
+      setOverBudget(null);
       let target = projectId();
       if (addingFolder()) {
         target = (await addProject(folder().trim())).id;
@@ -188,8 +203,13 @@ function NewTask(): JSX.Element {
         </For>
       </select>
       <button type="submit" class="btn primary tall" disabled={busy()}>
-        {busy() ? 'Starting' : 'Start'}
+        {busy() ? 'Starting' : overBudget() ? 'Start anyway' : 'Start'}
       </button>
+      <Show when={overBudget()}>
+        <p class="form-note" role="status">
+          {overBudget()} The budget is set under Agents.
+        </p>
+      </Show>
       <Show when={problem()}>
         <p class="form-error" role="alert">
           {problem()}

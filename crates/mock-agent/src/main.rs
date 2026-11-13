@@ -20,7 +20,8 @@
 //! Switches, all through the environment:
 //! - `AE_MOCK_DELAY_MS`: the pause between streamed pieces;
 //! - `AE_MOCK_LOAD=1`: the agent can pick an earlier session up again (`session/load`);
-//! - `AE_MOCK_MODES=1`: the agent only knows modes, the older way to offer a setting.
+//! - `AE_MOCK_MODES=1`: the agent only knows modes, the older way to offer a setting;
+//! - `AE_MOCK_COST=0.25`: every turn adds this much to what the session says it cost.
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -46,6 +47,9 @@ struct Agent {
     can_load: bool,
     /// True when settings are offered the older way, as modes only.
     modes_only: bool,
+    /// What a turn "costs", in dollars. Nothing is ever charged; it is there so
+    /// that adding up cost can be tried without an account.
+    cost_per_turn: f64,
     next_request: AtomicU64,
     next_session: AtomicU64,
     next_tool: AtomicU64,
@@ -61,12 +65,14 @@ struct Session {
     model: String,
     /// How much of the context is used, in tokens. It only grows.
     used: u64,
+    /// What the session has "cost" so far.
+    cost: f64,
 }
 
 impl Session {
     fn in_folder(params: &Value) -> Self {
         let folder = params.get("cwd").and_then(Value::as_str).map(PathBuf::from).unwrap_or_default();
-        Self { folder, mode: "ask".into(), model: "practice".into(), used: 0 }
+        Self { folder, mode: "ask".into(), model: "practice".into(), used: 0, cost: 0.0 }
     }
 
     /// The settings as the protocol describes them.
@@ -183,6 +189,7 @@ fn main() {
         sessions: Mutex::new(HashMap::new()),
         can_load: std::env::var("AE_MOCK_LOAD").is_ok_and(|v| v == "1"),
         modes_only: std::env::var("AE_MOCK_MODES").is_ok_and(|v| v == "1"),
+        cost_per_turn: std::env::var("AE_MOCK_COST").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0),
         next_request: AtomicU64::new(1),
         next_session: AtomicU64::new(1),
         next_tool: AtomicU64::new(1),
@@ -545,12 +552,13 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
     }
 
     // How full the context is now. The practice agent counts words, not tokens, and costs nothing.
-    let used = {
+    let (used, cost) = {
         let mut sessions = agent.sessions.lock().unwrap();
         let grown = 900 + 6 * (text.len() + answer.len()) as u64;
-        sessions.get_mut(&session).map_or(grown, |s| {
+        sessions.get_mut(&session).map_or((grown, agent.cost_per_turn), |s| {
             s.used += grown;
-            s.used
+            s.cost += agent.cost_per_turn;
+            (s.used, s.cost)
         })
     };
     agent.update(
@@ -559,7 +567,7 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
             "sessionUpdate": "usage_update",
             "used": used,
             "size": 200_000,
-            "cost": { "amount": 0.0, "currency": "USD" }
+            "cost": { "amount": cost, "currency": "USD" }
         }),
     );
 

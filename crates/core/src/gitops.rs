@@ -25,6 +25,9 @@ fn command(root: &Path) -> Command {
         .args(["-c", "core.quotepath=off"])
         .env("LC_ALL", "C")
         .env("GIT_TERMINAL_PROMPT", "0")
+        // Commands run side by side. One that only reads (status, diff) must not
+        // take the index lock to tidy up: a commit that starts at that moment would fail.
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
         .stdin(Stdio::null());
     command

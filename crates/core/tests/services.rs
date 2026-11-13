@@ -361,3 +361,57 @@ async fn linear_issues_are_listed_and_moved_when_a_task_starts() {
     dispatch(&state, "integrations.setLinearTeam", &json!({ "projectId": project.id, "team": null })).await.unwrap();
     assert_eq!(dispatch(&state, "issues.list", &json!({})).await.unwrap()["projects"][0]["source"], "none");
 }
+
+#[tokio::test]
+async fn a_new_issue_with_the_label_starts_a_task_once() {
+    use ae_core::automations::{Then, When};
+    const MINUTE: u64 = 60 * 1000;
+    let sandbox = Sandbox::new("issue-label");
+    let tools = sandbox.0.join("tools");
+    let manager = sandbox.manager_with(hosts_with_gh(&tools));
+    let (repo, _) = github_project(&sandbox);
+    manager.add_project(&repo.to_string_lossy(), None).unwrap();
+    let id = manager
+        .automation_save(
+            None,
+            "Bugs get a failing test",
+            When::IssueLabeled { label: "Bug".into() },
+            Then::StartTask { agent_id: "mock".into(), text: "Describe what is wrong first.".into() },
+            vec![],
+        )
+        .unwrap();
+
+    // Issues that are open when the automation is made are not news.
+    manager.automations_tick(MINUTE).await;
+    assert!(manager.list().unwrap().is_empty());
+    assert!(calls(&tools).contains("issue list"));
+
+    // A new one with the label comes in. The host is not asked again right away.
+    let more = ISSUES.replace(
+        "[\n",
+        "[\n {\"number\":14,\"title\":\"Checkout fails on empty carts\",\"url\":\"https://github.com/x/shop/issues/14\",\"state\":\"OPEN\",\n  \"body\":\"It answers 500.\",\"labels\":[{\"name\":\"bug\"}],\"assignees\":[],\"updatedAt\":\"2026-11-13T08:00:00Z\"},\n",
+    );
+    assert!(more.contains("\"number\":14"), "the new issue is in the list");
+    std::fs::write(tools.join("issues.json"), more).unwrap();
+    manager.automations_tick(2 * MINUTE).await;
+    assert!(manager.list().unwrap().is_empty(), "too soon to ask the host again");
+
+    let mut events = manager.subscribe();
+    manager.automations_tick(7 * MINUTE).await;
+    let tasks = manager.list().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].row.title, "Checkout fails on empty carts");
+    assert_eq!(tasks[0].row.issue.as_ref().unwrap().key, "#14");
+    // First what the issue says, then what the automation is for.
+    let task_id = tasks[0].row.id.clone();
+    let seen =
+        until(&mut events, &task_id, |e| is(e, "user_message") && e["text"] == "Describe what is wrong first.").await;
+    assert!(seen.iter().any(|e| is(e, "user_message") && e["text"].as_str().unwrap().contains("It answers 500.")));
+    until(&mut events, &task_id, |e| state_is(e, "idle")).await;
+    let own = manager.automations().into_iter().find(|one| one.id == id).unwrap();
+    assert_eq!(own.last_note.as_deref(), Some("Started a task for #14 in project"));
+
+    // The same issue never starts a second task.
+    manager.automations_tick(20 * MINUTE).await;
+    assert_eq!(manager.list().unwrap().len(), 1);
+}

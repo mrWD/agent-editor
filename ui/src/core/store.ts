@@ -244,6 +244,18 @@ export function applyEvent(task: Task, event: any) {
         });
       }
       return;
+    case 'agent_switched':
+      task.info.agentId = String(event.to);
+      // The new agent starts with an empty context and its own bill.
+      task.spentBefore += task.usage?.cost ?? 0;
+      task.usage = null;
+      feed.push({
+        kind: 'notice',
+        text: `The task was handed from ${event.fromName ?? event.from} to ${event.toName ?? event.to}. With your next message ${event.toName ?? event.to} is told what was said so far.`,
+        tone: 'muted',
+        at,
+      });
+      return;
     case 'user_message':
       feed.push({ kind: 'user', text: event.text, edited: Array.isArray(event.edited) ? event.edited : [], at });
       return;
@@ -478,6 +490,8 @@ async function reloadProjects() {
 }
 
 async function reload() {
+  // The core cannot know where the user's day begins; "every day at 03:00" is counted on this clock.
+  void core.request('automations.clock', { utcOffsetMinutes: -new Date().getTimezoneOffset() }).catch(() => {});
   const [app, agents, projects, tasks] = await Promise.all([
     core.request<AppInfo>('app.info'),
     core.request<AgentDef[]>('agents.list'),
@@ -519,6 +533,11 @@ function onEvent(event: CoreEvent) {
       if (state.tasks[info.id]) return;
       addTask(info);
       void loadHistory(info.id, info.state);
+      return;
+    }
+    case 'task.updated': {
+      const info = event.data as TaskInfo;
+      if (state.tasks[info.id]) setState('tasks', info.id, 'info', info);
       return;
     }
     case 'task.reload': {
@@ -594,6 +613,110 @@ export function cancelTurn(taskId: string) {
 export async function setTaskOption(taskId: string, optionId: string, value: string) {
   const result = await core.request<{ config: TaskConfig }>('tasks.setOption', { taskId, optionId, value });
   if (state.tasks[taskId]) setState('tasks', taskId, 'info', 'config', result.config);
+}
+
+/**
+ * Hands a task to another agent. The new one is told what was said so far
+ * with the user's next message.
+ */
+export async function switchAgent(taskId: string, agentId: string) {
+  const info = await core.request<TaskInfo>('tasks.switchAgent', { taskId, agentId });
+  if (state.tasks[taskId]) setState('tasks', taskId, 'info', info);
+}
+
+/** What sets an automation off. */
+export type AutomationWhen =
+  | { kind: 'merged' }
+  | { kind: 'requestOpened' }
+  | { kind: 'daily'; at: string }
+  | { kind: 'issueLabeled'; label: string };
+
+/** What an automation does. */
+export type AutomationThen =
+  | { kind: 'cleanUp' }
+  | { kind: 'runChecks'; which: 'all' | 'e2e' }
+  | { kind: 'startTask'; agentId: string; text: string };
+
+/** Work that starts without the user: "when this happens, do that". */
+export type Automation = {
+  id: string;
+  name: string;
+  on: boolean;
+  when: AutomationWhen;
+  then: AutomationThen;
+  /** The projects it is for. Empty means all. */
+  projects: string[];
+  builtIn: boolean;
+  lastRun: number | null;
+  lastNote: string | null;
+  runsThatDay: number;
+};
+
+export function listAutomations() {
+  return core.request<{ automations: Automation[] }>('automations.list');
+}
+
+export function turnAutomation(id: string, on: boolean) {
+  return core.request('automations.turn', { id, on });
+}
+
+export function saveAutomation(automation: {
+  id?: string;
+  name: string;
+  when: AutomationWhen;
+  then: AutomationThen;
+  projects: string[];
+}) {
+  return core.request<{ id: string }>('automations.save', automation);
+}
+
+export function removeAutomation(id: string) {
+  return core.request('automations.remove', { id });
+}
+
+/** What one agent cost and how close it is to its limits. */
+export type AgentUsage = AgentDef & {
+  /** Open tasks it has, and how many of them it is working on right now. */
+  tasks: number;
+  working: number;
+  today: number;
+  week: number;
+  total: number;
+  /** What the agent itself last said about its limits, as it said it, and when. */
+  limit: { at: number; info: Record<string, unknown> } | null;
+};
+
+export type Budget = { daily: number | null; ask: boolean };
+
+export type UsageSummary = {
+  agents: AgentUsage[];
+  /** Tasks that cost something today, the dearest first. */
+  tasks: {
+    taskId: string;
+    title: string;
+    projectId: string;
+    agents: string[];
+    today: number;
+    total: number;
+    archived: boolean;
+  }[];
+  today: number;
+  currency: string;
+  budget: Budget;
+};
+
+/** Cost and limits, counted from the start of the user's own day and week. */
+export function usageSummary() {
+  const now = new Date();
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // The week starts on Monday.
+  const week = new Date(day);
+  week.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+  return core.request<UsageSummary>('usage.summary', { dayStart: day.getTime(), weekStart: week.getTime() });
+}
+
+export function setBudget(change: { daily?: number | null; ask?: boolean }) {
+  return core.request<Budget>('usage.budget', change);
 }
 
 export function stopAgent(taskId: string) {

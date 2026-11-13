@@ -67,6 +67,8 @@ export type ProjectOptions = {
   withoutDemoFile?: boolean;
   /** The `dev` script of package.json. */
   devScript?: string;
+  /** More scripts of package.json, such as `lint` and `test`: the project's own checks. */
+  scripts?: Record<string, string>;
   /** The port the compose file publishes for its `db` service. */
   dbPort?: number;
   /** Add a `worker` service; the Docker stand-in lets it stop with code 3 right after its start. */
@@ -161,7 +163,11 @@ export async function makeProject(core: Core, options: ProjectOptions = {}): Pro
   project.write('.gitignore', 'node_modules/\nignored.log\n');
   project.write(
     'package.json',
-    JSON.stringify({ name: 'shop', private: true, scripts: { dev: options.devScript ?? DEV_SCRIPT } }, null, 2) + '\n',
+    JSON.stringify(
+      { name: 'shop', private: true, scripts: { dev: options.devScript ?? DEV_SCRIPT, ...options.scripts } },
+      null,
+      2,
+    ) + '\n',
   );
   // JSON is YAML too. Written this way, the Docker stand-in can "read" the file by printing it.
   const services: Record<string, unknown> = {

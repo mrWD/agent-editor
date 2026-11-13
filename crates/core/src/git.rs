@@ -8,7 +8,15 @@ use std::path::Path;
 use tokio::process::Command;
 
 async fn git(repo: &Path, args: &[&str]) -> Result<std::process::Output> {
-    Command::new("git").arg("-C").arg(repo).args(args).output().await.context("Could not run git. Is it installed?")
+    Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        // A command that only reads must not take the index lock: others run at the same time.
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .args(args)
+        .output()
+        .await
+        .context("Could not run git. Is it installed?")
 }
 
 /// True when `path` is inside a git repository that has at least one commit.
