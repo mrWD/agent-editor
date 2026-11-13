@@ -234,6 +234,10 @@ pub(crate) fn start_apart(program: &Path, args: Vec<OsString>) -> Result<std::pr
         use std::os::unix::process::CommandExt;
         // A group of its own: stopping the core's own family does not take the emulator with it.
         command.process_group(0);
+        // It lives for hours: it must not hold the output of another program that was being started
+        // at the same moment, or whoever reads that output to its end would wait as long.
+        // SAFETY: the function only calls `fcntl`, which is safe between `fork` and `exec`.
+        unsafe { command.pre_exec(crate::acp::leave_others_streams) };
     }
     #[cfg(windows)]
     {

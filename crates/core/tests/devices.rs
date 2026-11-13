@@ -244,6 +244,13 @@ async fn a_simulator_is_listed_started_shown_and_shut_down_again_when_its_tab_is
     assert_eq!(calls.iter().filter(|call| call.starts_with("simctl bootstatus")).count(), 1, "{calls:?}");
     assert_eq!(calls.iter().filter(|call| call.starts_with("simctl shutdown")).count(), 0, "{calls:?}");
 
+    // Another app, on another port: the simulator the core started stays on for it.
+    open(&state, &task_id, "ios", OFF, "localhost:5173").await.unwrap();
+    assert_eq!(note(&tools, &format!("{OFF}.url")), "http://localhost:5173/");
+    let calls = asked(&tools, "xcrun");
+    assert_eq!(calls.iter().filter(|call| call.starts_with("simctl bootstatus")).count(), 1, "{calls:?}");
+    assert_eq!(calls.iter().filter(|call| call.starts_with("simctl shutdown")).count(), 0, "{calls:?}");
+
     // Leaving the tab shuts down what the core started, and there is no screen to ask for any more.
     close(&state, &task_id).await;
     assert_eq!(note(&tools, &format!("{OFF}.state")), "Shutdown");
@@ -393,6 +400,10 @@ async fn an_emulator_is_listed_given_a_way_to_the_app_shown_and_left_as_it_was()
     // Another app, on another port: the old way is closed and a new one made.
     open(&state, &task_id, "android", EMULATOR, "localhost:4000").await.unwrap();
     assert_eq!(note(&tools, &format!("{EMULATOR}.reverse")), "UsbFfs tcp:4000 tcp:4000");
+    // An emulator that was started again has lost its ways: opening the address again makes this one anew.
+    std::fs::write(tools.join(format!("{EMULATOR}.reverse")), "").unwrap();
+    open(&state, &task_id, "android", EMULATOR, "localhost:4000").await.unwrap();
+    assert_eq!(note(&tools, &format!("{EMULATOR}.reverse")), "UsbFfs tcp:4000 tcp:4000");
 
     // Leaving the tab takes back what the core made.
     close(&state, &task_id).await;
@@ -500,6 +511,8 @@ async fn a_device_that_will_not_open_the_address_is_told_and_nothing_stays_runni
     std::fs::write(tools.join("will-not-start"), "").unwrap();
     let error = open(&state, &task_id, "ios", OFF, "localhost:3000").await.unwrap_err().to_string();
     assert_eq!(error, "iPhone 17 Pro did not start. xcrun said: Unable to boot device in current state: Creating");
+    // It was asked to start, so it may still come up later: it is told to shut down, as nothing shows it.
+    assert!(asked(&tools, "xcrun").contains(&format!("simctl shutdown {OFF}")));
     std::fs::remove_file(tools.join("will-not-start")).unwrap();
 
     // One that starts and then will not open the address is shut down again: the tab shows nothing of it.
@@ -562,6 +575,13 @@ async fn an_emulator_that_is_off_is_started_from_here_and_shut_down_again_when_i
     open(&state, &task_id, "android", off, "localhost:3000/cart").await.unwrap();
     assert_eq!(asked(&tools, "emulator").iter().filter(|call| call.starts_with("-avd")).count(), 1);
     assert_eq!(note(&tools, &format!("{STARTED}.url")), "'http://localhost:3000/cart'");
+
+    // Another app on another port: the emulator the core started stays on, and only the way to the port changes.
+    open(&state, &task_id, "android", off, "localhost:4000").await.unwrap();
+    assert!(!asked(&tools, "adb").iter().any(|call| call.ends_with("emu kill")));
+    assert_eq!(asked(&tools, "emulator").iter().filter(|call| call.starts_with("-avd")).count(), 1);
+    assert_eq!(note(&tools, &format!("{STARTED}.reverse")), "UsbFfs tcp:4000 tcp:4000");
+    open(&state, &task_id, "android", off, "localhost:3000").await.unwrap();
 
     // Another task shows the same emulator: it stays on until both have let go.
     let project = state.manager.projects().unwrap().remove(0);
@@ -692,7 +712,10 @@ async fn a_simulator_is_touched_through_idb_in_points_and_says_what_it_needs_wit
     assert_eq!(asked(&tools, "idb").iter().filter(|call| call.starts_with("describe")).count(), 1);
     // Text goes as it is, in any letters; the keys go by their codes; an iPhone has no Back.
     input(state.clone(), json!({ "what": "text", "text": "привет, it's me" })).await.unwrap();
-    assert!(did(&format!("ui text --udid {RUNNING} привет, it's me")));
+    assert!(did(&format!("ui text --udid {RUNNING} -- привет, it's me")));
+    // Text that begins with a dash is typed like any other, not read as an option of idb.
+    input(state.clone(), json!({ "what": "text", "text": "--help" })).await.unwrap();
+    assert!(did(&format!("ui text --udid {RUNNING} -- --help")));
     input(state.clone(), json!({ "what": "key", "key": "home" })).await.unwrap();
     input(state.clone(), json!({ "what": "key", "key": "enter" })).await.unwrap();
     input(state.clone(), json!({ "what": "key", "key": "delete" })).await.unwrap();

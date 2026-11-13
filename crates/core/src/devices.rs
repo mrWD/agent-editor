@@ -471,8 +471,12 @@ impl Devices {
             }
             tokio::time::sleep(BOOT_LOOK.min(limit / 20)).await;
         };
-        // The program goes on for as long as the emulator's window: it is collected when it ends, not waited for here.
         if let Some(mut program) = program {
+            // One that did not come up in time is not left to come up later with no tab to show it.
+            if started.is_err() {
+                let _ = program.kill();
+            }
+            // The program goes on for as long as the emulator's window: it is collected when it ends, not waited for here.
             std::thread::spawn(move || program.wait());
         }
         started
@@ -569,16 +573,48 @@ impl Devices {
             }
         }
         let before = self.sessions.lock().unwrap().get(task_id).cloned();
-        // Another device was on show, or the same one for an app on another port: that is over first.
-        let other = |before: &Session| before.kind != kind || before.id != id || before.port != target.port;
-        if before.as_ref().is_some_and(other) {
-            self.close(task_id).await;
+        if let Some(before) = &before {
+            if before.kind != kind || before.id != id {
+                // Another device was on show: that is over first.
+                self.close(task_id).await;
+            } else if before.port != target.port {
+                // The same device for an app on another port: the device stays on, as it is; only the
+                // way to the old port is taken back.
+                self.sessions.lock().unwrap().remove(task_id);
+                self.take_back_port(before).await;
+            }
         }
+        // What this call starts is shut down again when the call fails: no tab shows it then.
+        let mut mine = None;
+        let opened = self.open_on(task_id, window, kind, id, to_start, (&target, &path), before, &mut mine).await;
+        if opened.is_err()
+            && let Some(id) = mine
+        {
+            self.shut_down_ours(kind, &id, &id).await;
+        }
+        opened
+    }
+
+    /// The part of `open` after which a device may be running because of it. `mine` is set to the
+    /// device this call started, so the caller can shut it down again when this fails.
+    #[allow(clippy::too_many_arguments)]
+    async fn open_on(
+        &self,
+        task_id: &str,
+        window: u64,
+        kind: Kind,
+        mut id: String,
+        to_start: Option<(String, bool)>,
+        (target, path): (&crate::preview::Target, &str),
+        before: Option<Session>,
+        mine: &mut Option<String>,
+    ) -> Result<Value> {
         if let Some((name, start)) = to_start {
             id = self.start_emulator(&name, start).await?;
             // Only one the core started itself is the core's to shut down.
             if start {
                 self.started.lock().unwrap().insert(id.clone());
+                *mine = Some(id.clone());
             }
         }
         let id = id.as_str();
@@ -588,29 +624,34 @@ impl Devices {
             .find(|device| device.id == id)
             .ok_or_else(|| anyhow!("That device is not there any more. Look again for the ones that are."))?;
         let name = device.name.clone();
-        let shown = format!("{}{}", target.authority(), if path == "/" { "" } else { &path });
+        let shown = format!("{}{}", target.authority(), if path == "/" { "" } else { path });
+        // What is known of the device from the last time this tab showed it. A way to the port is
+        // the core's own only for the very port it was made for.
+        let same = before.as_ref().filter(|before| before.kind == kind && before.id == id);
         let mut session = Session {
             kind,
             id: id.to_string(),
             name: name.clone(),
             port: target.port,
             window,
-            reversed: self.sessions.lock().unwrap().get(task_id).is_some_and(|before| before.reversed),
-            size: before.as_ref().filter(|before| before.id == id).and_then(|before| before.size),
-            scale: before.as_ref().filter(|before| before.id == id).and_then(|before| before.scale),
+            reversed: same.is_some_and(|before| before.reversed && before.port == target.port),
+            size: same.and_then(|before| before.size),
+            scale: same.and_then(|before| before.scale),
         };
 
         match kind {
             Kind::Ios => {
                 if device.state != "running" {
+                    // One that is off is the core's from the moment it is asked to start, also when the
+                    // start fails or runs out of time. One that somebody else was starting is theirs.
+                    if device.state == "off" {
+                        self.started.lock().unwrap().insert(id.to_string());
+                        *mine = Some(id.to_string());
+                    }
                     // `-b` starts a simulator that is off, and the command returns when it is ready for an address.
                     let ran = self.ask_xcrun(words(["simctl", "bootstatus", id, "-b"]), BOOT_LIMIT).await;
                     if let Some(said) = failure(&ran) {
                         bail!("{name} did not start. xcrun said: {said}");
-                    }
-                    // One that somebody else was starting at that moment is theirs, not ours.
-                    if device.state == "off" {
-                        self.started.lock().unwrap().insert(id.to_string());
                     }
                 }
                 // The simulator shares this computer's network: the app's own address works in it as it is.
@@ -628,19 +669,24 @@ impl Devices {
                     bail!("{name} is still starting. Wait for its home screen, then look again.");
                 }
                 // "localhost" on the emulator is the emulator itself. The port is passed on to this computer,
-                // unless a rule for it is there already: that one is somebody else's and stays.
+                // unless a rule for it is there already: one the core did not make is somebody else's and
+                // stays. It is looked for every time: an emulator that was started again has lost its rules.
                 let port = target.port.to_string();
                 let rule = format!("tcp:{port}");
-                if !session.reversed {
-                    let listed = self.ask_adb(id, ["reverse", "--list"], QUICK).await?;
-                    if !passes_on(&listed.text(), target.port) {
-                        let ran = self.ask_adb(id, ["reverse", &rule, &rule], QUICK).await;
-                        if let Some(said) = failure(&ran) {
-                            self.let_go(session).await;
-                            bail!("{name} could not be given a way to port {port} of this computer. adb said: {said}");
-                        }
-                        session.reversed = true;
+                let listed = match self.ask_adb(id, ["reverse", "--list"], QUICK).await {
+                    Ok(listed) => listed,
+                    Err(error) => {
+                        self.let_go(session).await;
+                        return Err(error);
                     }
+                };
+                if !passes_on(&listed.text(), target.port) {
+                    let ran = self.ask_adb(id, ["reverse", &rule, &rule], QUICK).await;
+                    if let Some(said) = failure(&ran) {
+                        self.let_go(session).await;
+                        bail!("{name} could not be given a way to port {port} of this computer. adb said: {said}");
+                    }
+                    session.reversed = true;
                 }
                 let url = device_word(&format!("http://localhost:{port}{path}"));
                 let view = ["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", &url];
@@ -798,12 +844,12 @@ impl Devices {
                 Some(side("width_points")?.max(side("height_points")?))
             })
             .filter(|points| *points >= 1.0);
-        let scale = match long_side {
-            Some(points) => f64::from(size.0.max(size.1)) / points,
+        let Some(points) = long_side else {
             // It would not say: an iPad draws two pixels to a point, an iPhone of these years three.
-            None if session.name.contains("iPad") => 2.0,
-            None => 3.0,
+            // A guess is not kept: the next touch asks again.
+            return if session.name.contains("iPad") { 2.0 } else { 3.0 };
         };
+        let scale = f64::from(size.0.max(size.1)) / points;
         if let Some(kept) = self.sessions.lock().unwrap().get_mut(task_id)
             && kept.id == session.id
         {
@@ -832,7 +878,8 @@ impl Devices {
                 rest.extend(["--duration".to_string(), "0.25".to_string()]);
                 self.ask_idb(id, ["ui", "swipe"], &rest).await
             }
-            Touch::Text(text) => self.ask_idb(id, ["ui", "text"], std::slice::from_ref(text)).await,
+            // Behind "--", so that text which begins with a dash is typed, not read as an option of idb.
+            Touch::Text(text) => self.ask_idb(id, ["ui", "text"], &["--".to_string(), text.clone()]).await,
             Touch::Key(Key::Home) => self.ask_idb(id, ["ui", "button"], &["HOME".to_string()]).await,
             // The codes of a keyboard: 40 is Return, 42 is the key that deletes backwards.
             Touch::Key(Key::Enter) => self.ask_idb(id, ["ui", "key"], &["40".to_string()]).await,
@@ -861,56 +908,54 @@ impl Devices {
         Ok(())
     }
 
+    /// Shuts down a device the core started itself, once no task shows it any more. Says whether it did.
+    async fn shut_down_ours(&self, kind: Kind, id: &str, name: &str) -> bool {
+        // Another task still shows it: it stays on until that one lets go too.
+        if self.sessions.lock().unwrap().values().any(|other| other.kind == kind && other.id == id) {
+            return false;
+        }
+        // Only a device the core started is the core's to shut down.
+        if !self.started.lock().unwrap().remove(id) {
+            return false;
+        }
+        let ran = match kind {
+            Kind::Ios => self.ask_xcrun(words(["simctl", "shutdown", id]), QUICK).await,
+            Kind::Android => self.ask_adb(id, ["emu", "kill"], QUICK).await,
+        };
+        if let Some(said) = failure(&ran) {
+            tracing::debug!("Could not shut down {name}: {said}");
+        }
+        true
+    }
+
+    /// Takes back the way to a port the core made on an emulator for a tab that no longer needs it.
+    async fn take_back_port(&self, session: &Session) {
+        if session.kind != Kind::Android || !session.reversed {
+            return;
+        }
+        // Another task shows the same app on the same emulator: the way to the port is now that one's to take back.
+        let inherited = {
+            let mut sessions = self.sessions.lock().unwrap();
+            let same = |other: &&mut Session| {
+                other.kind == Kind::Android && other.id == session.id && other.port == session.port
+            };
+            sessions.values_mut().find(same).map(|heir| heir.reversed = true).is_some()
+        };
+        if inherited {
+            return;
+        }
+        let rule = format!("tcp:{}", session.port);
+        let ran = self.ask_adb(&session.id, ["reverse", "--remove", &rule], QUICK).await;
+        if let Some(said) = failure(&ran) {
+            tracing::debug!("Could not close port {} on {}: {said}", session.port, session.name);
+        }
+    }
+
     /// Undoes what the tab of a device did to it. The session is already out of the list.
     async fn let_go(&self, session: Session) {
-        match session.kind {
-            Kind::Ios => {
-                // Another task still shows this simulator: it stays on until that one lets go too.
-                let shown = |other: &Session| other.kind == Kind::Ios && other.id == session.id;
-                if self.sessions.lock().unwrap().values().any(shown) {
-                    return;
-                }
-                // Only a simulator the core started is the core's to shut down.
-                if self.started.lock().unwrap().remove(&session.id) {
-                    let ran = self.ask_xcrun(words(["simctl", "shutdown", &session.id]), QUICK).await;
-                    if let Some(said) = failure(&ran) {
-                        tracing::debug!("Could not shut down {}: {said}", session.name);
-                    }
-                }
-            }
-            Kind::Android => {
-                // Another task still shows this emulator: it stays on until that one lets go too.
-                let still_shown = {
-                    let mut sessions = self.sessions.lock().unwrap();
-                    // One that shows the same app there: the way to the port is now that one's to take back.
-                    if session.reversed {
-                        let same = |other: &&mut Session| {
-                            other.kind == Kind::Android && other.id == session.id && other.port == session.port
-                        };
-                        if let Some(heir) = sessions.values_mut().find(same) {
-                            heir.reversed = true;
-                            return;
-                        }
-                    }
-                    sessions.values().any(|other| other.kind == Kind::Android && other.id == session.id)
-                };
-                // An emulator the core started is the core's to shut down, and with it goes every way to a port.
-                if !still_shown && self.started.lock().unwrap().remove(&session.id) {
-                    let ran = self.ask_adb(&session.id, ["emu", "kill"], QUICK).await;
-                    if let Some(said) = failure(&ran) {
-                        tracing::debug!("Could not shut down {}: {said}", session.name);
-                    }
-                    return;
-                }
-                if !session.reversed {
-                    return;
-                }
-                let rule = format!("tcp:{}", session.port);
-                let ran = self.ask_adb(&session.id, ["reverse", "--remove", &rule], QUICK).await;
-                if let Some(said) = failure(&ran) {
-                    tracing::debug!("Could not close port {} on {}: {said}", session.port, session.name);
-                }
-            }
+        // An emulator that is shut down takes every way to a port with it.
+        if !self.shut_down_ours(session.kind, &session.id, &session.name).await {
+            self.take_back_port(&session).await;
         }
     }
 
@@ -938,6 +983,12 @@ impl Devices {
         let tasks: Vec<String> = self.sessions.lock().unwrap().keys().cloned().collect();
         for task_id in tasks {
             self.close(&task_id).await;
+        }
+        // Whatever the core started and no tab came to show (an open that failed half way) goes too.
+        let left: Vec<String> = self.started.lock().unwrap().iter().cloned().collect();
+        for id in left {
+            let kind = if id.starts_with("emulator-") { Kind::Android } else { Kind::Ios };
+            self.shut_down_ours(kind, &id, &id).await;
         }
     }
 }
