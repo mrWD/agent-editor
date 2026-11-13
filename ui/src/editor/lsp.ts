@@ -181,6 +181,18 @@ function proseElement(text: string, markdown: boolean, className: string): HTMLE
   return element;
 }
 
+/** A word no other window has. The browser's own source of chance is asked first; it is there on localhost. */
+function ownTag(): string {
+  try {
+    const bytes = new Uint8Array(4);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  } catch {
+    // Older browsers, and pages that are not served from a safe address.
+    return Date.now().toString(36).slice(-6);
+  }
+}
+
 export class LspSession {
   private files = new Map<string, FileLink>();
   private servers = new Map<string, Server>();
@@ -190,7 +202,7 @@ export class LspSession {
   /** Servers the core said have ended. An answer that names one of them comes too late. */
   private endedRuns = new Set<number>();
   /** Every window has ids of its own, so an answer meant for another window is told apart. */
-  private tag = Math.random().toString(36).slice(2, 8);
+  private tag = ownTag();
   private nextId = 1;
   private saidHere = new Set<string>();
   private noteTimer: ReturnType<typeof setTimeout> | undefined;

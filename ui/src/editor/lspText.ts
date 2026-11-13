@@ -27,9 +27,16 @@ export function offsetAt(doc: Text, position: Position | undefined): number {
   return Math.min(line.from + Math.max(0, position.character), line.to);
 }
 
+/** A path without the slashes at its end. Written out, because a regular expression for it backtracks. */
+function withoutLastSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === '/') end--;
+  return path.slice(0, end);
+}
+
 /** The address of a file of the task, from the address of the task's folder. */
 export function uriOf(root: string, path: string): string {
-  const folder = root.replace(/\/+$/, '');
+  const folder = withoutLastSlashes(root);
   return `${folder}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
@@ -44,7 +51,7 @@ function plainPath(uri: string): string | null {
   }
   // On Windows servers write the drive letter in either case.
   path = path.replace(/^\/([A-Za-z]):/, (_, drive: string) => `/${drive.toLowerCase()}:`);
-  return path.replace(/\/+$/, '');
+  return withoutLastSlashes(path);
 }
 
 /**

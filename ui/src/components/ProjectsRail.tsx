@@ -268,11 +268,13 @@ export function ProjectsRail(): JSX.Element {
     if (!rail?.isConnected) return;
     const chips = [...rail.querySelectorAll<HTMLElement>(':scope > [data-project]')];
     const style = getComputedStyle(rail);
-    const gap = parseFloat(style.columnGap) || 0;
-    const inner = rail.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const gap = Number.parseFloat(style.columnGap) || 0;
+    const inner = rail.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
     const outer = (el: Element) => {
       const own = getComputedStyle(el);
-      return el.getBoundingClientRect().width + parseFloat(own.marginLeft) + parseFloat(own.marginRight) + gap;
+      return (
+        el.getBoundingClientRect().width + Number.parseFloat(own.marginLeft) + Number.parseFloat(own.marginRight) + gap
+      );
     };
     // Everything else on the line: the heading, the folders, the summary and the Expand button.
     const others = [...rail.children].filter((el) => !el.matches('[data-project], .grow, .rail-more, .rail-card'));

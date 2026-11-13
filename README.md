@@ -102,7 +102,9 @@ cd ui && npm run check
 ```
 
 `npm run check` runs the type check, ESLint, the Prettier check and the unit tests.
-The browser tests need the core and the interface built first:
+The browser tests need the core and the interface built first; they include a
+pass of axe over every screen, so a control without a name or text that does
+not stand out from its background fails the build:
 
 ```bash
 cd ui && npm run e2e
@@ -175,7 +177,9 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
 - **M6, together.** A team: a planner, a builder and a reviewer take one task
   in turn, then the checks run. A race: the same task goes to two or more
   agents, each in a working copy of its own, and one result is kept. The Plan
-  view: the work as blocks the agent keeps to. Rules of a project are told to
+  view: the work as blocks the agent keeps to, joined by dragging, each
+  built block keeping the very lines it was built in and the test that
+  proves it. Rules of a project are told to
   every agent, and rewriting an agent's line offers to make a rule of it. The
   core is a tool server for its agents: they see the other tasks, leave notes
   for the next agent and report what they noticed.
