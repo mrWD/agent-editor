@@ -24,6 +24,7 @@ shift
 case "$1" in
   */merge_requests/*/pipelines*) cat "$here/request-pipelines.json" ;;
   */pipelines\?ref=*) cat "$here/branch-pipelines.json" ;;
+  */pipelines/*/jobs*page=2) cat "$here/jobs-2.json" 2>/dev/null || echo "[]" ;;
   */pipelines/*/jobs*) cat "$here/jobs.json" ;;
   */pipelines/*) cat "$here/pipeline.json" ;;
   *) echo "unexpected endpoint: $1" >&2; exit 2 ;;
@@ -83,9 +84,44 @@ fn a_gitlab_pipeline_is_read_from_the_request_or_the_branch_and_steered_job_by_j
         [
             "[gitlab.example.com] api projects/group%2Fsub%2Fshop/merge_requests/42/pipelines?per_page=1",
             "[gitlab.example.com] api projects/group%2Fsub%2Fshop/pipelines/991",
-            "[gitlab.example.com] api projects/group%2Fsub%2Fshop/pipelines/991/jobs?per_page=100",
+            "[gitlab.example.com] api projects/group%2Fsub%2Fshop/pipelines/991/jobs?per_page=100&page=1",
         ]
     );
+
+    // A pipeline of more than a hundred jobs is read to its end: the oldest jobs are its first stages.
+    let page = |from: u32, count: u32| {
+        let jobs: Vec<String> = (0..count)
+            .map(|n| {
+                format!(
+                    r#"{{"id":{},"name":"job {}","stage":"test","status":"success","web_url":"u"}}"#,
+                    from - n,
+                    from - n
+                )
+            })
+            .collect();
+        format!("[{}]", jobs.join(","))
+    };
+    std::fs::write(dir.join("jobs.json"), page(6000, 100)).unwrap();
+    std::fs::write(
+        dir.join("jobs-2.json"),
+        r#"[{"id":5001,"name":"build","stage":"build","status":"failed","web_url":"u1"}]"#,
+    )
+    .unwrap();
+    let long = hosts.pipeline(&remote, branch, Some(42)).unwrap().unwrap();
+    assert_eq!(long.runs[0].jobs.len(), 101);
+    assert_eq!(
+        (long.runs[0].jobs[0].name.as_str(), long.runs[0].jobs[0].state),
+        ("build", "failed"),
+        "the first stage is there"
+    );
+    assert!(calls(&dir).last().unwrap().ends_with("jobs?per_page=100&page=2"));
+    std::fs::write(
+        dir.join("jobs.json"),
+        r#"[{"id":5003,"name":"deploy","stage":"deploy","status":"manual","web_url":"u3","allow_failure":false},
+            {"id":5002,"name":"unit","stage":"test","status":"failed","web_url":"u2","allow_failure":false}]"#,
+    )
+    .unwrap();
+    std::fs::remove_file(dir.join("jobs-2.json")).unwrap();
 
     // Without one, or when the request has none yet, the branch's newest pipeline is read.
     std::fs::remove_file(dir.join("calls.log")).unwrap();

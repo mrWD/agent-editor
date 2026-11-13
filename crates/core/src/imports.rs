@@ -16,12 +16,14 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::io::{Read as _, Seek, SeekFrom};
+use std::io::{BufRead as _, Read as _, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// How much of the start of a file is read to list it. A conversation's first words are near its start.
-const HEAD: u64 = 512 * 1024;
+/// How much of the start of a file is read, at most, to find the first thing the user said. That is
+/// near the start, but not always in the first lines: a picture pasted into the first message is one
+/// line of more than half a megabyte.
+const HEAD: u64 = 8 * 1024 * 1024;
 /// How much of its end is read, for the branch it ended on and when.
 const TAIL: u64 = 96 * 1024;
 /// The longest answer of a tool that is kept. More than this is cut: it was read by the model, not by a person.
@@ -218,9 +220,19 @@ fn peek(path: &Path) -> Option<Found> {
     let id = path.file_stem()?.to_string_lossy().into_owned();
     let mut file = std::fs::File::open(path).ok()?;
     let length = file.metadata().ok()?.len();
-    let head = piece(&mut file, 0, HEAD)?;
     let (mut cwd, mut started, mut branch, mut title, mut last) = (None, None, None, String::new(), None);
-    for row in rows(&head).filter(counts) {
+    // Line by line, and no further than the first thing the user said: how it ended is at its end.
+    let mut lines = std::io::BufReader::new(&mut file).take(HEAD);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        if lines.read_until(b'\n', &mut line).ok()? == 0 {
+            break;
+        }
+        let Ok(row) = serde_json::from_slice::<Value>(&line) else { continue };
+        if !counts(&row) {
+            continue;
+        }
         cwd = cwd.or_else(|| row.get("cwd").and_then(Value::as_str).map(str::to_string));
         started = started.or_else(|| time_of(&row));
         last = time_of(&row).or(last);
@@ -229,7 +241,6 @@ fn peek(path: &Path) -> Option<Found> {
             title =
                 title_of(&said(row.get("message").and_then(|message| message.get("content")).unwrap_or(&Value::Null)));
         }
-        // The start is known: the rest of it is not read line by line. How it ended is at its end.
         if !title.is_empty() && cwd.is_some() && started.is_some() {
             break;
         }
@@ -266,6 +277,7 @@ fn peek(path: &Path) -> Option<Found> {
 /// conversation itself, one file for each of Claude Code's folders: all in one folder began in the same place.
 fn found_in(claude: &Path, project: &Path) -> Vec<(PathBuf, Found)> {
     let mut found = Vec::new();
+    let dashed = dashed(project);
     let Ok(folders) = std::fs::read_dir(claude.join("projects")) else { return found };
     for folder in folders.flatten().map(|entry| entry.path()).filter(|path| path.is_dir()) {
         let Ok(files) = std::fs::read_dir(&folder) else { continue };
@@ -275,16 +287,28 @@ fn found_in(claude: &Path, project: &Path) -> Vec<(PathBuf, Found)> {
             .filter(|path| path.extension().is_some_and(|ending| ending == "jsonl") && path.is_file())
             .collect();
         sessions.sort();
-        // The first one that can be listed says where the folder's conversations began.
-        let mut sessions = sessions.into_iter();
-        let Some(first) = sessions.by_ref().find_map(|path| peek(&path).map(|one| (path, one))) else { continue };
-        if !Path::new(&first.1.cwd).starts_with(project) {
-            continue;
+        let inside = |one: &Found| Path::new(&one.cwd).starts_with(project);
+        let mut listed = sessions.into_iter().filter_map(|path| peek(&path).map(|one| (path, one)));
+        // A folder named after the project, or after a folder inside it, is looked through whole. Any
+        // other is judged by the first conversation in it that can be listed: all in one folder began
+        // in the same place, unless two places share the name, which the name itself would show.
+        let named = folder.file_name().is_some_and(|name| name.to_string_lossy().starts_with(&dashed));
+        if !named {
+            match listed.next() {
+                Some(first) if inside(&first.1) => found.push(first),
+                _ => continue,
+            }
         }
-        found.push(first);
-        found.extend(sessions.filter_map(|path| peek(&path).map(|one| (path, one))));
+        // Each is still asked where it worked: two folders can share one name, with every sign a dash.
+        found.extend(listed.filter(|(_, one)| inside(one)));
     }
     found
+}
+
+/// The name Claude Code gives the folder it keeps a folder's conversations in: the path with every
+/// sign that is not a letter or a digit made a dash.
+fn dashed(folder: &Path) -> String {
+    folder.to_string_lossy().chars().map(|sign| if sign.is_ascii_alphanumeric() { sign } else { '-' }).collect()
 }
 
 /// Reads a conversation whole and turns it into the events of a task.
@@ -430,6 +454,10 @@ impl Manager {
         .await?
         .ok_or_else(|| anyhow!("That conversation is not among the ones of this project any more"))?;
         let read = tokio::task::spawn_blocking(move || read(&file)).await??;
+        // Read whole, it says for certain where it worked: only a conversation of this project is taken.
+        if !Path::new(&read.cwd).starts_with(&project.path) {
+            bail!("That conversation is not among the ones of this project any more");
+        }
 
         let id = uuid::Uuid::new_v4().to_string();
         let project_path = PathBuf::from(&project.path);

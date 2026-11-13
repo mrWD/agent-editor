@@ -18,6 +18,9 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+/// How many pages of a hundred jobs are read of one pipeline. Past that it is cut: a thousand jobs is a pipeline nobody reads by hand.
+const MOST_JOB_PAGES: usize = 10;
+
 /// Where a job, a run or a whole pipeline stands. One of: "passed", "failed",
 /// "running", "pending", "manual" (waits for someone to start it),
 /// "canceled", "skipped".
@@ -248,8 +251,21 @@ impl Hosts {
                 };
                 let Some(id) = id else { return Ok(None) };
                 let pipeline = self.gitlab(remote, "GET", &format!("pipelines/{id}"))?;
-                let jobs = self.gitlab(remote, "GET", &format!("pipelines/{id}/jobs?per_page=100"))?;
-                parse_gitlab_pipeline(&pipeline, &jobs).map(Some)
+                // GitLab hands the jobs out a hundred at a time, newest first. All of them are asked for:
+                // the oldest are the first stages, and a pipeline cut short would hide what failed there.
+                let mut jobs: Vec<Value> = Vec::new();
+                for page in 1..=MOST_JOB_PAGES {
+                    let listed =
+                        self.gitlab(remote, "GET", &format!("pipelines/{id}/jobs?per_page=100&page={page}"))?;
+                    let more: Vec<Value> =
+                        serde_json::from_str(&listed).context("GitLab's answer about the jobs could not be read")?;
+                    let full = more.len() >= 100;
+                    jobs.extend(more);
+                    if !full {
+                        break;
+                    }
+                }
+                parse_gitlab_pipeline(&pipeline, &Value::Array(jobs).to_string()).map(Some)
             }
             HostKind::GitHub => {
                 let fields = "databaseId,status,conclusion,workflowName,url,headSha";

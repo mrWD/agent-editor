@@ -161,6 +161,9 @@ impl Manager {
 
     /// Asks the team to stop after the step it is in, or takes that back.
     pub fn team_pause(&self, task_id: &str, on: bool) -> Result<Team> {
+        // Read, changed and written back as one: the step that ends at this very moment writes the
+        // team too, and neither may put an older copy over the other's.
+        let _whole = self.team_runs.lock().unwrap();
         let mut team = self.team(task_id).ok_or_else(|| anyhow!("No team works on this task"))?;
         team.pause_after = on;
         self.save_team(task_id, &team);
@@ -221,15 +224,19 @@ impl Manager {
 
     /// Stops the team where it is. The turn that is running is stopped too.
     pub fn team_stop(&self, task_id: &str) -> Result<Team> {
-        let mut team = self.team(task_id).ok_or_else(|| anyhow!("No team works on this task"))?;
-        team.running = false;
-        team.stopped = Some("You stopped the team.".into());
-        for step in &mut team.steps {
-            if step.state == "running" {
-                step.state = "stopped".into();
+        let team = {
+            let _whole = self.team_runs.lock().unwrap();
+            let mut team = self.team(task_id).ok_or_else(|| anyhow!("No team works on this task"))?;
+            team.running = false;
+            team.stopped = Some("You stopped the team.".into());
+            for step in &mut team.steps {
+                if step.state == "running" {
+                    step.state = "stopped".into();
+                }
             }
-        }
-        self.save_team(task_id, &team);
+            self.save_team(task_id, &team);
+            team
+        };
         let _ = self.cancel(task_id);
         Ok(team)
     }
@@ -460,6 +467,7 @@ impl Manager {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         if step.role == "build" {
+            let _whole = self.team_runs.lock().unwrap();
             let mut counted = self.team(task_id).ok_or_else(|| anyhow!("The team is gone"))?;
             counted.rounds += 1;
             self.save_team(task_id, &counted);

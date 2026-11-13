@@ -29,11 +29,19 @@ fn keep(claude: &Path, folder: &str, session: &str, lines: &[String]) -> PathBuf
     file
 }
 
+/// The name Claude Code gives the folder it keeps a folder's conversations in: every sign a dash.
+fn dashed(folder: &Path) -> String {
+    folder.to_string_lossy().chars().map(|sign| if sign.is_ascii_alphanumeric() { sign } else { '-' }).collect()
+}
+
 const FIRST: &str = "11111111-aaaa-4bbb-8ccc-000000000001";
 const SECOND: &str = "22222222-aaaa-4bbb-8ccc-000000000002";
 const ELSEWHERE: &str = "33333333-aaaa-4bbb-8ccc-000000000003";
 const SILENT: &str = "44444444-aaaa-4bbb-8ccc-000000000004";
 const GONE: &str = "55555555-aaaa-4bbb-8ccc-000000000005";
+/// Sorts before every other name: the first conversation looked at in a folder.
+const SHARED: &str = "00000000-aaaa-4bbb-8ccc-000000000006";
+const PICTURE: &str = "66666666-aaaa-4bbb-8ccc-000000000007";
 
 /// A project with two conversations of its own (one in the project's folder, one in a folder inside
 /// it), one where nobody said anything, and a conversation of a neighbour whose name begins the same.
@@ -41,9 +49,10 @@ fn kept(sandbox: &Sandbox) -> (PathBuf, PathBuf) {
     let project = git_project(sandbox);
     let claude = sandbox.0.join("claude");
     let user = |text: &str| json!([{ "type": "text", "text": text }]);
+    let folder = dashed(&project);
     keep(
         &claude,
-        "-shop",
+        &folder,
         FIRST,
         &[
             // What the program put before the user's words is not what they said.
@@ -108,7 +117,7 @@ fn kept(sandbox: &Sandbox) -> (PathBuf, PathBuf) {
     std::fs::create_dir_all(&inside).unwrap();
     keep(
         &claude,
-        "-shop-packages-web",
+        &dashed(&inside),
         SECOND,
         &[
             line(SECOND, &inside, "HEAD", "2026-11-12T10:00:00.000Z", "user", json!("Why is the cart slow?")),
@@ -124,7 +133,7 @@ fn kept(sandbox: &Sandbox) -> (PathBuf, PathBuf) {
     );
     keep(
         &claude,
-        "-shop",
+        &folder,
         SILENT,
         &[line(
             SILENT,
@@ -140,9 +149,22 @@ fn kept(sandbox: &Sandbox) -> (PathBuf, PathBuf) {
     std::fs::create_dir_all(&neighbour).unwrap();
     keep(
         &claude,
-        "-shop-two",
+        &dashed(&neighbour),
         ELSEWHERE,
         &[line(ELSEWHERE, &neighbour, "main", "2026-11-13T09:00:00.000Z", "user", json!("Not of this project"))],
+    );
+    // Another neighbour, whose folder has Claude Code's very name for the project's: "project.x" and
+    // "project-x" are one name with every sign a dash. Its conversation lies in the same folder as
+    // the project's own, and is the first one looked at there.
+    let twin = sandbox.0.join("project.x");
+    std::fs::create_dir_all(&twin).unwrap();
+    std::fs::create_dir_all(sandbox.0.join("project-x")).unwrap();
+    assert_eq!(dashed(&twin), dashed(&sandbox.0.join("project-x")));
+    keep(
+        &claude,
+        &folder,
+        SHARED,
+        &[line(SHARED, &twin, "main", "2026-11-13T11:00:00.000Z", "user", json!("Of the twin, not of this project"))],
     );
     (project, claude)
 }
@@ -171,6 +193,32 @@ async fn the_conversations_of_a_project_are_listed_newest_first_and_only_its_own
     assert_eq!(found[1].last_at, 1_794_301_560_000);
     assert!(found.iter().all(|one| one.folder_there && one.task_id.is_none()));
     assert_eq!(found[0].cwd, project_dir.join("packages/web").to_string_lossy());
+
+    // A conversation that begins with a pasted picture: one line of more than half a megabyte stands
+    // before the user's first words, and it is listed all the same.
+    let picture = json!([
+        { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "A".repeat(700_000) } },
+        { "type": "text", "text": "What is wrong on this screen?" }
+    ]);
+    keep(
+        &claude,
+        &dashed(&project_dir),
+        PICTURE,
+        &[
+            line(PICTURE, &project_dir, "main", "2026-11-13T12:00:00.000Z", "user", picture),
+            line(
+                PICTURE,
+                &project_dir,
+                "main",
+                "2026-11-13T12:00:30.000Z",
+                "assistant",
+                json!([{ "type": "text", "text": "The button overlaps the title." }]),
+            ),
+        ],
+    );
+    let found = manager.claude_sessions(&project.id, &claude).unwrap();
+    assert_eq!((found[0].id.as_str(), found[0].title.as_str()), (PICTURE, "What is wrong on this screen?"));
+    assert_eq!(found.len(), 3);
 
     // A computer without Claude Code has nothing to list, and that is not a failure.
     assert_eq!(manager.claude_sessions(&project.id, &sandbox.0.join("no-claude")).unwrap(), vec![]);
@@ -248,7 +296,7 @@ async fn a_conversation_becomes_a_sleeping_task_with_its_words_and_tool_calls() 
     assert!(history[16]["text"].as_str().unwrap().starts_with("This conversation was brought in from Claude Code."));
 
     // Nothing of Claude Code's was changed.
-    let file = claude.join("projects/-shop").join(format!("{FIRST}.jsonl"));
+    let file = claude.join("projects").join(dashed(&project_dir)).join(format!("{FIRST}.jsonl"));
     assert!(std::fs::read_to_string(file).unwrap().contains("this line is not JSON"));
 
     // What cannot be brought in says why.
@@ -258,6 +306,7 @@ async fn a_conversation_becomes_a_sleeping_task_with_its_words_and_tool_calls() 
     };
     assert_eq!(refused("../../etc/passwd").await, "That is not the name of a conversation");
     assert_eq!(refused(ELSEWHERE).await, "That conversation is not among the ones of this project any more");
+    assert_eq!(refused(SHARED).await, "That conversation is not among the ones of this project any more");
     assert_eq!(refused(SILENT).await, "Nobody said anything in that conversation, so there is nothing to bring in");
 
     // The next message wakes an agent in it, which is told what was said.
@@ -287,7 +336,7 @@ async fn a_conversation_whose_folder_is_gone_gets_a_working_copy_of_its_own() {
     std::fs::create_dir_all(&gone).unwrap();
     keep(
         &claude,
-        "-shop--claude-worktrees-old",
+        &dashed(&gone),
         GONE,
         &[
             line(GONE, &gone, "task/old", "2026-11-09T10:00:00.000Z", "user", json!("Rename the limiter")),

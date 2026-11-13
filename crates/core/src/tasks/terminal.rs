@@ -575,8 +575,18 @@ impl Manager {
                     }
                     Ok(TermEvent::Exit { term_id, code, closed, .. }) if term_id == seat.term_id => break Some((code, closed)),
                     Ok(_) => {}
-                    // So much was printed that some of it was missed here: it printed, and that is all that matters.
-                    Err(broadcast::error::RecvError::Lagged(_)) => last_output = Some(Instant::now()),
+                    // So much was printed that some of it was missed here: it printed. What was missed
+                    // may have been the word that the program ended, so that is asked for: without it
+                    // the task would wait for ever on a program that is gone.
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        last_output = Some(Instant::now());
+                        let there = self.terminals().is_ok_and(|terminals| {
+                            terminals.list(&task_id).iter().any(|one| one.term_id == seat.term_id)
+                        });
+                        if !there {
+                            break Some((0, false));
+                        }
+                    }
                     Err(broadcast::error::RecvError::Closed) => break None,
                 },
                 _ = tick.tick() => {
