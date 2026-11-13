@@ -700,6 +700,19 @@ export async function createTask(projectId: string, agentId: string, text: strin
   return info.id;
 }
 
+/**
+ * Starts a task in which an agent sets the editor up: it follows the editor's setup guide, told what the team uses.
+ * Returns the new task's id.
+ */
+export async function startSetup(projectId: string, agentId: string, text: string): Promise<string> {
+  const info = await core.request<TaskInfo>('setup.start', { projectId, agentId, text });
+  if (!state.tasks[info.id]) {
+    addTask(info);
+    await loadHistory(info.id, info.state);
+  }
+  return info.id;
+}
+
 /** What the core answers when it was asked to start a race. */
 export type StartedRace = {
   /** `null` when fewer than two agents started: one task alone is no race. */
