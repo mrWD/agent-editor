@@ -222,7 +222,11 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
 An agent that does not speak ACP runs in a terminal instead. Add it in
 Settings as an agent of your own and tick "It runs in a terminal". A task then
 shows that terminal in place of the conversation; what you send is typed into
-the program, and you can type into it yourself. The editor cannot read what
+the program, and you can type into it yourself. Write `{message}` among the
+arguments where the program takes a first message (`claude --model haiku
+{message}`): it is then started with yours. Without that, the first message
+is typed, and a program that opens with a question of its own, as Claude does
+when it asks whether to trust a new folder, takes the Enter for its answer. The editor cannot read what
 such a program means, so a turn is taken to be over when the program has
 printed nothing for a moment (2.5 seconds), and "your turn" may also mean that
 it is asking you something. Line marks, checkpoints, Changes and checks work
@@ -236,6 +240,7 @@ run); GitLab and Linear against the real services; Codex and Gemini; the
 real language servers for Rust, Go and Python (the one for TypeScript and
 JavaScript was tried by hand; the tests use a practice server); the
 screenshot with a real browser, the real iOS simulator and Android emulator,
-and a notification of the real system (the tests use stand-ins for each); a
-real agent in a terminal, such as the command-line programs of Claude, Codex
-or Gemini (the tests use a practice program that reads lines).
+and a notification of the real system (the tests use stand-ins for each); the
+command-line programs of Codex and Gemini as agents in a terminal (Claude's
+was tried by hand: started with a message, its question about the folder
+answered in the terminal, a second message of two lines typed into it).
