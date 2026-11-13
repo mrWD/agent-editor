@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { byStage, jobAct, needsNobody, stillGoing, summary, type CiJob, type CiState } from './ci';
+import { byStage, jobAct, needsNobody, stagesOf, stillGoing, summary, type CiJob, type CiState } from './ci';
 
 const job = (name: string, stage: string, state: CiState): CiJob => ({
   id: name,
@@ -28,6 +28,9 @@ describe('a pipeline told briefly', () => {
     ]);
     // GitHub has no stages: one group, without a name.
     expect(byStage([job('a', '', 'passed'), job('b', '', 'failed')])).toHaveLength(1);
+    // The names alone, each once, in the order they come: what the card keys its stages by.
+    expect(stagesOf(jobs)).toEqual(byStage(jobs).map((group) => group.stage));
+    expect(stagesOf([job('a', '', 'passed'), job('b', '', 'failed')])).toEqual(['']);
   });
 
   it('counts what failed first, and says "wait" for more than one', () => {

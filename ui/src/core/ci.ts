@@ -68,6 +68,11 @@ export function byStage(jobs: CiJob[]): { stage: string; jobs: CiJob[] }[] {
   return groups;
 }
 
+/** The stages of a run in the order they come, each named once. On GitHub there is one, without a name. */
+export function stagesOf(jobs: CiJob[]): string[] {
+  return [...new Set(jobs.map((job) => job.stage))];
+}
+
 /** A job that went well, or was left out, needs nobody: it is listed only when the whole stage is unfolded. */
 export const needsNobody = (job: CiJob) => job.state === 'passed' || job.state === 'skipped';
 

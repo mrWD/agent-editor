@@ -1,4 +1,4 @@
-import { expect, test, unique, type App, type Project } from './support/fixtures';
+import { DEMO_FILE, DEMO_TEXT, expect, test, unique, writeIn, type App, type Project } from './support/fixtures';
 
 /** The Pipeline card of the task on screen: it stands under the merge request, on Changes. */
 const card = (app: App) => app.page.getByRole('region', { name: 'Pipeline' });
@@ -165,5 +165,46 @@ test.describe('The pipeline of a task’s branch', () => {
     await taskOn(app, local);
     await expect(app.git).toBeVisible();
     await expect(card(app)).toHaveCount(0);
+  });
+
+  test('CI-13 a commit is noticed: the card looks again by itself and shows the pipeline the host made for it', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({ remote: 'github' });
+    const taskId = await taskOn(app, shop);
+    await expect(card(app)).toContainText('none yet');
+
+    // The host starts a run for what was just committed. Nobody presses "Look again".
+    shop.setRuns([{ id: 9100, name: 'CI', state: 'running', jobs: [{ id: 7100, name: 'unit', state: 'running' }] }]);
+    const task = await app.core.task(taskId);
+    writeIn(task.cwd, DEMO_FILE, DEMO_TEXT.replace('limit: 5,', 'limit: 6,'));
+    await app.commit('Raise the limit');
+    await expect(run(app, 'CI')).toContainText('1 running');
+    await expect(card(app)).toContainText('running · commit 01234567');
+  });
+
+  test('CI-14 reading the pipeline again keeps the rows that were there, so the keyboard keeps its place', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({ remote: 'github' });
+    shop.setRuns([{ id: 9002, name: 'CI', state: 'failure', jobs: [{ id: 7002, name: 'unit', state: 'failure' }] }]);
+    await taskOn(app, shop);
+    const again = card(app).getByRole('button', { name: 'Run again: unit' });
+    // The button is marked, to tell it from one made anew in its place.
+    await again.evaluate((button) => ((button as HTMLElement).dataset.kept = 'yes'));
+    const readings = () =>
+      app.core.calls('gh').filter((call) => call.startsWith('run view 9002') && call.includes(shop.slug!)).length;
+    const before = readings();
+    // The same answer comes again, as it does every few seconds while a pipeline runs.
+    await card(app).getByRole('button', { name: 'Look again' }).click();
+    await expect.poll(readings).toBeGreaterThan(before);
+    await again.focus();
+    await card(app).getByRole('button', { name: 'Look again' }).focus();
+    await card(app).getByRole('button', { name: 'Look again' }).press('Enter');
+    await expect.poll(readings).toBeGreaterThan(before + 1);
+    await expect(card(app)).toContainText('failed · commit 01234567');
+    await expect(again).toHaveAttribute('data-kept', 'yes');
   });
 });

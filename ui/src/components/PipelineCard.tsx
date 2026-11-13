@@ -1,10 +1,11 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 import {
   actOnPipeline,
-  byStage,
   CI_WORDS,
   getPipeline,
   jobAct,
+  stagesOf,
   needsNobody,
   stillGoing,
   summary,
@@ -13,11 +14,17 @@ import {
   type CiJob,
   type CiRun,
 } from '../core/ci';
-import { createKept } from '../core/kept';
+import { core } from '../core/client';
+import { recallCopy, rememberCopy } from '../core/kept';
 import type { Task } from '../core/store';
 
 /** How often a pipeline that is still going is looked at again, while its card is on screen. */
 const LOOK_EVERY = 15_000;
+/** After a push the host needs a moment to make a pipeline: for this long it is looked for more often. */
+const AFTER_A_PUSH = 90_000;
+const LOOK_AFTER_A_PUSH = 5_000;
+/** A button that was pressed once waits this long for its second press, then forgets the first. */
+const ARMED_FOR = 4_000;
 
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -31,15 +38,31 @@ const said = (error: unknown) => (error instanceof Error ? error.message : Strin
 export function PipelineCard(props: { task: Task }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task, so the id never changes under it
   const taskId = props.task.info.id;
-  const [info, setInfo] = createKept<CiInfo | null>(`task:${taskId}:pipeline`, null);
+  // Kept in a store and brought in line run by run and job by job: a row stays the same row while
+  // its state changes, so the keyboard keeps its place and a first press is not forgotten each time
+  // the pipeline is read again. The card opens on what it showed last time.
+  const kept = `task:${taskId}:pipeline`;
+  const [held, setHeld] = createStore<{ info: CiInfo | null }>({ info: recallCopy<CiInfo>(kept) });
+  const info = () => held.info;
+  const setInfo = (next: CiInfo) => setHeld('info', reconcile(rememberCopy(kept, next), { key: 'id' }));
   /** True when the task has nowhere to run pipelines: no branch, or a remote that is not GitLab or GitHub. */
   const [nowhere, setNowhere] = createSignal(false);
+  /** Why the pipeline could not be read. The next reading that works takes it away. */
   const [problem, setProblem] = createSignal<string | null>(null);
+  /** Why the last thing that was asked for did not happen. It stays until it is dismissed or something else is asked. */
+  const [refused, setRefused] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal<string | null>(null);
   /** The button that was pressed once and waits for its second press. */
   const [armed, setArmed] = createSignal<string | null>(null);
   /** The stages whose every job is listed, by run and stage. */
   const [unfolded, setUnfolded] = createSignal<string[]>([]);
+  let disarm: ReturnType<typeof setTimeout> | undefined;
+  const arm = (key: string | null) => {
+    clearTimeout(disarm);
+    setArmed(key);
+    // Not every browser gives a pressed button the keyboard, so leaving it is not always told: time is.
+    if (key) disarm = setTimeout(() => setArmed(null), ARMED_FOR);
+  };
 
   let asked = 0;
   const look = async () => {
@@ -61,28 +84,49 @@ export function PipelineCard(props: { task: Task }): JSX.Element {
 
   onMount(() => {
     void look();
+    let lookedAt = Date.now();
+    let pushedAt = 0;
     const again = setInterval(() => {
-      if (!document.hidden && stillGoing(info()?.pipeline?.state)) void look();
-    }, LOOK_EVERY);
-    onCleanup(() => clearInterval(again));
+      if (document.hidden) return;
+      const going = stillGoing(info()?.pipeline?.state);
+      const justPushed = Date.now() - pushedAt < AFTER_A_PUSH;
+      const due = Date.now() - lookedAt >= (justPushed && !going ? LOOK_AFTER_A_PUSH : LOOK_EVERY);
+      if ((going || justPushed) && due) {
+        lookedAt = Date.now();
+        void look();
+      }
+    }, 1000);
+    // A commit, a push or a change to the request: the host may start a pipeline for it any moment now.
+    const stop = core.onEvent((event) => {
+      const mine = (event.event === 'git.changed' || event.event === 'mr.changed') && event.data.taskId === taskId;
+      if (!mine) return;
+      pushedAt = Date.now();
+      lookedAt = Date.now();
+      void look();
+    });
+    onCleanup(() => {
+      clearInterval(again);
+      clearTimeout(disarm);
+      stop();
+    });
   });
 
   /** Does one thing. With `twice`, the first press only arms the button. */
   const act = async (key: string, what: CiAct, id: string, name: string, twice: boolean) => {
     if (busy()) return;
     if (twice && armed() !== key) {
-      setArmed(key);
+      arm(key);
       return;
     }
-    setArmed(null);
+    arm(null);
     setBusy(key);
-    setProblem(null);
+    setRefused(null);
     try {
       setInfo(await actOnPipeline(taskId, what, id, name));
       // The host shows the new state a moment later: one more look then.
       setTimeout(() => void look(), 2500);
     } catch (error) {
-      setProblem(said(error));
+      setRefused(said(error));
     } finally {
       setBusy(null);
     }
@@ -105,7 +149,7 @@ export function PipelineCard(props: { task: Task }): JSX.Element {
       title={title}
       aria-label={`${armed() === key ? `Press again: ${label}` : label}: ${name}`}
       onClick={() => void act(key, what, id, name, twice)}
-      onBlur={() => armed() === key && setArmed(null)}
+      onBlur={() => armed() === key && arm(null)}
     >
       {busy() === key ? 'Asking' : armed() === key ? `Press again: ${label}` : label}
     </button>
@@ -150,16 +194,17 @@ export function PipelineCard(props: { task: Task }): JSX.Element {
             {button(`stop:${one.id}`, 'Stop', 'cancelRun', one.id, one.name, true)}
           </Show>
         </div>
-        <For each={byStage(one.jobs)}>
-          {(group) => {
-            const key = `${one.id}:${group.stage}`;
+        <For each={stagesOf(one.jobs)}>
+          {(stage) => {
+            const key = `${one.id}:${stage}`;
+            const jobs = () => one.jobs.filter((job) => job.stage === stage);
             const open = () => unfolded().includes(key);
-            const quiet = () => group.jobs.filter(needsNobody).length;
-            const shown = () => (open() ? group.jobs : group.jobs.filter((job) => !needsNobody(job)));
+            const quiet = () => jobs().filter(needsNobody).length;
+            const shown = () => (open() ? jobs() : jobs().filter((job) => !needsNobody(job)));
             return (
-              <div class="pipe-stage" role="group" aria-label={group.stage || 'Jobs'}>
+              <div class="pipe-stage" role="group" aria-label={stage || 'Jobs'}>
                 <div class="pipe-stage-head">
-                  <span class="pipe-stage-name">{group.stage || 'Jobs'}</span>
+                  <span class="pipe-stage-name">{stage || 'Jobs'}</span>
                   <Show when={quiet() > 0}>
                     <button
                       type="button"
@@ -206,13 +251,22 @@ export function PipelineCard(props: { task: Task }): JSX.Element {
             Look again
           </button>
         </div>
-        <Show when={problem()}>
-          <p class="banner danger flush" role="alert">
-            <span class="grow">{problem()}</span>
-            <button type="button" class="btn tiny" onClick={() => setProblem(null)}>
-              Dismiss
-            </button>
-          </p>
+        <Show when={refused() ?? problem()}>
+          {(why) => (
+            <p class="banner danger flush" role="alert">
+              <span class="grow">{why()}</span>
+              <button
+                type="button"
+                class="btn tiny"
+                onClick={() => {
+                  setRefused(null);
+                  setProblem(null);
+                }}
+              >
+                Dismiss
+              </button>
+            </p>
+          )}
         </Show>
         <Show when={info()}>
           {(known) => (
