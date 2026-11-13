@@ -6,6 +6,7 @@ import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
 import {
   agentOf,
+  defaultAgentId,
   integrationsStatus,
   listIssues,
   projectName,
@@ -42,7 +43,7 @@ export function Issues(): JSX.Element {
   const [team, setTeam] = createSignal('');
 
   const agents = () => state.agents.filter((agent) => agent.available);
-  const chosenAgent = () => agentId() || agents()[0]?.id || '';
+  const chosenAgent = () => agentId() || defaultAgentId();
 
   const sync = async () => {
     if (syncing()) return;

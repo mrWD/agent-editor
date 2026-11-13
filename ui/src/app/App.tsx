@@ -7,6 +7,7 @@ import { Automations } from '../screens/Automations';
 import { Health } from '../screens/Health';
 import { Home } from '../screens/Home';
 import { Issues } from '../screens/Issues';
+import { Settings } from '../screens/Settings';
 import { route, type View } from './router';
 
 // The editor is the heavy part of the interface. Home opens without it; it is fetched with the first task.
@@ -66,6 +67,9 @@ export function App(): JSX.Element {
           </Match>
           <Match when={route().page === 'health'}>
             <Health />
+          </Match>
+          <Match when={route().page === 'settings'}>
+            <Settings />
           </Match>
         </Switch>
       </div>

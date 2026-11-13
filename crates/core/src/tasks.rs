@@ -172,7 +172,14 @@ fn is_mode(option: &Value) -> bool {
 
 /// Owns every task and every running agent.
 pub struct Manager {
+    /// The agents found at start, with the commands they come with.
     registry: Registry,
+    /// The agents as they are started now: the ones above with what the user changed in Settings, and the user's own.
+    pub(crate) agents_now: RwLock<Arc<Registry>>,
+    /// Who is looking at the editor, and how the user is told when nobody is.
+    pub(crate) notifier: crate::notify::Notifier,
+    /// The helper that keeps the computer awake while an agent works.
+    pub(crate) awake: crate::awake::KeepAwake,
     store: Store,
     data_dir: PathBuf,
     live: RwLock<HashMap<String, Arc<Live>>>,
@@ -221,8 +228,12 @@ impl Manager {
     /// Like `new`, with the way out to GitHub, GitLab, Linear and Docker given. Tests pass stand-ins.
     pub fn with_hosts(registry: Registry, store: Store, data_dir: PathBuf, hosts: Hosts) -> Arc<Self> {
         let (events, _) = broadcast::channel(4096);
+        let agents_now = RwLock::new(Arc::new(crate::settings::agents_as_set(&registry, &store)));
         Arc::new(Self {
             registry,
+            agents_now,
+            notifier: Default::default(),
+            awake: Default::default(),
             store,
             data_dir,
             live: RwLock::new(HashMap::new()),
@@ -240,7 +251,14 @@ impl Manager {
         })
     }
 
-    pub fn registry(&self) -> &Registry {
+    /// The agents as they are started now. What comes back is the list of this
+    /// moment: a change made in Settings afterwards is in the next one asked for.
+    pub fn registry(&self) -> Arc<Registry> {
+        self.agents_now.read().unwrap().clone()
+    }
+
+    /// The agents as they were found at start, before anything the user changed.
+    pub(crate) fn agents_found(&self) -> &Registry {
         &self.registry
     }
 
@@ -335,6 +353,8 @@ impl Manager {
             created_at: now_ms(),
         };
         self.store.insert_project(&project)?;
+        // A new project starts with what Settings say new projects start with.
+        self.start_project_as_set(&project.id);
         self.broadcast("projects.changed", json!({}));
         Ok(project)
     }
@@ -422,6 +442,8 @@ impl Manager {
         if let Err(error) = self.store.insert_event(task_id, seq, at, &event) {
             tracing::error!("Could not store an event of task {task_id}: {error:#}");
         }
+        // Some events are worth telling a user who is not looking, and say whether an agent is at work.
+        self.after_event(task_id, &event);
         self.broadcast("task.event", event);
     }
 
@@ -439,7 +461,7 @@ impl Manager {
     // ----- starting agents -----
 
     fn agent(&self, agent_id: &str) -> Result<AgentDef> {
-        let agent = self.registry.get(agent_id).ok_or_else(|| anyhow!("Unknown agent: {agent_id}"))?.clone();
+        let agent = self.registry().get(agent_id).ok_or_else(|| anyhow!("Unknown agent: {agent_id}"))?.clone();
         if !agent.available {
             bail!("{} is not available: {}", agent.name, agent.note.as_deref().unwrap_or("its command was not found"));
         }
@@ -1109,6 +1131,8 @@ impl Manager {
     /// Stops every agent. Called when the core shuts down.
     pub async fn stop_all(&self) {
         self.stop_checks(None);
+        // Nothing of the core's may outlive it, the helper that keeps the computer awake least of all.
+        self.awake.stop();
         let all: Vec<_> = self.live.read().unwrap().values().cloned().collect();
         for live in all {
             live.conn.kill().await;
@@ -1212,7 +1236,7 @@ fn recap(events: &[Value]) -> Option<String> {
 }
 
 /// The last few stderr lines an agent wrote before it failed, as a readable suffix.
-fn stderr_tail(incoming: &mut mpsc::UnboundedReceiver<Incoming>) -> String {
+pub(crate) fn stderr_tail(incoming: &mut mpsc::UnboundedReceiver<Incoming>) -> String {
     let mut lines = Vec::new();
     while let Ok(message) = incoming.try_recv() {
         if let Incoming::Stderr(line) = message {

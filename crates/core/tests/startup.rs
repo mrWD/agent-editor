@@ -176,7 +176,11 @@ async fn the_folder_dialog_is_shown_only_to_the_window_of_the_desktop_app() {
     let chosen = sandbox.project();
     let answer = chosen.clone();
     let mut inside = AppState::new(sandbox.manager());
-    inside.desktop = Some(Desktop { key: "the-window".into(), pick_folder: Arc::new(move || Some(answer.clone())) });
+    inside.desktop = Some(Desktop {
+        key: "the-window".into(),
+        pick_folder: Arc::new(move || Some(answer.clone())),
+        notify: Arc::new(|_| {}),
+    });
     let picked = dispatch(&inside, "dialogs.pickFolder", &json!({ "key": "the-window" })).await.unwrap();
     assert_eq!(picked, json!({ "path": chosen.to_string_lossy() }));
 
@@ -188,7 +192,8 @@ async fn the_folder_dialog_is_shown_only_to_the_window_of_the_desktop_app() {
 
     // The user closed the dialog without choosing: that is an answer, not an error.
     let mut closed = AppState::new(sandbox.manager());
-    closed.desktop = Some(Desktop { key: "the-window".into(), pick_folder: Arc::new(|| None::<PathBuf>) });
+    closed.desktop =
+        Some(Desktop { key: "the-window".into(), pick_folder: Arc::new(|| None::<PathBuf>), notify: Arc::new(|_| {}) });
     let nothing = dispatch(&closed, "dialogs.pickFolder", &json!({ "key": "the-window" })).await.unwrap();
     assert_eq!(nothing, json!({ "path": null }));
 }

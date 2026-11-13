@@ -11,6 +11,8 @@ export type AgentDef = {
   available: boolean;
   note: string | null;
   spendsTokens: boolean;
+  /** True for the agent picked in Settings as the one a new task starts with. */
+  isDefault?: boolean;
 };
 
 export type Project = { id: string; name: string; path: string; folder: string | null; createdAt: number };
@@ -1360,4 +1362,17 @@ export type CodeMap = {
 /** Reads the map of a task. The core works it out from the files; no agent is asked. */
 export function getMap(taskId: string, center?: { path: string; symbol: string | null } | null) {
   return core.request<CodeMap>('map.get', { taskId, center: center ?? undefined });
+}
+
+// ----- settings -----
+
+/** Reads the agents again: Settings changed a command, added or removed an agent, or picked another default. */
+export async function reloadAgents() {
+  setState('agents', reconcile(await core.request<AgentDef[]>('agents.list'), { key: 'id' }));
+}
+
+/** The agent a new task starts with: the one picked in Settings, else the first that is installed. */
+export function defaultAgentId(): string {
+  const installed = state.agents.filter((agent) => agent.available);
+  return (installed.find((agent) => agent.isDefault) ?? installed[0])?.id ?? '';
 }

@@ -312,12 +312,15 @@ impl Manager {
     /// was asked: commands run side by side, and an answer that was asked for
     /// before something newer became known (the request was just opened, say)
     /// must not be put on top of it.
-    fn remember_request(&self, task_id: &str, request: Option<Request>, asked: Instant) {
+    pub(crate) fn remember_request(&self, task_id: &str, request: Option<Request>, asked: Instant) {
         let mut known = self.remembered.requests.lock().unwrap();
         if known.get(task_id).is_some_and(|(at, _)| *at > asked) {
             return;
         }
-        known.insert(task_id.to_string(), (Instant::now(), request));
+        known.insert(task_id.to_string(), (Instant::now(), request.clone()));
+        drop(known);
+        // The user may want to be told that the checks failed or that the request can merge now.
+        self.request_learned(task_id, request.as_ref());
     }
 
     /// The title and description a new request starts with: written from the commits and the issue.

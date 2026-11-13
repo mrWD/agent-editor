@@ -201,7 +201,7 @@ impl Manager {
             bail!("A race needs two to four agents, and {} were picked", agent_ids.len());
         }
         for (index, agent_id) in agent_ids.iter().enumerate() {
-            let Some(agent) = self.registry().get(agent_id) else { bail!("Unknown agent: {agent_id}") };
+            let Some(agent) = self.registry().get(agent_id).cloned() else { bail!("Unknown agent: {agent_id}") };
             if agent_ids[..index].contains(agent_id) {
                 bail!("{} is in the race twice. Pick each agent once.", agent.name);
             }
@@ -290,8 +290,8 @@ impl Manager {
     /// up by hand): it is simply no longer in the race.
     fn entrant_state(&self, entrant: &Entrant) -> Option<Value> {
         let task = self.store().task(&entrant.task_id).ok()?;
-        let agent = self.registry().get(&task.agent_id);
-        let name = agent.map_or_else(|| task.agent_id.clone(), |agent| agent.name.clone());
+        let agent = self.registry().get(&task.agent_id).cloned();
+        let name = agent.as_ref().map_or_else(|| task.agent_id.clone(), |agent| agent.name.clone());
         let events = own_events(self.store().events(&task.id).unwrap_or_default());
         let (started, ended) = timing(&events);
         let (_, said) = happened_since(&[], &events, &name, &task.cwd);

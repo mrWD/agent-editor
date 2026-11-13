@@ -3,7 +3,8 @@
 //! One process holds everything. The core is started here as a library, on a
 //! free port of this computer, and a window shows the interface the core
 //! serves. It is the very interface a browser gets from `ae-core`: the window
-//! adds what only an app can give, such as a folder dialog and a menu.
+//! adds what only an app can give, such as a folder dialog, a menu and
+//! notifications that come with the window closed.
 //!
 //! Quitting the app stops the core, and with it every agent and terminal.
 
@@ -23,6 +24,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, RunEvent, Url};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::StateFlags;
 
 /// What the app keeps for as long as it runs.
@@ -50,6 +52,8 @@ fn main() {
         // it could start a second core on the same data, and the first one shows its window.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| window::show(app)))
         .plugin(tauri_plugin_dialog::init())
+        // How the user is told that an agent asks or has finished while the window is behind or closed.
+        .plugin(tauri_plugin_notification::init())
         // Links are sent out by the window itself (see `window::open`), not by a script in the page.
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         // Size, place and "maximized" are remembered. "Hidden" is not: the window must always come back visible.
@@ -113,7 +117,7 @@ fn start(app: &AppHandle, settings: &Settings) -> Result<()> {
         port: Port::Free { prefer: settings::remembered_port(&data_dir) },
         ui_dir: Some(ui_dir),
         data_dir: Some(data_dir),
-        desktop: Some(Desktop { key: key.clone(), pick_folder: folder_dialog(app) }),
+        desktop: Some(Desktop { key: key.clone(), pick_folder: folder_dialog(app), notify: notifier(app) }),
         ..Options::default()
     };
     let core = tauri::async_runtime::block_on(ae_core::start(options))?;
@@ -138,6 +142,35 @@ fn folder_dialog(app: &AppHandle) -> Arc<dyn Fn() -> Option<std::path::PathBuf> 
         }
         dialog.blocking_pick_folder().and_then(|picked| picked.into_path().ok())
     })
+}
+
+/// The system's notifications, in the shape the core asks for them.
+///
+/// The core decides when something is worth telling: it knows from the page
+/// whether the window is in front. A page that is loading or finding the core
+/// again says nothing for a moment, so the window is asked here once more.
+fn notifier(app: &AppHandle) -> Arc<dyn Fn(&ae_core::Notice) + Send + Sync> {
+    let app = app.clone();
+    Arc::new(move |notice| {
+        let (app, title, body) = (app.clone(), notice.title.clone(), notice.body.clone());
+        // Off the core's thread: asking the window anything waits for the main thread, and
+        // the core calls this in the middle of its own work.
+        tauri::async_runtime::spawn_blocking(move || {
+            let focused = app.get_webview_window(window::MAIN).map(|window| window.is_focused().unwrap_or(false));
+            if !worth_showing(focused) {
+                return;
+            }
+            if let Err(error) = app.notification().builder().title(title).body(body).show() {
+                tracing::warn!("Could not show a notification: {error}");
+            }
+        });
+    })
+}
+
+/// A notification is shown unless the user is looking at the app's window right now.
+/// `window_focused` is `None` when the window is closed, as it can be on a Mac while the app runs.
+fn worth_showing(window_focused: Option<bool>) -> bool {
+    window_focused != Some(true)
 }
 
 /// Ctrl+C in the terminal the app was started from, or a polite "terminate" from
@@ -169,5 +202,17 @@ fn stop(app: &AppHandle) {
         Ok(Ok(())) => tracing::info!("The core stopped, with its agents and terminals"),
         Ok(Err(error)) => tracing::error!("The core did not stop cleanly: {error:#}"),
         Err(_) => tracing::error!("The core did not stop within {} seconds", STOP_WITHIN.as_secs()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_notification_is_for_a_user_who_is_not_looking_at_the_window() {
+        assert!(worth_showing(None), "the window is closed and the app runs on: this is what notifications are for");
+        assert!(worth_showing(Some(false)), "the window is behind another program");
+        assert!(!worth_showing(Some(true)), "the user is looking at it");
     }
 }

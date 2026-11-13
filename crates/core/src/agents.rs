@@ -119,7 +119,8 @@ impl Registry {
             name: name.into(),
             short: short.into(),
             vendor: vendor.into(),
-            program: npx.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
+            // Without npx the command is still named, so the settings can show what would be run.
+            program: npx.as_ref().map_or_else(|| "npx".to_string(), |p| p.to_string_lossy().into_owned()),
             args,
             env: vec![],
             available: npx.is_some(),
@@ -131,6 +132,16 @@ impl Registry {
             spends_tokens: true,
         }
     }
+}
+
+/// Where a program is, as the system would find it: a path is taken as it is,
+/// a bare name is looked for on the PATH. `None` when there is no such program.
+pub fn find_program(program: &str) -> Option<PathBuf> {
+    let program = program.trim();
+    if program.is_empty() {
+        return None;
+    }
+    which::which(program).ok()
 }
 
 /// Where the practice agent's binary should be.
