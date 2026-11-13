@@ -1,6 +1,7 @@
 import {
   createEffect,
   createMemo,
+  createUniqueId,
   createSignal,
   For,
   lazy,
@@ -567,6 +568,8 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
   const taskId = props.task.info.id;
   const agent = () => agentOf(props.task);
   const agentName = () => agent()?.name ?? 'the agent';
+  /** What the ids of this view's tabs start with, so the list of tabs can name the tabs it owns. */
+  const tabsId = createUniqueId();
 
   const [files, setFiles] = createStore<OpenFile[]>([]);
   const [current, setCurrent] = createSignal<string | null>(null);
@@ -883,14 +886,22 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
         style={{ display: props.shown ? undefined : 'none' }}
       >
         <Show when={files.length > 0}>
-          <div class="tabs" role="tablist" aria-label="Open files">
+          <div class="tabs" role="group" aria-label="Open files">
+            {/* A list of tabs may hold nothing but tabs, and each tab here has a Close button next to it.
+                So the list is an element of its own that owns the tabs by their ids. */}
+            <span
+              role="tablist"
+              aria-label="Open files"
+              aria-owns={files.map((_, index) => `${tabsId}-${index}`).join(' ')}
+            />
             <For each={files}>
-              {(file) => (
+              {(file, index) => (
                 <span class="tab" aria-current={file.path === current() ? 'true' : undefined}>
                   <button
                     type="button"
                     class="open"
                     role="tab"
+                    id={`${tabsId}-${index()}`}
                     aria-selected={file.path === current()}
                     title={file.dirty ? `${file.path} — not saved` : file.path}
                     onClick={() => setCurrent(file.path)}

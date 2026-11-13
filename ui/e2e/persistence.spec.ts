@@ -65,7 +65,7 @@ test.describe('What survives the core', () => {
     await expect(app.conversation.getByRole('heading', { name: 'No agent is running' })).toBeVisible();
 
     // The same files are open, and the lines of the agent are still marked.
-    await expect(app.page.getByRole('tablist', { name: 'Open files' }).getByRole('tab')).toHaveText([
+    await expect(app.page.getByRole('group', { name: 'Open files' }).getByRole('tab')).toHaveText([
       'README.md',
       'rateLimit.ts',
     ]);

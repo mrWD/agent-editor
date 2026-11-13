@@ -53,7 +53,7 @@ test.describe('Files and the editor', () => {
 
     await app.openFile('README.md');
     await expect(app.editor).toContainText('A small shop API for the end-to-end tests.');
-    const openFiles = app.page.getByRole('tablist', { name: 'Open files' });
+    const openFiles = app.page.getByRole('group', { name: 'Open files' });
     await expect(openFiles).toContainText('Markdown');
     await app.openFile(APP_FILE);
     await expect(openFiles).toContainText('TypeScript');
@@ -145,7 +145,7 @@ test.describe('Files and the editor', () => {
     await expect(app.editor).toContainText('windowMs');
 
     await app.page.reload();
-    const tabs = app.page.getByRole('tablist', { name: 'Open files' }).getByRole('tab');
+    const tabs = app.page.getByRole('group', { name: 'Open files' }).getByRole('tab');
     await expect(tabs).toHaveText(['README.md', 'rateLimit.ts', 'app.ts']);
     await expect(app.tab('rateLimit.ts')).toHaveAttribute('aria-selected', 'true');
     await expect(app.editor).toContainText('windowMs');

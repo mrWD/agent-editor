@@ -602,7 +602,7 @@ export function ProjectsRail(): JSX.Element {
             role="separator"
             aria-orientation="horizontal"
             aria-label="Drag to make the panel taller or shorter"
-            aria-valuenow={height() ?? undefined}
+            aria-valuenow={height() ?? Math.round(dockEl?.getBoundingClientRect().height ?? DOCK_MIN)}
             aria-valuemin={DOCK_MIN}
             aria-valuemax={dockMax()}
             tabindex="0"

@@ -39,7 +39,7 @@ const gutterMarks = (app: App) => app.page.locator('.cm-gutter-lint .cm-lint-mar
 const problemsTab = (app: App) => app.bottom.getByRole('button', { name: /^Problems/ });
 const problems = (app: App) => app.bottom.locator('.problem');
 const completions = (app: App) => app.page.locator('.cm-tooltip-autocomplete').getByRole('option');
-const openTabs = (app: App) => app.page.getByRole('tablist', { name: 'Open files' }).getByRole('tab');
+const openTabs = (app: App) => app.page.getByRole('group', { name: 'Open files' }).getByRole('tab');
 /** A line of the code, by its number from 1. */
 const line = (app: App, number: number) => app.editor.locator('.cm-line').nth(number - 1);
 /** A point inside the first word of a line: lines are as wide as the editor, so their middle is empty space. */
