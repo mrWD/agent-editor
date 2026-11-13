@@ -113,6 +113,19 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS checkpoints (
+    task_id   TEXT NOT NULL REFERENCES tasks(id),
+    n         INTEGER NOT NULL,
+    at        INTEGER NOT NULL,
+    kind      TEXT NOT NULL,
+    label     TEXT NOT NULL,
+    seq       INTEGER NOT NULL,
+    commit_id TEXT NOT NULL,
+    tree      TEXT NOT NULL,
+    hid_from  INTEGER,
+    hid_to    INTEGER,
+    PRIMARY KEY (task_id, n)
+) WITHOUT ROWID;
 ";
 
 /// Brings a database made by an older version up to date.
@@ -127,6 +140,9 @@ fn upgrade(conn: &Connection) -> Result<()> {
     }
     if !has_column("tasks", "agent_session")? {
         conn.execute_batch("ALTER TABLE tasks ADD COLUMN agent_session TEXT")?;
+    }
+    if !has_column("events", "hidden")? {
+        conn.execute_batch("ALTER TABLE events ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")?;
     }
     if !has_column("tasks", "issue_key")? {
         conn.execute_batch(
@@ -218,6 +234,7 @@ impl Store {
             let of_project = "(SELECT id FROM tasks WHERE project_id = ?1)";
             conn.execute(&format!("DELETE FROM events WHERE task_id IN {of_project}"), [id])?;
             conn.execute(&format!("DELETE FROM file_marks WHERE task_id IN {of_project}"), [id])?;
+            conn.execute(&format!("DELETE FROM checkpoints WHERE task_id IN {of_project}"), [id])?;
             conn.execute(
                 "DELETE FROM settings WHERE EXISTS (SELECT 1 FROM tasks WHERE project_id = ?1 \
                  AND settings.key LIKE 'task.' || tasks.id || '.%')",
@@ -330,7 +347,7 @@ impl Store {
     /// Every event of a task, oldest first.
     pub fn events(&self, task_id: &str) -> Result<Vec<Value>> {
         let conn = self.conn.lock().unwrap();
-        let mut statement = conn.prepare("SELECT body FROM events WHERE task_id = ?1 ORDER BY seq")?;
+        let mut statement = conn.prepare("SELECT body FROM events WHERE task_id = ?1 AND hidden = 0 ORDER BY seq")?;
         let rows = statement.query_map([task_id], |row| row.get::<_, String>(0))?;
         let mut events = Vec::new();
         for body in rows {
@@ -345,6 +362,108 @@ impl Store {
         let last: Option<i64> =
             conn.query_row("SELECT MAX(seq) FROM events WHERE task_id = ?1", [task_id], |row| row.get(0))?;
         Ok(last.map(|n| n as u64 + 1).unwrap_or(0))
+    }
+}
+
+/// The files of a task as they were at one moment. See `checkpoints`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckpointRow {
+    pub n: i64,
+    pub at: u64,
+    /// "start", "message", "edit", "left" or "rewind".
+    pub kind: String,
+    pub label: String,
+    /// The number of the last event before the checkpoint, or -1.
+    pub seq: i64,
+    pub commit: String,
+    pub tree: String,
+    /// For a checkpoint taken before a rewind: the events that rewind took out of the conversation.
+    pub hidden: Option<(i64, i64)>,
+}
+
+fn checkpoint_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CheckpointRow> {
+    let from: Option<i64> = row.get(7)?;
+    let to: Option<i64> = row.get(8)?;
+    Ok(CheckpointRow {
+        n: row.get(0)?,
+        at: row.get::<_, i64>(1)? as u64,
+        kind: row.get(2)?,
+        label: row.get(3)?,
+        seq: row.get(4)?,
+        commit: row.get(5)?,
+        tree: row.get(6)?,
+        hidden: from.zip(to),
+    })
+}
+
+impl Store {
+    // ----- checkpoints -----
+
+    /// Stores a checkpoint under the next free number of its task and returns that number.
+    pub fn add_checkpoint(&self, task_id: &str, row: &CheckpointRow) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 =
+            conn.query_row("SELECT COALESCE(MAX(n), 0) + 1 FROM checkpoints WHERE task_id = ?1", [task_id], |row| {
+                row.get(0)
+            })?;
+        conn.execute(
+            "INSERT INTO checkpoints (task_id, n, at, kind, label, seq, commit_id, tree) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![task_id, n, row.at as i64, row.kind, row.label, row.seq, row.commit, row.tree],
+        )?;
+        Ok(n)
+    }
+
+    /// The checkpoints of a task, oldest first.
+    pub fn checkpoints(&self, task_id: &str) -> Result<Vec<CheckpointRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut statement = conn.prepare(
+            "SELECT n, at, kind, label, seq, commit_id, tree, hid_from, hid_to FROM checkpoints WHERE task_id = ?1 ORDER BY n",
+        )?;
+        let rows = statement.query_map([task_id], checkpoint_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn checkpoint(&self, task_id: &str, n: i64) -> Result<CheckpointRow> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT n, at, kind, label, seq, commit_id, tree, hid_from, hid_to FROM checkpoints WHERE task_id = ?1 AND n = ?2",
+            params![task_id, n],
+            checkpoint_from_row,
+        )
+        .optional()?
+        .ok_or_else(|| anyhow!("No such checkpoint"))
+    }
+
+    /// Takes the events numbered after `after` and up to `upto` out of the
+    /// conversation, and writes on checkpoint `n` that it did, so they can come back.
+    pub fn hide_events(&self, task_id: &str, n: i64, after: i64, upto: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE events SET hidden = 1 WHERE task_id = ?1 AND seq > ?2 AND seq <= ?3",
+            params![task_id, after, upto],
+        )?;
+        conn.execute(
+            "UPDATE checkpoints SET hid_from = ?3, hid_to = ?4 WHERE task_id = ?1 AND n = ?2",
+            params![task_id, n, after, upto],
+        )?;
+        Ok(())
+    }
+
+    /// Puts back the events a rewind took out of the conversation.
+    pub fn show_events(&self, task_id: &str, after: i64, upto: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE events SET hidden = 0 WHERE task_id = ?1 AND seq > ?2 AND seq <= ?3",
+            params![task_id, after, upto],
+        )?;
+        Ok(())
+    }
+
+    /// Forgets the session the agent had for a task, so the next agent is told the conversation instead.
+    pub fn clear_agent_session(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("UPDATE tasks SET agent_session = NULL WHERE id = ?1", [id])?;
+        Ok(())
     }
 }
 

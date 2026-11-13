@@ -5,6 +5,7 @@ import {
   answerPermission,
   cancelTurn,
   sendPrompt,
+  rewindTo,
   setTaskOption,
   spentOn,
   type ConfigOption,
@@ -13,8 +14,11 @@ import {
   type Task,
 } from '../core/store';
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
-import { ago, Check, Chip, Ring, RingDot } from './bits';
+import { hideSince, sinceOf } from '../core/visits';
+import { Timeline } from '../screens/LookBack';
+import { ago, Check, Chip, clock, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
+import { WhereStopped } from './WhereStopped';
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
 const linesOf = (quote: Quote) =>
@@ -156,6 +160,9 @@ export function AgentPane(props: { task: Task }): JSX.Element {
     void act(() => setTaskOption(id, option.id, value)).finally(() => setSetting(false));
   };
 
+  const lookingBack = () => work().lookBack !== null;
+  const since = () => sinceOf(taskId());
+
   const usage = () => props.task.usage;
   const contextShare = () => Math.min(100, Math.round((usage()!.used / usage()!.size) * 100));
   const usageTitle = () => {
@@ -205,6 +212,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
       : typed;
     if (instead === undefined) setDraft('');
     setWork(taskId(), { quote: null, pausedByTyping: false });
+    hideSince(taskId());
     pinnedToEnd = true;
     // Waking a sleeping task starts an agent first, which can take a while.
     setStarting(sessionState() === 'asleep');
@@ -347,6 +355,27 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           </Show>
         )}
       </Match>
+      <Match when={entry.kind === 'rewound' && entry}>
+        {(back) => (
+          <div class="notice rewound">
+            <span class="grow">
+              You rewound the code to {clock(back().toAt)}
+              {back().label && back().label !== 'Before the rewind' ? ` (${back().label})` : ''}:{' '}
+              {back().files === 1 ? 'one file' : `${back().files} files`} went back
+              {back().kept.length > 0 ? ', your own lines stayed' : ''}
+              {back().droppedMessages ? ', and the later messages left the chat' : ''}.
+            </span>
+            <button
+              type="button"
+              class="btn tiny"
+              disabled={!canSend()}
+              onClick={() => act(() => rewindTo(taskId(), back().undo, { keepMine: false, dropMessages: false }))}
+            >
+              Undo this rewind
+            </button>
+          </div>
+        )}
+      </Match>
       <Match when={entry.kind === 'notice' && entry}>
         {(notice) => (
           <p class="notice" classList={{ danger: notice().tone === 'danger' }}>
@@ -383,6 +412,17 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             onClick={() => setMoreOpen(!moreOpen())}
           >
             More
+          </button>
+        </Show>
+        <Show when={props.task.info.branch}>
+          <button
+            type="button"
+            class="btn small ghost"
+            aria-pressed={lookingBack()}
+            title="See the code as it was at an earlier point, and rewind to it"
+            onClick={() => setWork(taskId(), { lookBack: lookingBack() ? null : 0 })}
+          >
+            Look back
           </button>
         </Show>
         <span class="grow" />
@@ -423,121 +463,133 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         </section>
       </Show>
 
-      <Switch>
-        <Match when={sessionState() === 'waiting_permission'}>
-          <section class="card pinned">
-            <h2>{name()} is waiting for your answer</h2>
-            <p>It asked before doing something. The question is at the end of the conversation.</p>
-          </section>
-        </Match>
-        <Match when={sessionState() === 'idle' && work().pausedByTyping}>
-          <section class="card pinned">
-            <h2>Your turn</h2>
-            <p>{name()} paused when you started typing. It will see your edits when it continues.</p>
-            <div class="actions">
-              <button type="button" class="btn tall primary" onClick={() => send('Continue.')}>
-                Let {name()} continue
-              </button>
-            </div>
-          </section>
-        </Match>
-        <Match when={sessionState() === 'idle' && props.task.feed.length > 0}>
-          <section class="card pinned">
-            <h2>Your turn</h2>
-            <p>{name()} finished this turn. Say what to do next.</p>
-          </section>
-        </Match>
-        <Match when={starting()}>
-          <section class="card pinned">
-            <h2>Starting {name()}</h2>
-            <p>It is told what was said so far, then gets your message.</p>
-          </section>
-        </Match>
-        <Match when={sessionState() === 'asleep'}>
-          <section class="card pinned">
-            <h2>No agent is running</h2>
-            <p>Everything said so far is kept. Your next message starts {name()} again and tells it what was said.</p>
-          </section>
-        </Match>
-      </Switch>
-
-      <div class="feed" ref={feedEl} onScroll={onScroll}>
-        <For each={props.task.feed}>{item}</For>
-        <Show when={work().editing}>
-          {(editing) => (
-            <div class="activity live">
-              <Chip agentId="you" short="You" flat />
-              <span class="verb">are editing</span>
-              <span class="what">{editing().path}</span>
-              <span class="muted">line {editing().line}</span>
-            </div>
-          )}
-        </Show>
-      </div>
-
-      <section class="composer">
-        <label for={`msg-${props.task.info.id}`}>Message {name()}</label>
-        <Show when={work().quote}>
-          {(quote) => (
-            <div class="quote">
-              <span class="mono grow">
-                {baseName(quote().path)} {linesOf(quote())}
-              </span>
-              <button type="button" class="btn tiny" onClick={() => setWork(taskId(), { quote: null })}>
-                Leave it out
-              </button>
-            </div>
-          )}
-        </Show>
-        <textarea
-          id={`msg-${props.task.info.id}`}
-          rows="2"
-          placeholder={
-            work().quote
-              ? `Ask ${name()} about the code you picked`
-              : work().editing
-                ? `Message ${name()} about ${baseName(work().editing!.path)} line ${work().editing!.line}`
-                : 'Ask a question or say what to do next'
-          }
-          value={draft()}
-          onInput={(event) => setDraft(event.currentTarget.value)}
-          onKeyDown={onKeyDown}
-        />
-        <Show when={problem()}>
-          <p class="notice danger" role="alert">
-            {problem()}
-          </p>
-        </Show>
-        <Show when={work().unsaved > 0 && canSend()}>
-          <span class="fine">Your unsaved edits are saved when you send, so {name()} sees them.</span>
-        </Show>
-        <div class="composer-row">
-          <Show when={sessionState() === 'running' || sessionState() === 'waiting_permission'}>
-            <button type="button" class="btn ghost" onClick={() => act(() => cancelTurn(props.task.info.id))}>
-              Stop this turn
-            </button>
+      <Show
+        when={!lookingBack()}
+        fallback={
+          <Show when={taskId()} keyed>
+            <Timeline task={props.task} />
           </Show>
-          <Show when={modeOption()}>
-            {(option) => (
-              <OptionSelect
-                option={option()}
-                label={`What ${name()} may do without asking`}
-                busy={setting()}
-                onPick={(value) => pick(option(), value)}
-              />
+        }
+      >
+        <Show when={since()}>
+          {(told) => <WhereStopped task={props.task} since={told()} onHide={() => hideSince(taskId())} />}
+        </Show>
+        <Switch>
+          <Match when={sessionState() === 'waiting_permission'}>
+            <section class="card pinned">
+              <h2>{name()} is waiting for your answer</h2>
+              <p>It asked before doing something. The question is at the end of the conversation.</p>
+            </section>
+          </Match>
+          <Match when={sessionState() === 'idle' && work().pausedByTyping}>
+            <section class="card pinned">
+              <h2>Your turn</h2>
+              <p>{name()} paused when you started typing. It will see your edits when it continues.</p>
+              <div class="actions">
+                <button type="button" class="btn tall primary" onClick={() => send('Continue.')}>
+                  Let {name()} continue
+                </button>
+              </div>
+            </section>
+          </Match>
+          <Match when={sessionState() === 'idle' && props.task.feed.length > 0}>
+            <section class="card pinned">
+              <h2>Your turn</h2>
+              <p>{name()} finished this turn. Say what to do next.</p>
+            </section>
+          </Match>
+          <Match when={starting()}>
+            <section class="card pinned">
+              <h2>Starting {name()}</h2>
+              <p>It is told what was said so far, then gets your message.</p>
+            </section>
+          </Match>
+          <Match when={sessionState() === 'asleep'}>
+            <section class="card pinned">
+              <h2>No agent is running</h2>
+              <p>Everything said so far is kept. Your next message starts {name()} again and tells it what was said.</p>
+            </section>
+          </Match>
+        </Switch>
+
+        <div class="feed" ref={feedEl} onScroll={onScroll}>
+          <For each={props.task.feed}>{item}</For>
+          <Show when={work().editing}>
+            {(editing) => (
+              <div class="activity live">
+                <Chip agentId="you" short="You" flat />
+                <span class="verb">are editing</span>
+                <span class="what">{editing().path}</span>
+                <span class="muted">line {editing().line}</span>
+              </div>
             )}
           </Show>
-          <span class="grow" />
-          <button
-            type="button"
-            class="btn strong"
-            onClick={() => send()}
-            disabled={!canSend() || starting() || draft().trim() === ''}
-          >
-            Send
-          </button>
         </div>
-      </section>
+
+        <section class="composer">
+          <label for={`msg-${props.task.info.id}`}>Message {name()}</label>
+          <Show when={work().quote}>
+            {(quote) => (
+              <div class="quote">
+                <span class="mono grow">
+                  {baseName(quote().path)} {linesOf(quote())}
+                </span>
+                <button type="button" class="btn tiny" onClick={() => setWork(taskId(), { quote: null })}>
+                  Leave it out
+                </button>
+              </div>
+            )}
+          </Show>
+          <textarea
+            id={`msg-${props.task.info.id}`}
+            rows="2"
+            placeholder={
+              work().quote
+                ? `Ask ${name()} about the code you picked`
+                : work().editing
+                  ? `Message ${name()} about ${baseName(work().editing!.path)} line ${work().editing!.line}`
+                  : 'Ask a question or say what to do next'
+            }
+            value={draft()}
+            onInput={(event) => setDraft(event.currentTarget.value)}
+            onKeyDown={onKeyDown}
+          />
+          <Show when={problem()}>
+            <p class="notice danger" role="alert">
+              {problem()}
+            </p>
+          </Show>
+          <Show when={work().unsaved > 0 && canSend()}>
+            <span class="fine">Your unsaved edits are saved when you send, so {name()} sees them.</span>
+          </Show>
+          <div class="composer-row">
+            <Show when={sessionState() === 'running' || sessionState() === 'waiting_permission'}>
+              <button type="button" class="btn ghost" onClick={() => act(() => cancelTurn(props.task.info.id))}>
+                Stop this turn
+              </button>
+            </Show>
+            <Show when={modeOption()}>
+              {(option) => (
+                <OptionSelect
+                  option={option()}
+                  label={`What ${name()} may do without asking`}
+                  busy={setting()}
+                  onPick={(value) => pick(option(), value)}
+                />
+              )}
+            </Show>
+            <span class="grow" />
+            <button
+              type="button"
+              class="btn strong"
+              onClick={() => send()}
+              disabled={!canSend() || starting() || draft().trim() === ''}
+            >
+              Send
+            </button>
+          </div>
+        </section>
+      </Show>
     </aside>
   );
 }

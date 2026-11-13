@@ -23,6 +23,34 @@ export function ago(at: number): string {
   return days === 1 ? 'yesterday' : `${days} days ago`;
 }
 
+const two = (n: number) => String(n).padStart(2, '0');
+
+/** A time of day, as "14:02". */
+export function clock(at: number): string {
+  const date = new Date(at);
+  return `${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
+/** A moment in plain words: "today, 14:02", "yesterday, 18:40", "12 Nov, 09:15". */
+export function whenLabel(at: number): string {
+  const date = new Date(at);
+  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOf(new Date(now())) - startOf(date)) / 86_400_000);
+  if (days === 0) return `today, ${clock(at)}`;
+  if (days === 1) return `yesterday, ${clock(at)}`;
+  const month = date.toLocaleString('en-US', { month: 'short' });
+  return `${date.getDate()} ${month}, ${clock(at)}`;
+}
+
+/** A length of time in plain words: "38 min", "3 h", "2 days". */
+export function span(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} days`;
+}
+
 /** The two-letter mark of whoever wrote or did something. */
 export function Chip(props: { agentId: string; short: string; flat?: boolean; label?: string }): JSX.Element {
   const tone = () => (['claude', 'codex', 'gemini', 'you'].includes(props.agentId) ? props.agentId : '');

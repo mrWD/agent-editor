@@ -137,14 +137,52 @@ async fn connection(socket: WebSocket, state: AppState) {
     let mut events = state.manager.subscribe();
     let mut term_events = state.terminals.subscribe();
     let mut attached = Attached::new();
+    // Commands run in lanes: one lane per kind of command and task. Inside a
+    // lane they run one after another, so their answers come in the order they
+    // were asked (the interface counts on "the last answer is the newest").
+    // Lanes run side by side: a slow command (git on a large project, a question
+    // to GitHub) holds up neither the other lanes nor the events.
+    let (answers, mut ready) = tokio::sync::mpsc::unbounded_channel::<Value>();
+    let mut lanes: HashMap<String, tokio::sync::mpsc::UnboundedSender<(Value, String, Value)>> = HashMap::new();
 
     loop {
         tokio::select! {
             incoming = stream.next() => {
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        let (reply, frames) = answer(&state, &mut attached, text.as_str()).await;
-                        if sink.send(Message::Text(reply.to_string().into())).await.is_err() {
+                        let (id, method, params) = match parse(text.as_str()) {
+                            Ok(request) => request,
+                            Err(refusal) => {
+                                if sink.send(Message::Text(refusal.to_string().into())).await.is_err() {
+                                    break;
+                                }
+                                continue;
+                            }
+                        };
+                        if !method.starts_with("terminal.") {
+                            let lane = lanes.entry(lane_of(&method, &params)).or_insert_with(|| {
+                                let (queue, mut waiting) = tokio::sync::mpsc::unbounded_channel::<(Value, String, Value)>();
+                                let (state, answers) = (state.clone(), answers.clone());
+                                // The lane ends when this connection does: its queue is dropped with `lanes`.
+                                tokio::spawn(async move {
+                                    while let Some((id, method, params)) = waiting.recv().await {
+                                        let outcome = dispatch(&state, &method, &params).await;
+                                        if answers.send(reply(id, outcome)).is_err() {
+                                            break;
+                                        }
+                                    }
+                                });
+                                queue
+                            });
+                            let _ = lane.send((id, method, params));
+                            continue;
+                        }
+                        // Terminal commands change which terminals this window is shown,
+                        // and are quick: they are answered here, in the order they came.
+                        let mut frames = Vec::new();
+                        let outcome = terminal_command(&state, &mut attached, &mut frames, &method, &params);
+                        let frames = if outcome.is_ok() { frames } else { Vec::new() };
+                        if sink.send(Message::Text(reply(id, outcome).to_string().into())).await.is_err() {
                             break;
                         }
                         for bytes in frames {
@@ -165,6 +203,11 @@ async fn connection(socket: WebSocket, state: AppState) {
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Ok(_)) => continue,
                     Some(Err(_)) => break,
+                }
+            }
+            Some(answer) = ready.recv() => {
+                if sink.send(Message::Text(answer.to_string().into())).await.is_err() {
+                    break;
                 }
             }
             event = events.recv() => {
@@ -228,23 +271,30 @@ async fn connection(socket: WebSocket, state: AppState) {
     }
 }
 
-/// Runs one command and builds its answer, plus any binary messages that must follow it.
-async fn answer(state: &AppState, attached: &mut Attached, text: &str) -> (Value, Vec<Vec<u8>>) {
+/// Reads one request: its id, the command and the command's parameters.
+/// A message that is not a request gives the answer to send back instead.
+fn parse(text: &str) -> Result<(Value, String, Value), Value> {
     let Ok(request) = serde_json::from_str::<Value>(text) else {
-        return (json!({ "id": Value::Null, "error": { "message": "The message is not JSON" } }), vec![]);
+        return Err(json!({ "id": Value::Null, "error": { "message": "The message is not JSON" } }));
     };
     let id = request.get("id").cloned().unwrap_or(Value::Null);
-    let method = request.get("method").and_then(Value::as_str).unwrap_or_default();
+    let method = request.get("method").and_then(Value::as_str).unwrap_or_default().to_string();
     let params = request.get("params").cloned().unwrap_or(json!({}));
-    let mut frames = Vec::new();
-    let outcome = if method.starts_with("terminal.") {
-        terminal_command(state, attached, &mut frames, method, &params)
-    } else {
-        dispatch(state, method, &params).await
-    };
+    Ok((id, method, params))
+}
+
+/// Which lane a command runs in: its kind (the part before the dot) and its task.
+fn lane_of(method: &str, params: &Value) -> String {
+    let kind = method.split('.').next().unwrap_or_default();
+    let task = params.get("taskId").and_then(Value::as_str).unwrap_or_default();
+    format!("{kind}:{task}")
+}
+
+/// The answer to a request, as it travels to the interface.
+fn reply(id: Value, outcome: Result<Value>) -> Value {
     match outcome {
-        Ok(result) => (json!({ "id": id, "result": result }), frames),
-        Err(error) => (json!({ "id": id, "error": { "message": format!("{error:#}") } }), vec![]),
+        Ok(result) => json!({ "id": id, "result": result }),
+        Err(error) => json!({ "id": id, "error": { "message": format!("{error:#}") } }),
     }
 }
 
@@ -411,6 +461,8 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             let (file, review) = tokio::task::spawn_blocking(move || {
                 let path = crate::review::relative_to(&root, &path)
                     .ok_or_else(|| anyhow!("That path is outside the task's folder"))?;
+                // The code before a run of edits by hand: a point to look back at.
+                manager.checkpoint_before_edit(&task_id);
                 // What is on disk right before the save, so the save's own lines can be told apart.
                 let before = std::fs::read(root.join(&path)).ok().map(String::from_utf8);
                 let _ = manager.observe(&task_id, &path, manager.acting_now(&task_id), None);
@@ -458,8 +510,48 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         "git.diff" => {
             let task_id = text_param(params, "taskId")?.to_string();
             let path = text_param(params, "path")?.to_string();
+            // Without `from` the file is compared with the last commit; with it, over a span of the task's life.
+            let from = params.get("from").and_then(Value::as_str).map(str::to_string);
             let manager = manager.clone();
-            tokio::task::spawn_blocking(move || manager.git_diff(&task_id, &path)).await?
+            tokio::task::spawn_blocking(move || match from {
+                Some(from) => manager.diff_between(&task_id, &path, &from),
+                None => manager.git_diff(&task_id, &path),
+            })
+            .await?
+        }
+        "git.files" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let from = text_param(params, "from")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.files_between(&task_id, &from)).await?
+        }
+        "checkpoints.list" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.checkpoints(&task_id)).await?
+        }
+        "checkpoints.rewind" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let n = params.get("n").and_then(Value::as_i64).ok_or_else(|| anyhow!("Missing \"n\""))?;
+            let keep_mine = params.get("keepMine").and_then(Value::as_bool).unwrap_or(true);
+            let drop_messages = params.get("dropMessages").and_then(Value::as_bool).unwrap_or(false);
+            if drop_messages {
+                // The agent remembers what is being taken out; a new one will be told what is left.
+                manager.stop_agent_and_wait(&task_id).await?;
+            }
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.rewind(&task_id, n, keep_mine, drop_messages)).await?
+        }
+        "tasks.left" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.leave(&task_id)).await??;
+            Ok(json!({}))
+        }
+        "tasks.since" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.since(&task_id)).await?
         }
         "git.commit" => {
             let task_id = text_param(params, "taskId")?.to_string();

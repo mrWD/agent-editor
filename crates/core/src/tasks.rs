@@ -169,6 +169,8 @@ pub struct Manager {
     seqs: Mutex<HashMap<String, u64>>,
     /// Files the user changed by hand that the task's agent has not been told about yet.
     manual: Mutex<HashMap<String, BTreeSet<String>>>,
+    /// Tasks whose user is in the middle of a run of edits by hand: one checkpoint covers the run.
+    pub(crate) hand_edits: Mutex<std::collections::HashSet<String>>,
     /// The way out to GitHub, GitLab, Linear and Docker.
     pub(crate) hosts: Hosts,
     /// What was last read from those services, so screens do not ask them on every look.
@@ -176,7 +178,7 @@ pub struct Manager {
     events: broadcast::Sender<Value>,
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
@@ -205,6 +207,7 @@ impl Manager {
             live: RwLock::new(HashMap::new()),
             seqs: Mutex::new(HashMap::new()),
             manual: Mutex::new(HashMap::new()),
+            hand_edits: Mutex::new(Default::default()),
             hosts,
             remembered: Default::default(),
             events,
@@ -802,6 +805,11 @@ impl Manager {
             bail!("The agent is still working. Wait for it or stop the turn.");
         }
 
+        // The code as the user leaves it for this turn: a point to look back at and rewind to.
+        {
+            let (manager, id, said) = (self.clone(), task_id.to_string(), text.clone());
+            let _ = tokio::task::spawn_blocking(move || manager.checkpoint_before_message(&id, &said)).await;
+        }
         // Whatever changed on disk before this turn is not the agent's doing.
         self.sweep_in_background(task_id, Author::You, vec![]).await;
         live.touched.lock().unwrap().clear();
@@ -948,6 +956,19 @@ impl Manager {
             live.conn.kill().await;
         }
         Ok(())
+    }
+
+    /// Stops the agent of a task and waits until the task is asleep: everything
+    /// the agent's end leaves in the conversation has been written by then.
+    pub async fn stop_agent_and_wait(&self, task_id: &str) -> Result<()> {
+        self.stop_agent(task_id).await?;
+        for _ in 0..200 {
+            if self.live_of(task_id).is_none() {
+                return Ok(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        bail!("The agent did not stop in time")
     }
 
     /// Takes a task off every list. Its agent is stopped; its folder and branch stay.

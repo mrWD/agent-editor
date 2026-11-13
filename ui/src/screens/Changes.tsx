@@ -24,6 +24,7 @@ import {
   type Task,
 } from '../core/store';
 import { openInEditor, saveAll, setWork } from '../core/work';
+import { ChangesMode } from './Span';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -321,6 +322,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
       {(state) => (
         <>
           <section class="git" aria-label="Git: what goes in, commit, push">
+            <ChangesMode taskId={taskId} />
             <div class="git-branch">
               <span class="mono">{state().branch ?? 'no branch'}</span>
               <Show

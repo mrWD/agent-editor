@@ -21,6 +21,7 @@ import { Chip, Icon, modKey } from '../components/bits';
 import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
 import { core } from '../core/client';
+import { arrive, leave } from '../core/visits';
 import {
   agentOf,
   cancelTurn,
@@ -49,6 +50,8 @@ import {
 import { watchGit, type GitWatch } from '../core/gitstate';
 import { EditorHost, type FileMeta } from '../editor/host';
 import { ChangesView } from './Changes';
+import { LookBackView } from './LookBack';
+import { SpanView } from './Span';
 import { languageOf } from '../editor/languages';
 
 // The terminal is fetched the first time it is opened.
@@ -779,14 +782,22 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task, so the id never changes under it
   const git: GitWatch = watchGit(props.task.info.id);
   createEffect(() => setUncommitted(props.task.info.id, git.state()?.files.length ?? 0));
+  const lookingBack = () => workOf(props.task.info.id).lookBack !== null;
+  const changesMode = () => workOf(props.task.info.id).changes;
 
   return (
     <>
-      <CodeView task={props.task} shown={props.view === 'code'} />
-      <Show when={props.view === 'changes'}>
-        <ChangesView task={props.task} git={git} />
+      {/* The code view stays alive under the other views, so open files and unsaved edits survive. */}
+      <CodeView task={props.task} shown={props.view === 'code' && !lookingBack()} />
+      <Show when={lookingBack()}>
+        <LookBackView task={props.task} />
       </Show>
-      <Show when={props.view !== 'code' && props.view !== 'changes'}>
+      <Show when={props.view === 'changes' && !lookingBack()}>
+        <Show when={changesMode() === 'head'} fallback={<SpanView task={props.task} mode={changesMode() as 'visit'} />}>
+          <ChangesView task={props.task} git={git} />
+        </Show>
+      </Show>
+      <Show when={props.view !== 'code' && props.view !== 'changes' && !lookingBack()}>
         <section class="center">
           <div class="center-note">
             <h2>{viewNames[props.view]} is not built yet</h2>
@@ -809,6 +820,27 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
   // whatever still reads it at that moment finds a task and not a hole.
   const held = createMemo<Task | undefined>((last) => task() ?? (last?.info.id === props.id ? last : undefined));
   const current = () => held()!;
+
+  // Coming to a task asks what happened since the last visit; going away from it
+  // (to another screen, another task, another window) is where the next visit counts from.
+  createEffect(
+    on(
+      () => (task() ? props.id : null),
+      (id) => {
+        if (!id) return;
+        arrive(id);
+        const onVisibility = () => (document.hidden ? leave(id) : arrive(id));
+        const onHide = () => leave(id);
+        document.addEventListener('visibilitychange', onVisibility);
+        window.addEventListener('pagehide', onHide);
+        onCleanup(() => {
+          document.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('pagehide', onHide);
+          leave(id);
+        });
+      },
+    ),
+  );
 
   // While a task is on screen, what arrives counts as read. The core keeps the mark,
   // so "what changed since you were last here" can be told later.

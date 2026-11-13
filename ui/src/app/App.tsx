@@ -1,4 +1,4 @@
-import { createMemo, lazy, Match, Suspense, Switch, type JSX } from 'solid-js';
+import { createMemo, ErrorBoundary, lazy, Match, Suspense, Switch, type JSX } from 'solid-js';
 import { Header } from '../components/Header';
 import { ProjectsRail } from '../components/ProjectsRail';
 import { SearchPalette } from '../components/SearchPalette';
@@ -49,9 +49,26 @@ export function App(): JSX.Element {
             <Home />
           </Match>
           <Match when={route().page === 'task'}>
-            <Suspense>
-              <TaskScreen id={shownTask()!.id} view={shownTask()!.view} />
-            </Suspense>
+            {/* The task screen is fetched when first needed. If that fails, say so: a blank screen says nothing. */}
+            <ErrorBoundary
+              fallback={(error) => (
+                <main class="page">
+                  <div class="page-inner">
+                    <h1 class="headline">This screen could not be loaded</h1>
+                    <p class="soft">{error instanceof Error ? error.message : String(error)}</p>
+                    <p>
+                      <button type="button" class="btn" onClick={() => window.location.reload()}>
+                        Reload the window
+                      </button>
+                    </p>
+                  </div>
+                </main>
+              )}
+            >
+              <Suspense>
+                <TaskScreen id={shownTask()!.id} view={shownTask()!.view} />
+              </Suspense>
+            </ErrorBoundary>
           </Match>
           <Match when={route().page === 'issues'}>
             <Issues />

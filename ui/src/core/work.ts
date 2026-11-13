@@ -17,9 +17,23 @@ export type Work = {
   pausedByTyping: boolean;
   /** Code picked in the editor to send along with the next message. */
   quote: Quote | null;
+  /** What the Changes view compares: the last commit, the last visit, or the start of the branch. */
+  changes: 'head' | 'visit' | 'branch';
+  /**
+   * Looking back: `null` when the user is not, 0 when the list of checkpoints
+   * is open with none picked, else the number of the checkpoint being looked at.
+   */
+  lookBack: number | null;
 };
 
-const empty: Work = { editing: null, unsaved: 0, pausedByTyping: false, quote: null };
+const empty: Work = {
+  editing: null,
+  unsaved: 0,
+  pausedByTyping: false,
+  quote: null,
+  changes: 'head',
+  lookBack: null,
+};
 
 const [work, setWorkStore] = createStore<Record<string, Work>>({});
 

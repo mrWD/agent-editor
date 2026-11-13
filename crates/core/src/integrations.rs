@@ -467,6 +467,8 @@ impl Manager {
             if inside {
                 crate::git::remove_worktree(Path::new(&project.path), Path::new(&task.cwd), branch).await;
             }
+            // The task's checkpoints go with its working copy: nothing is left to rewind.
+            self.drop_checkpoints(Path::new(&project.path), task_id);
         }
         if archive {
             self.archive(task_id).await?;

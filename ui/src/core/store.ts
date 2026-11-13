@@ -86,7 +86,18 @@ export type FeedItem =
       chosen: string | null;
       at: number;
     }
-  | { kind: 'notice'; text: string; tone: 'muted' | 'danger'; at: number };
+  | { kind: 'notice'; text: string; tone: 'muted' | 'danger'; at: number }
+  | {
+      /** The code was put back as it was at a checkpoint. `undo` is the checkpoint that takes this back. */
+      kind: 'rewound';
+      label: string;
+      toAt: number;
+      files: number;
+      kept: string[];
+      droppedMessages: boolean;
+      undo: number;
+      at: number;
+    };
 
 /** Who wrote a stretch of lines since the last review. Lines count from 1. */
 export type Run = { from: number; to: number; who: 'agent' | 'you' };
@@ -335,6 +346,18 @@ export function applyEvent(task: Task, event: any) {
       }
       return;
     }
+    case 'rewound':
+      feed.push({
+        kind: 'rewound',
+        label: String(event.label ?? ''),
+        toAt: Number(event.toAt ?? at),
+        files: Number(event.files ?? 0),
+        kept: Array.isArray(event.kept) ? event.kept.map(String) : [],
+        droppedMessages: Boolean(event.droppedMessages),
+        undo: Number(event.undo),
+        at,
+      });
+      return;
     case 'turn_end': {
       const text = stopReasonText(String(event.stopReason));
       if (text) feed.push({ kind: 'notice', text, tone: 'muted', at });
@@ -469,6 +492,12 @@ function onEvent(event: CoreEvent) {
       if (state.tasks[info.id]) return;
       addTask(info);
       void loadHistory(info.id, info.state);
+      return;
+    }
+    case 'task.reload': {
+      // The conversation itself was changed (a rewind took messages out or put them back).
+      const task = state.tasks[event.data.taskId];
+      if (task) void loadHistory(task.info.id, task.info.state);
       return;
     }
     case 'task.config':
@@ -654,6 +683,77 @@ export function gitState(taskId: string) {
 
 export function gitDiff(taskId: string, path: string) {
   return core.request<FileDiff>('git.diff', { taskId, path });
+}
+
+/**
+ * A stretch of a task's life to compare over: since the user last left
+ * ("visit"), since the task's branch started ("branch"), or from now back to
+ * a checkpoint ("checkpoint:<n>": what rewinding to it would change).
+ */
+export type Span = 'visit' | 'branch' | `checkpoint:${number}`;
+
+/** A changed file over a span. `yours` says it holds lines the user wrote, which a rewind can keep. */
+export type SpanFile = GitFile & { yours: boolean };
+
+export function gitFiles(taskId: string, from: Span) {
+  return core.request<{ files: SpanFile[] }>('git.files', { taskId, from });
+}
+
+export function gitDiffOver(taskId: string, path: string, from: Span) {
+  return core.request<FileDiff>('git.diff', { taskId, path, from });
+}
+
+/** The files of a task as they were at one moment. */
+export type Checkpoint = {
+  n: number;
+  at: number;
+  kind: 'start' | 'message' | 'edit' | 'rewind';
+  label: string;
+  /** Whose work came after this point, up to the next one. */
+  who: 'agent' | 'you';
+  files: number;
+  added: number;
+  removed: number;
+  paths: string[];
+  sameAsNow: boolean;
+};
+
+export function listCheckpoints(taskId: string) {
+  return core.request<{ checkpoints: Checkpoint[]; git: boolean }>('checkpoints.list', { taskId });
+}
+
+export function rewindTo(taskId: string, n: number, options: { keepMine: boolean; dropMessages: boolean }) {
+  return core.request<{ files: number; kept: string[]; undo: number }>('checkpoints.rewind', {
+    taskId,
+    n,
+    ...options,
+  });
+}
+
+/** One thing that happened in a task while the user was away. */
+export type SinceLine = { who: 'agent' | 'you' | 'host'; text: string; at?: number; short?: string };
+
+/** Where the user stopped in a task and what happened after they left it. */
+export type Since = {
+  leftAt: number;
+  awayMs: number;
+  stopped: string | null;
+  happened: SinceLine[];
+  /** The first lines of the agent's last message. */
+  lastWords: string | null;
+  files: GitFile[];
+  /** Whether the code can be compared with how it was when the user left. */
+  canCompare: boolean;
+  /** Nothing happened and no file changed. */
+  quiet: boolean;
+};
+
+export function taskSince(taskId: string) {
+  return core.request<Since | null>('tasks.since', { taskId });
+}
+
+export function taskLeft(taskId: string) {
+  return core.request('tasks.left', { taskId });
 }
 
 export function gitCommit(taskId: string, message: string, picks: Pick[], options: { amend: boolean; push: boolean }) {

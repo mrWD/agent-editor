@@ -10,7 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 /// Files larger than this are listed but not shown line by line.
@@ -589,6 +589,124 @@ pub fn update_from_base(root: &Path, base: &str) -> Result<()> {
         bail!("Updating from {base} would conflict in {}. Nothing was changed.", files.join(", "));
     }
     Ok(())
+}
+
+// ---------- snapshots: the files of a working copy at one moment ----------
+
+/// Who the snapshot commits are written by. They are never pushed and never on a branch.
+const SNAPSHOT_AUTHOR: [&str; 4] =
+    ["-c", "user.name=Agent Editor", "-c", "user.email=checkpoints@agent-editor.invalid"];
+
+/// Writes every file of the working copy (all that git does not ignore) as one
+/// tree object and returns its id. The index, the branch and the files are not
+/// touched: a copy of the index is used and thrown away.
+pub fn snapshot_tree(root: &Path) -> Result<String> {
+    let git_dir = PathBuf::from(git(root, &["rev-parse", "--absolute-git-dir"])?.trim());
+    let index = {
+        let path = PathBuf::from(git(root, &["rev-parse", "--git-path", "index"])?.trim());
+        if path.is_absolute() { path } else { root.join(path) }
+    };
+    let temp = git_dir.join(format!("ae-index-{}", uuid::Uuid::new_v4().simple()));
+    let with_temp = |args: &[&str]| -> Result<String> {
+        let output = command(root).env("GIT_INDEX_FILE", &temp).args(args).output().context("Could not run git")?;
+        if !output.status.success() {
+            bail!("{}", complaint(&output));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+    let made = (|| {
+        // Starting from the real index keeps what git already knows about each
+        // file, so only the files that changed are read again.
+        if index.is_file() {
+            std::fs::copy(&index, &temp).context("Could not copy the index")?;
+        } else if rev(root, "HEAD").is_some() {
+            with_temp(&["read-tree", "HEAD"])?;
+        }
+        with_temp(&["add", "-A"])?;
+        with_temp(&["write-tree"])
+    })();
+    let _ = std::fs::remove_file(&temp);
+    let _ = std::fs::remove_file(temp.with_extension("lock"));
+    made
+}
+
+/// Keeps a tree under `name` (a ref outside the branches), so git does not
+/// throw it away, and returns the id of the commit that holds it.
+pub fn keep_tree(root: &Path, tree: &str, name: &str, message: &str) -> Result<String> {
+    let mut args: Vec<&str> = SNAPSHOT_AUTHOR.to_vec();
+    args.extend(["commit-tree", tree, "-m", message]);
+    let head = rev(root, "HEAD");
+    if let Some(head) = &head {
+        args.extend(["-p", head]);
+    }
+    let commit = git(root, &args)?.trim().to_string();
+    git(root, &["update-ref", name, &commit])?;
+    Ok(commit)
+}
+
+/// Forgets every snapshot kept under names that start with `prefix`.
+pub fn drop_snapshots(root: &Path, prefix: &str) {
+    let Ok(listed) = git(root, &["for-each-ref", "--format=%(refname)", prefix]) else { return };
+    for name in listed.lines().filter(|name| !name.is_empty()) {
+        let _ = git(root, &["update-ref", "-d", name]);
+    }
+}
+
+fn diffs_between(root: &Path, from: &str, to: &str, path: Option<&str>) -> Result<Vec<FileDiff>> {
+    let mut args = vec!["diff", "--no-color", "--no-ext-diff", "--no-renames", "-U3", from, to, "--"];
+    if let Some(path) = path {
+        args.push(path);
+    }
+    Ok(parse_patch(&git(root, &args)?))
+}
+
+/// The files that differ between two snapshots, commits or trees.
+pub fn changes_between(root: &Path, from: &str, to: &str) -> Result<Vec<ChangedFile>> {
+    let mut files: Vec<ChangedFile> = diffs_between(root, from, to, None)?
+        .into_iter()
+        .map(|diff| ChangedFile {
+            path: diff.path.clone(),
+            kind: diff.kind,
+            added: diff.added,
+            removed: diff.removed,
+            binary: diff.binary,
+            changes: diff.hunks.len().max(1),
+        })
+        .collect();
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
+}
+
+/// One file's changes between two snapshots, commits or trees, line by line.
+pub fn diff_between(root: &Path, from: &str, to: &str, path: &str) -> Result<FileDiff> {
+    match diffs_between(root, from, to, Some(path))?.into_iter().next() {
+        Some(diff) => Ok(diff),
+        None => bail!("{path} is the same at both points"),
+    }
+}
+
+/// A file's bytes as they were in a snapshot or commit. `None` when it was not there.
+pub fn bytes_at(root: &Path, rev_name: &str, path: &str) -> Result<Option<Vec<u8>>> {
+    let output = run(root, &["cat-file", "blob", &format!("{rev_name}:{path}")])?;
+    Ok(output.status.success().then_some(output.stdout))
+}
+
+/// The commit where the task's branch left `base`, if both are known.
+pub fn fork_point(root: &Path, base: &str) -> Option<String> {
+    let text = git(root, &["merge-base", base, "HEAD"]).ok()?;
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
+/// The commits made after `from` on the current branch, oldest first.
+pub fn commits_since(root: &Path, from: &str) -> Vec<(String, String)> {
+    let Ok(text) = git(root, &["log", "--reverse", "--format=%h%x1f%s", &format!("{from}..HEAD")]) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| line.split_once('\x1f'))
+        .map(|(short, subject)| (short.into(), subject.into()))
+        .collect()
 }
 
 #[cfg(test)]

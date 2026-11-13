@@ -7,6 +7,7 @@
 pub mod acp;
 pub mod agents;
 pub mod changes;
+pub mod checkpoints;
 pub mod files;
 pub mod git;
 pub mod gitops;
