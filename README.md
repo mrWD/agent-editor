@@ -225,18 +225,27 @@ changes with it. The code, the terminal and the marks of files change with
 everything else. The choice is kept in the browser, so the app and each
 browser have their own.
 
-The first time the editor is opened it greets the user with a setup in four
-steps, and after each it says what the user has now. Agents: the ones the
-editor comes with, command-line agents found on this computer (added as agents
-in a terminal with one press), agents with an API key, and Claude's agent
-pointed at a local or self-hosted model. The editor calls no model itself, so
-a key or a local model is always given to an agent, in its environment.
-Services: GitHub, GitLab, Linear and Docker, with what is connected and how to
-connect the rest. A project: a folder, and what the editor found in it. Then a
-summary, a switch for notifications and a first task with the practice agent.
-Every step can be skipped; Escape puts the setup aside, and Settings opens it
-again. The ready-made agents with a key and for a local model were not tried
-against the real services.
+The first time the editor is opened it takes the user through three chapters:
+trackers, agents, code. Each is a dialog that connects something, and then
+hints on the interface itself: one thing on screen is ringed, a card beside it
+says what it is, and "Next" and "Back" move between the hints. Where a hint
+says so, pressing the ringed thing is the way on. The last hint of a chapter
+opens the next chapter's dialog; the last of all leaves the user in the editor.
+A chapter in which nothing was connected has nothing to point at and goes
+straight on. Trackers: Linear, with a key that is checked. Agents: the ones
+the editor comes with; command-line agents found on this computer, from the
+list Orca knows (Claude Code, Codex, Cursor, Antigravity, Gemini, Copilot,
+OpenCode, Qwen Code, Kimi, Qoder, CodeBuddy, Trae and more), each added as an
+agent in a terminal with one press; agents of the ACP registry (Cursor,
+Copilot, Qwen Code, Kimi Code, Qoder, CodeBuddy, MiniMax Code, GLM and
+others); agents with an API key; Claude's agent pointed at DeepSeek, Kimi,
+GLM, Qwen, MiniMax or OpenRouter; and a local or self-hosted model. The editor
+calls no model itself, so a key or a model of another maker is always given
+to an agent, in its environment. Code: GitHub, GitLab and Docker, with what is
+connected and how to connect the rest, and a folder that becomes a project.
+Escape puts the first run aside, and Settings opens it again. Of the
+ready-made agents only Claude Code in a terminal was tried against the real
+thing; the others are written from the registry and the makers' documentation.
 
 An agent that does not speak ACP runs in a terminal instead. Add it in
 Settings as an agent of your own and tick "It runs in a terminal". A task then
