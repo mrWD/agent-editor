@@ -4878,3 +4878,76 @@ button.picked-source:hover {
   flex-direction: column;
   gap: 8px;
 }
+
+/* ---------- Search and terminals ---------- */
+
+/* A commit in the search: its short id stands where other rows have a glyph. */
+.hit-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* One commit in the Changes view. */
+.commit-body {
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The tab of one shell: its name and, next to it, the button that closes it. Together they read as one tab. */
+.bottom-shell {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 240px;
+  border-radius: 6px;
+}
+.bottom-shell.on {
+  background: var(--raised);
+}
+.bottom-shell .bottom-tab {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bottom-shell .bottom-tab[aria-pressed='true'] {
+  background: transparent;
+}
+.bottom-close,
+.bottom-add {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+}
+.bottom-close:hover,
+.bottom-add:hover {
+  color: var(--text);
+}
+.bottom-close {
+  width: 20px;
+  height: 20px;
+  margin: 0 4px 0 -6px;
+}
+.bottom-add {
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  color: var(--text-2);
+}
+/* The terminals of the task, one on top of the other; only the picked one is shown. */
+.bottom-fill.shells {
+  flex-direction: column;
+  gap: 6px;
+}
+.bottom-fill.shells > .bottom-fill {
+  min-width: 0;
+}

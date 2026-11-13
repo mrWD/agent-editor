@@ -3,13 +3,12 @@ import { Terminal as Xterm } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { createEffect, createSignal, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { core } from '../core/client';
+import { listTerminals, type TermInfo } from '../core/store';
 
 /** Kinds of raw-byte messages; they match the core's. */
 const OUTPUT = 1;
 const REPLACE = 2;
 const INPUT = 1;
-
-type TermInfo = { termId: number; taskId: string; title: string; purpose: string };
 
 const colours = {
   background: '#0B0D10',
@@ -38,46 +37,58 @@ const colours = {
 const encoder = new TextEncoder();
 
 /**
- * A terminal of a task. Without `attach` it is the user's shell in the task's
- * folder: the shell runs in the core and outlives this view, so leaving the
- * task and coming back shows the same terminal with what it printed meanwhile.
- * With `attach` it shows the output of one program the Run tab started.
+ * A terminal of a task. Without `attach` it is one of the user's shells in the
+ * task's folder: the shell runs in the core and outlives this view, so leaving
+ * the task and coming back shows the same terminal with what it printed
+ * meanwhile. `shell` names the shell to join; without it a new one is started
+ * here, and `onShell` is told which. With `attach` the view shows the output
+ * of one program the Run tab started.
  */
-export function TerminalView(props: { taskId: string; visible: boolean; attach?: number }): JSX.Element {
+export function TerminalView(props: {
+  taskId: string;
+  visible: boolean;
+  attach?: number;
+  shell?: number | null;
+  onShell?: (info: TermInfo) => void;
+}): JSX.Element {
   let host: HTMLDivElement | undefined;
   let term: Xterm | undefined;
   let fit: FitAddon | undefined;
   let termId: number | null = null;
   let connecting = false;
+  // Set once the shell shown here has ended: the next shell in this view is a new one, whatever `shell` still names.
+  let startAnew = false;
   const [ended, setEnded] = createSignal(false);
   const [problem, setProblem] = createSignal<string | null>(null);
 
   const size = () => ({ cols: term?.cols ?? 80, rows: term?.rows ?? 24 });
 
-  /** Joins the task's terminal, or starts one when there is none. */
+  /** Joins the terminal this view is for, or starts a new shell when it is for none yet. */
   const connect = async () => {
     if (connecting || !term) return;
     connecting = true;
     setProblem(null);
     try {
-      const listed = await core.request<{ terminals: TermInfo[] }>('terminal.list', { taskId: props.taskId });
-      // The Run tab's programs have terminals too; the shell is the one with the purpose "shell".
-      const existing =
-        props.attach === undefined
-          ? listed.terminals.find((info) => info.purpose === 'shell')
-          : listed.terminals.find((info) => info.termId === props.attach);
+      // A task has several terminals: its shells, and the programs of the Run tab. This view shows one of them.
+      const wanted = props.attach ?? (startAnew ? null : (props.shell ?? null));
+      const listed = wanted === null ? [] : (await listTerminals(props.taskId)).terminals;
+      const existing = listed.find((info) => info.termId === wanted);
       if (existing) {
         termId = existing.termId;
         await core.request('terminal.attach', { termId });
-        // A program's log keeps the size it was started with; only the shell follows this view.
+        // A program's log keeps the size it was started with; only a shell follows this view.
         if (props.attach === undefined) await core.request('terminal.resize', { termId, ...size() });
-      } else if (props.attach !== undefined) {
+      } else if (wanted !== null) {
+        // The terminal is gone: its program ended while nobody was looking.
+        startAnew = true;
         setEnded(true);
         return;
       } else {
         term.reset();
         const opened = await core.request<TermInfo>('terminal.open', { taskId: props.taskId, ...size() });
         termId = opened.termId;
+        startAnew = false;
+        props.onShell?.(opened);
       }
       setEnded(false);
     } catch (error) {
@@ -158,6 +169,7 @@ export function TerminalView(props: { taskId: string; visible: boolean; attach?:
     const stopEvents = core.onEvent((event) => {
       if (event.event === 'terminal.exit' && event.data.termId === termId) {
         termId = null;
+        startAnew = true;
         setEnded(true);
       }
       // After the connection came back the core no longer sends this terminal's output here.

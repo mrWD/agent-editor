@@ -401,11 +401,11 @@ async fn converse(socket: WebSocket, state: AppState) {
                         *have = end;
                         vec![Message::Binary(frame(FRAME_OUTPUT, term_id, &bytes[skip..]).into())]
                     }
-                    Ok(TermEvent::Exit { term_id, task_id, purpose, code }) => {
+                    Ok(TermEvent::Exit { term_id, task_id, purpose, code, closed }) => {
                         attached.remove(&term_id);
                         let gone = json!({
                             "event": "terminal.exit",
-                            "data": { "termId": term_id, "taskId": task_id, "purpose": purpose, "code": code }
+                            "data": { "termId": term_id, "taskId": task_id, "purpose": purpose, "code": code, "closed": closed }
                         });
                         let mut messages = vec![Message::Text(gone.to_string().into())];
                         // A program of the Run tab ended: what the tab shows is no longer true.
@@ -518,8 +518,15 @@ fn terminal_command(
             Ok(json!({}))
         }
         "terminal.close" => {
-            terminals.close(number_param(params, "termId")? as u32)?;
-            Ok(json!({}))
+            let term_id = number_param(params, "termId")? as u32;
+            // A shell with a command still running in it is closed only on the user's second word.
+            // Whether one runs is looked at here, at the moment of closing, not when the list was last read.
+            let force = params.get("force").and_then(Value::as_bool).unwrap_or(false);
+            if !force && let Some(running) = terminals.running(term_id)? {
+                return Ok(json!({ "closed": false, "running": running }));
+            }
+            terminals.stop(term_id)?;
+            Ok(json!({ "closed": true }))
         }
         other => bail!("Unknown method: {other}"),
     }
@@ -1155,6 +1162,60 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             let manager = manager.clone();
             let hits = tokio::task::spawn_blocking(move || search.chats(&manager, &query, limit)).await??;
             Ok(json!({ "hits": hits }))
+        }
+        "search.commits" => {
+            let task = manager.task(text_param(params, "taskId")?)?;
+            let query = text_param(params, "query")?.to_string();
+            let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(20).min(200) as usize;
+            let hits = tokio::task::spawn_blocking(move || match task.row.branch {
+                // A task in a folder without git has no commits. A search asks everywhere at once, so that is no error.
+                None => Vec::new(),
+                Some(_) => crate::gitops::find_commits(
+                    &PathBuf::from(&task.row.cwd),
+                    task.row.base_branch.as_deref(),
+                    &query,
+                    limit,
+                ),
+            })
+            .await?;
+            Ok(json!({ "hits": hits }))
+        }
+        // The search of every task but the one on screen. Its name starts with a
+        // word of its own, so it runs in a lane of its own: a long look through
+        // many projects never holds up the quick search of the task on screen.
+        "everywhere.files" | "everywhere.text" => {
+            let here = params.get("taskId").and_then(Value::as_str).map(str::to_string);
+            let query = text_param(params, "query")?.to_string();
+            let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(50).min(500) as usize;
+            let search = state.search.clone();
+            let manager = manager.clone();
+            let by_name = method == "everywhere.files";
+            let hits = tokio::task::spawn_blocking(move || {
+                anyhow::Ok(if by_name {
+                    json!(search.files_everywhere(&manager, here.as_deref(), &query, limit)?)
+                } else {
+                    json!(search.text_everywhere(&manager, here.as_deref(), &query, limit)?)
+                })
+            })
+            .await??;
+            Ok(json!({ "hits": hits }))
+        }
+        // One commit: with `path`, what it changed in that file; without, the commit and its files.
+        "git.show" => {
+            let task = manager.task(text_param(params, "taskId")?)?;
+            let hash = text_param(params, "hash")?.to_string();
+            let path = params.get("path").and_then(Value::as_str).map(str::to_string);
+            tokio::task::spawn_blocking(move || {
+                if task.row.branch.is_none() {
+                    bail!("This task works in a folder without git, so it has no commits");
+                }
+                let root = PathBuf::from(&task.row.cwd);
+                Ok(match path {
+                    Some(path) => json!(crate::gitops::commit_file_diff(&root, &hash, &path)?),
+                    None => json!(crate::gitops::show_commit(&root, task.row.base_branch.as_deref(), &hash)?),
+                })
+            })
+            .await?
         }
 
         "" => bail!("Missing method"),

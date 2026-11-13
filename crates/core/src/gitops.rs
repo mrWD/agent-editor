@@ -776,6 +776,176 @@ pub fn commits_since(root: &Path, from: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+// ---------- commits: finding one and looking at it ----------
+
+/// A commit as the search over everything lists it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundCommit {
+    pub hash: String,
+    pub short: String,
+    pub subject: String,
+    pub author: String,
+    /// When it was made, in milliseconds.
+    pub at: u64,
+    /// True for a commit of the task's own branch, one the branch it started from does not have.
+    pub on_branch: bool,
+}
+
+/// One commit in full: what it says and which files it changed.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShownCommit {
+    #[serde(flatten)]
+    pub commit: FoundCommit,
+    /// The message below its first line.
+    pub body: String,
+    pub files: Vec<ChangedFile>,
+}
+
+const FOUND_FORMAT: &str = "--format=%H%x1f%h%x1f%s%x1f%an%x1f%at";
+/// How many of the newest commits a search reads the first lines of. It is asked
+/// for on every key the user types, so its cost must not grow with the age of a
+/// project. An older commit is still found by its id.
+const COMMITS_LOOKED_AT: usize = 5000;
+
+/// One line of `git log` in `FOUND_FORMAT`.
+fn parse_found(line: &str, on_branch: &HashSet<String>) -> Option<FoundCommit> {
+    let mut parts = line.split('\x1f');
+    let hash = parts.next()?.to_string();
+    Some(FoundCommit {
+        on_branch: on_branch.contains(&hash),
+        hash,
+        short: parts.next()?.to_string(),
+        subject: parts.next()?.to_string(),
+        author: parts.next()?.to_string(),
+        at: parts.next()?.parse::<u64>().ok()? * 1000,
+    })
+}
+
+/// The commits the working copy's branch has and its base does not.
+fn branch_commits(root: &Path, base: Option<&str>) -> HashSet<String> {
+    let Some(base) = base else { return HashSet::new() };
+    git(root, &["rev-list", "--max-count=2000", &format!("{base}..HEAD")])
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+/// True for text that can be the id of a commit, or the start of one.
+fn looks_like_an_id(text: &str) -> bool {
+    (4..=64).contains(&text.len()) && text.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Commits whose first line holds `query`, in any letter case, or whose id
+/// starts with it. Looked for on the task's branch and on the branch it was
+/// started from, which is the project's history. Newest first; a commit found
+/// by its id comes before the rest.
+///
+/// A working copy without a commit, or a folder without git, has none: that
+/// is an empty answer, not an error, because a search asks everywhere at once.
+pub fn find_commits(root: &Path, remembered_base: Option<&str>, query: &str, limit: usize) -> Vec<FoundCommit> {
+    let query = query.trim();
+    if query.is_empty() || limit == 0 || rev(root, "HEAD").is_none() {
+        return Vec::new();
+    }
+    let base = resolve_base(root, remembered_base);
+    let on_branch = branch_commits(root, base.as_deref());
+    let mut tips = vec!["HEAD"];
+    tips.extend(base.as_deref());
+
+    // The first lines are matched here, not by git: git would look through whole messages, of the
+    // whole history, and what it found in a message's later lines could not be shown in a row.
+    let count = format!("--max-count={COMMITS_LOOKED_AT}");
+    let mut args = vec!["log", FOUND_FORMAT, &count];
+    args.extend(&tips);
+    args.push("--");
+    let needle = query.to_lowercase();
+    let mut found: Vec<FoundCommit> = git(root, &args)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| parse_found(line, &on_branch))
+        .filter(|commit| commit.subject.to_lowercase().contains(&needle))
+        .take(limit)
+        .collect();
+
+    // An id, or its first letters, names one commit. It counts when it is part of the same history.
+    if looks_like_an_id(query)
+        && let Some(hash) = rev(root, query)
+        && !found.iter().any(|commit| commit.hash == hash)
+        && tips.iter().any(|tip| succeeds(root, &["merge-base", "--is-ancestor", &hash, tip]))
+    {
+        let text = git(root, &["log", "-1", FOUND_FORMAT, &hash, "--"]).unwrap_or_default();
+        found.splice(0..0, text.lines().next().and_then(|line| parse_found(line, &on_branch)));
+    }
+    found.truncate(limit);
+    found
+}
+
+/// The patch of one commit, compared with the commit before it. A merge is
+/// compared with the branch it was merged into; the first commit of a
+/// repository adds everything it holds.
+fn commit_patch(root: &Path, hash: &str, path: Option<&str>) -> Result<Vec<FileDiff>> {
+    let mut args = vec![
+        "show",
+        "--format=",
+        "--diff-merges=first-parent",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-renames",
+        "-U3",
+        hash,
+        "--",
+    ];
+    args.extend(path);
+    Ok(parse_patch(&git(root, &args)?))
+}
+
+/// The full id of the commit `id` names, when it names one.
+fn commit_named(root: &Path, id: &str) -> Result<String> {
+    // Only an id is taken: anything else could be read by git as a path or an option.
+    if !looks_like_an_id(id) {
+        bail!("That is not the id of a commit");
+    }
+    rev(root, id).ok_or_else(|| anyhow!("This project has no commit {id}"))
+}
+
+/// One commit with the files it changed.
+pub fn show_commit(root: &Path, remembered_base: Option<&str>, id: &str) -> Result<ShownCommit> {
+    let hash = commit_named(root, id)?;
+    let base = resolve_base(root, remembered_base);
+    let on_branch = branch_commits(root, base.as_deref());
+    let commit = git(root, &["log", "-1", FOUND_FORMAT, &hash, "--"])?
+        .lines()
+        .next()
+        .and_then(|line| parse_found(line, &on_branch))
+        .context("The commit cannot be read")?;
+    let body = git(root, &["log", "-1", "--format=%b", &hash, "--"])?.trim().to_string();
+    let mut files: Vec<ChangedFile> = commit_patch(root, &hash, None)?
+        .into_iter()
+        .map(|diff| ChangedFile {
+            path: diff.path.clone(),
+            kind: diff.kind,
+            added: diff.added,
+            removed: diff.removed,
+            binary: diff.binary,
+            changes: diff.hunks.len().max(1),
+        })
+        .collect();
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(ShownCommit { commit, body, files })
+}
+
+/// What one commit changed in one file, line by line.
+pub fn commit_file_diff(root: &Path, id: &str, path: &str) -> Result<FileDiff> {
+    let hash = commit_named(root, id)?;
+    match commit_patch(root, &hash, Some(path))?.into_iter().next() {
+        Some(diff) => Ok(diff),
+        None => bail!("That commit did not change {path}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -949,6 +1119,80 @@ mod tests {
         assert_eq!((state.not_pushed, state.remote.as_deref()), (1, Some("origin")));
         std::fs::remove_dir_all(dir).unwrap();
         std::fs::remove_dir_all(bare).unwrap();
+    }
+
+    #[test]
+    fn finds_commits_by_their_first_line_and_by_id_and_shows_one() {
+        let dir = repo("find");
+        // One more commit on the base, after the task's branch left it.
+        git(&dir, &["checkout", "-q", "main"]).unwrap();
+        std::fs::write(dir.join("gone.txt"), "changed on main\n").unwrap();
+        git(&dir, &["commit", "-q", "-am", "Say goodbye on main", "-m", "The upload LIMIT is in the body only."])
+            .unwrap();
+        git(&dir, &["checkout", "-q", "task/one"]).unwrap();
+        edit(&dir);
+        let made = commit(
+            &dir,
+            "Limit login attempts to five a minute\n\nAsked for in the task.",
+            &[Pick { path: "src/long.txt".into(), changes: None }, Pick { path: "new file.txt".into(), changes: None }],
+            false,
+        )
+        .unwrap();
+
+        // Any letter case; the task's own commit is told from the project's.
+        let found = find_commits(&dir, Some("main"), "LIMIT", 10);
+        let lines: Vec<_> = found.iter().map(|c| (c.subject.as_str(), c.on_branch)).collect();
+        assert_eq!(lines, vec![("Limit login attempts to five a minute", true)], "a match in the body alone is no hit");
+        assert_eq!((found[0].hash.as_str(), found[0].author.as_str()), (made.hash.as_str(), "Test"));
+        let project: Vec<_> =
+            find_commits(&dir, Some("main"), "s", 10).into_iter().map(|c| (c.subject, c.on_branch)).collect();
+        assert!(project.contains(&("Say goodbye on main".into(), false)) && project.contains(&("Start".into(), false)));
+        assert_eq!(find_commits(&dir, Some("main"), "s", 1).len(), 1, "the limit is respected");
+        assert!(find_commits(&dir, Some("main"), "  ", 10).is_empty());
+        assert!(find_commits(&dir, Some("main"), "--all", 10).is_empty(), "a query is never read as an option");
+
+        // The first letters of an id find its commit.
+        let by_id = find_commits(&dir, Some("main"), &made.short, 10);
+        assert_eq!(by_id.iter().map(|c| c.hash.as_str()).collect::<Vec<_>>(), vec![made.hash.as_str()]);
+
+        // The commit in full: its message, its files, and one file line by line.
+        let shown = show_commit(&dir, Some("main"), &made.short).unwrap();
+        assert_eq!(
+            (shown.commit.subject.as_str(), shown.body.as_str()),
+            (made.subject.as_str(), "Asked for in the task.")
+        );
+        assert!(shown.commit.on_branch);
+        let files: Vec<_> = shown.files.iter().map(|f| (f.path.as_str(), f.kind, f.added, f.removed)).collect();
+        assert_eq!(files, vec![("new file.txt", "added", 2, 0), ("src/long.txt", "modified", 2, 1)]);
+        let diff = commit_file_diff(&dir, &made.hash, "src/long.txt").unwrap();
+        assert_eq!((diff.hunks.len(), diff.hunks[0].from_line), (2, 2));
+        assert!(commit_file_diff(&dir, &made.hash, "gone.txt").is_err());
+
+        // The first commit of the repository has nothing before it: everything in it is new.
+        let start = find_commits(&dir, Some("main"), "Start", 10);
+        let first = show_commit(&dir, Some("main"), &start[0].hash).unwrap();
+        assert!(!first.commit.on_branch);
+        assert_eq!(first.files.iter().map(|f| f.kind).collect::<Vec<_>>(), vec!["added", "added"]);
+
+        // Only an id is taken.
+        assert!(show_commit(&dir, Some("main"), "HEAD").is_err());
+        assert!(show_commit(&dir, Some("main"), "--all").is_err());
+        assert!(show_commit(&dir, Some("main"), "0000000").is_err());
+
+        // Looking for commits takes no lock and changes nothing.
+        assert!(!dir.join(".git/index.lock").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_folder_without_commits_has_no_commits_to_find() {
+        let dir = std::env::temp_dir().join(format!("ae-gitops-nocommits-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(find_commits(&dir, None, "anything", 10).is_empty());
+        git(&dir, &["init", "-q", "-b", "main"]).unwrap();
+        assert!(find_commits(&dir, None, "anything", 10).is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

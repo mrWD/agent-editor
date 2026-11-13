@@ -24,8 +24,10 @@ import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
 import { core } from '../core/client';
 import { checksOf, watchChecks } from '../core/checks';
+import { commitShown } from '../core/commits';
 import { planOf, watchPlan } from '../core/plan';
 import { problemCount } from '../core/problems';
+import { watchShells } from '../core/shells';
 import { arrive, leave } from '../core/visits';
 import {
   agentOf,
@@ -61,6 +63,7 @@ import { watchGit, type GitWatch } from '../core/gitstate';
 import { EditorHost, type FileMeta } from '../editor/host';
 import { ChangesView } from './Changes';
 import { ChecksView } from './Checks';
+import { CommitView } from './Commit';
 import { CompareView, RaceHead } from './Compare';
 import { LookBackView } from './LookBack';
 import { PreviewView } from './Preview';
@@ -469,15 +472,29 @@ const blank: Omit<OpenFile, 'path' | 'language'> = {
 
 type BottomTab = 'terminal' | 'run' | 'problems';
 
-/** The panel under the code: the terminal now; running the project and problems later. */
+/** The panel under the code: the task's terminals, what the project runs, and its problems. */
 function BottomPanel(props: { task: Task; shown: boolean }): JSX.Element {
   const [tab, setTab] = createSignal<BottomTab>('terminal');
-  // The shell is started the first time the terminal is opened, and then kept.
-  const [terminalUsed, setTerminalUsed] = createSignal(false);
   const terminalVisible = () => props.shown && bottomOpen() && tab() === 'terminal';
-  createEffect(() => {
-    if (terminalVisible()) setTerminalUsed(true);
-  });
+  // The task's shells: each has a tab of its own in the row below. The first one is
+  // started the first time the terminal is opened; all of them live on in the core.
+  // With the last one closed there is nothing to show, so the panel folds away.
+  // eslint-disable-next-line solid/reactivity -- this component is made anew for each task
+  const shells = watchShells(props.task.info.id, terminalVisible, () => setBottomOpen(false));
+  const shellOn = (key: number) => terminalVisible() && shells.current() === key;
+  const pickShell = (key: number) => {
+    if (shellOn(key)) setBottomOpen(false);
+    else {
+      shells.pick(key);
+      setTab('terminal');
+      setBottomOpen(true);
+    }
+  };
+  const addShell = () => {
+    shells.add();
+    setTab('terminal');
+    setBottomOpen(true);
+  };
   // The same for what the project runs: it is read when the tab is first opened.
   const [runUsed, setRunUsed] = createSignal(false);
   createEffect(() => {
@@ -523,7 +540,38 @@ function BottomPanel(props: { task: Task; shown: boolean }): JSX.Element {
         />
       </Show>
       <div class="bottom-tabs">
-        {tabButton('terminal', 'Terminal')}
+        <For each={shells.tabs}>
+          {(shell) => (
+            <span class="bottom-shell" classList={{ on: shellOn(shell.key) }}>
+              <button
+                type="button"
+                class="bottom-tab"
+                aria-pressed={shellOn(shell.key)}
+                title={shell.running ? `Running: ${shell.running}` : undefined}
+                onClick={() => pickShell(shell.key)}
+              >
+                {shells.nameOf(shell)}
+              </button>
+              {/* With one shell and another tab in front, the row reads "Terminal, Run, Problems" and no more. */}
+              <Show when={shellOn(shell.key) || shells.tabs.length > 1}>
+                <button
+                  type="button"
+                  class="bottom-close"
+                  aria-label={`Close ${shells.nameOf(shell)}`}
+                  title="Close this terminal"
+                  onClick={() => void shells.close(shell.key)}
+                >
+                  <Icon.Close />
+                </button>
+              </Show>
+            </span>
+          )}
+        </For>
+        {/* Before the first shell there is still the tab that starts it. */}
+        <Show when={shells.tabs.length === 0}>{tabButton('terminal', 'Terminal')}</Show>
+        <button type="button" class="bottom-add" aria-label="New terminal" title="New terminal" onClick={addShell}>
+          <Icon.Plus />
+        </button>
         {tabButton('run', 'Run')}
         {tabButton(
           'problems',
@@ -537,13 +585,46 @@ function BottomPanel(props: { task: Task; shown: boolean }): JSX.Element {
         </Show>
       </div>
       <div class="bottom-body" style={{ height: `${bottomHeight()}px`, display: bottomOpen() ? 'flex' : 'none' }}>
-        <Show when={terminalUsed()}>
-          <div class="bottom-fill" style={{ display: tab() === 'terminal' ? 'flex' : 'none' }}>
-            <Suspense>
-              <TerminalView taskId={props.task.info.id} visible={terminalVisible()} />
-            </Suspense>
-          </div>
-        </Show>
+        <div class="bottom-fill shells" style={{ display: tab() === 'terminal' ? 'flex' : 'none' }}>
+          <Show when={shells.problem()}>
+            <p class="banner danger flush" role="alert">
+              {shells.problem()}
+            </p>
+          </Show>
+          {/* The question is about the terminal in front: closing one that still runs something brings it there. */}
+          <Show when={shells.asking()}>
+            {(about) => (
+              <div class="terminal-note" role="group" aria-label="Close this terminal?">
+                <span class="grow">
+                  <span class="mono">{about().running}</span> is still running in this terminal. Closing the terminal
+                  stops it.
+                </span>
+                <button type="button" class="btn small" onClick={() => void shells.answer(true)}>
+                  Close and stop it
+                </button>
+                <button type="button" class="btn small ghost" onClick={() => void shells.answer(false)}>
+                  Keep it open
+                </button>
+              </div>
+            )}
+          </Show>
+          <Suspense>
+            <For each={shells.tabs}>
+              {(shell) => (
+                <Show when={shell.used}>
+                  <div class="bottom-fill" style={{ display: shells.current() === shell.key ? 'flex' : 'none' }}>
+                    <TerminalView
+                      taskId={props.task.info.id}
+                      visible={shellOn(shell.key)}
+                      shell={shell.termId}
+                      onShell={(info) => shells.opened(shell.key, info)}
+                    />
+                  </div>
+                </Show>
+              )}
+            </For>
+          </Suspense>
+        </div>
         <Show when={runUsed()}>
           <div class="bottom-fill scroll" style={{ display: tab() === 'run' ? 'flex' : 'none' }}>
             <RunTab task={props.task} visible={props.shown && bottomOpen() && tab() === 'run'} />
@@ -574,6 +655,8 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
   const [problem, setProblem] = createSignal<string | null>(null);
   let editorEl: HTMLDivElement | undefined;
   let host: EditorHost | undefined;
+  // Done once the files that were open the last time are open again.
+  let restored: Promise<void> = Promise.resolve();
   // What language servers add to the open files. The editor works the same without any.
   const lsp = new LspSession({
     taskId,
@@ -788,14 +871,14 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
         current?: string | null;
       } | null;
       const paths = (remembered?.paths ?? []).slice(0, 12);
-      void (async () => {
+      restored = (async () => {
         for (const path of paths) await open(path);
         // A file that is gone meanwhile leaves no dead tab behind.
         setFiles(files.filter((file) => !file.problem));
         const wanted = remembered?.current;
         setCurrent(wanted && fileAt(wanted) ? wanted : (files[0]?.path ?? null));
         rememberTabs();
-      })();
+      })().catch(() => {});
     } catch {
       // Nothing remembered.
     }
@@ -828,7 +911,11 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
   createEffect(
     on(openRequest, (request) => {
       if (!request || request.taskId !== taskId) return;
-      void open(request.path).then((ready) => {
+      // A hit of the search may lead here from another task or from Home, while the tabs of the
+      // last visit are still being opened. Those come first: the file asked for is then the one
+      // in front, and stays there.
+      const asked = restored.then(() => open(request.path));
+      void asked.then((ready) => {
         if (!ready || current() !== request.path) return;
         host?.show(request.path);
         if (request.line) host?.reveal(request.line, request.column ?? 1, request.length ?? 0);
@@ -1059,8 +1146,21 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
         <LookBackView task={props.task} />
       </Show>
       <Show when={props.view === 'changes' && !lookingBack()}>
-        <Show when={changesMode() === 'head'} fallback={<SpanView task={props.task} mode={changesMode() as 'visit'} />}>
-          <ChangesView task={props.task} git={git} />
+        {/* A commit picked in the search is shown in place of the changes, until the user goes back to them.
+            The view is made anew for each commit: what it reads late always belongs to the commit it was made for. */}
+        <Show
+          keyed
+          when={commitShown(props.task.info.id)}
+          fallback={
+            <Show
+              when={changesMode() === 'head'}
+              fallback={<SpanView task={props.task} mode={changesMode() as 'visit'} />}
+            >
+              <ChangesView task={props.task} git={git} />
+            </Show>
+          }
+        >
+          {(hash) => <CommitView task={props.task} hash={hash} />}
         </Show>
       </Show>
       <Show when={props.view === 'checks' && !lookingBack()}>

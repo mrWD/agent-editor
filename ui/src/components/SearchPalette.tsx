@@ -1,19 +1,26 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { go, route, taskHref, VIEWS } from '../app/router';
+import { showCommit } from '../core/commits';
 import {
   agentOf,
   projectName,
   searchChats,
+  searchCommits,
   searchFiles,
+  searchFilesEverywhere,
   searchText,
+  searchTextEverywhere,
   state,
   tasksNewestFirst,
   type ChatHit,
+  type CommitHit,
   type FileHit,
+  type FileHitIn,
   type Task,
   type TextHit,
+  type TextHitIn,
 } from '../core/store';
-import { openInEditor, setBottomOpen } from '../core/work';
+import { openInEditor, setBottomOpen, setWork } from '../core/work';
 import { ago, Chip, Icon, modKey, StateGlyph, stateLabel } from './bits';
 
 const [open, setOpen] = createSignal(false);
@@ -23,11 +30,14 @@ export function openSearch() {
   setOpen(true);
 }
 
-type Kind = 'tasks' | 'files' | 'chats' | 'code' | 'commands';
+type Kind = 'tasks' | 'files' | 'chats' | 'commits' | 'code' | 'commands';
+/** The kinds of results, in the order their groups are shown. */
+const KINDS: Kind[] = ['tasks', 'files', 'chats', 'commits', 'code', 'commands'];
 const kindNames: Record<Kind, string> = {
   tasks: 'Tasks',
   files: 'Files',
   chats: 'Chats',
+  commits: 'Commits',
   code: 'Code',
   commands: 'Commands',
 };
@@ -44,12 +54,53 @@ type Row = {
   run: () => void;
 };
 
+/** What the core found, kept together with what it was found for: the query, and the task on screen. */
+type Found<T> = { query: string; here: string | undefined; hits: T[] };
+const nothing = { query: '', here: undefined, hits: [] };
+
+/**
+ * Asks the core one thing at a time, and always the newest: while an answer
+ * is on its way, a newer question waits and replaces any that waited before
+ * it. Typing fast then costs the core one search, not one per key.
+ */
+function oneAtATime<Q>(ask: (question: Q) => Promise<void>): { ask: (question: Q) => void; forget: () => void } {
+  let busy = false;
+  let waiting: { question: Q } | null = null;
+  const run = async () => {
+    busy = true;
+    while (waiting) {
+      const { question } = waiting;
+      waiting = null;
+      await ask(question);
+    }
+    busy = false;
+  };
+  return {
+    ask: (question) => {
+      waiting = { question };
+      if (!busy) void run();
+    },
+    forget: () => (waiting = null),
+  };
+}
+
 /** Where `needle` sits in `text`, as character positions, ignoring case. Empty when it does not. */
 function positionsOf(text: string, needle: string): number[] | null {
   if (!needle) return [];
   const at = text.toLowerCase().indexOf(needle.toLowerCase());
   if (at < 0) return null;
   return Array.from({ length: needle.length }, (_, i) => at + i);
+}
+
+/**
+ * A found line of code as a row shows it. A row is narrow, and a match far
+ * into the line would be cut off: then the line starts a little before the match.
+ */
+function aroundMatch(line: string, column: number, length: number): { text: string; marks: number[] } {
+  const from = column > 28 ? column - 16 : 0;
+  const text = from > 0 ? `…${Array.from(line).slice(from).join('')}` : line;
+  const start = from > 0 ? column - from + 1 : column;
+  return { text, marks: Array.from({ length }, (_, i) => start + i) };
 }
 
 function Marked(props: { text: string; marks: number[] }): JSX.Element {
@@ -99,8 +150,13 @@ const fileGlyph = () => (
 );
 
 /**
- * The search over everything: tasks, the files and code of the task on
- * screen, things said in any task, and commands. Opens with the search key.
+ * The search over everything: tasks, files and code, things said in any task,
+ * commits and commands. Opens with the search key.
+ *
+ * The task on screen is searched first, and its answer is quick. The other
+ * tasks, of every project, are asked about apart from it: their files and
+ * lines are added below when they arrive, each with the project and the task
+ * it belongs to.
  */
 export function SearchPalette(): JSX.Element {
   const [query, setQuery] = createSignal('');
@@ -116,7 +172,22 @@ export function SearchPalette(): JSX.Element {
   const setChats = (hits: ChatHit[], query = parsed().text) => setFoundChats({ query, hits });
   const [code, setCode] = createSignal<TextHit[] | null>(null);
   const [searchingCode, setSearchingCode] = createSignal(false);
-  const [picked, setPicked] = createSignal(0);
+  // The same rule for what came later: commits, and the files and lines of the other tasks.
+  // An answer is shown only while it is the answer to what is in the field now.
+  const [foundCommits, setFoundCommits] = createSignal<Found<CommitHit>>(nothing);
+  const [foundElsewhere, setFoundElsewhere] = createSignal<Found<FileHitIn>>(nothing);
+  const current = <T,>(found: Found<T>): T[] =>
+    found.query === parsed().text && found.here === here()?.info.id ? found.hits : [];
+  const commits = () => current(foundCommits());
+  const filesElsewhere = () => current(foundElsewhere());
+  const [codeElsewhere, setCodeElsewhere] = createSignal<TextHitIn[] | null>(null);
+  const [searchingElsewhere, setSearchingElsewhere] = createSignal(false);
+  // The picked row is remembered by what it is, not by its place: rows that arrive
+  // later must not put another row under the user's Enter. `null` is the first row.
+  const [pickedKey, setPickedKey] = createSignal<string | null>(null);
+  // Counts the searches through the code, and the times the search was opened: an answer to an earlier one is dropped.
+  let codeRun = 0;
+  let session = 0;
   let input: HTMLInputElement | undefined;
   let list: HTMLDivElement | undefined;
 
@@ -124,6 +195,19 @@ export function SearchPalette(): JSX.Element {
     const current = route();
     return current.page === 'task' ? state.tasks[current.id] : undefined;
   };
+
+  // The files of the other tasks are asked for one question at a time: the core
+  // looks through every project for each, and only the newest question matters.
+  const elsewhere = oneAtATime<{ query: string; here: string | undefined; session: number }>(async (asked) => {
+    const hits = await searchFilesEverywhere(asked.query, asked.here, 50).then(
+      (result) => result.hits,
+      () => [],
+    );
+    if (asked.session !== session) return;
+    const found = { query: asked.query, here: asked.here, hits };
+    if (current(found).length > 0) holdPick();
+    setFoundElsewhere(found);
+  });
 
   const close = () => setOpen(false);
   const finish = (work: () => void) => () => {
@@ -214,20 +298,66 @@ export function SearchPalette(): JSX.Element {
     });
   });
 
+  /** The project and the task a hit of another task belongs to. */
+  const whose = (task: Task) => `${projectName(task.info.projectId)} · ${task.info.title}`;
+
+  /** The files of the task on screen. */
   const fileRows = createMemo<Row[]>(() => {
     const task = here();
+    return !task
+      ? []
+      : files().map((hit) => ({
+          kind: 'files' as const,
+          key: `file:${hit.path}`,
+          text: hit.path,
+          marks: hit.positions,
+          note: task.changed.some((file) => file.path === hit.path)
+            ? `${projectName(task.info.projectId)} · changed in this task`
+            : projectName(task.info.projectId),
+          mono: true,
+          lead: fileGlyph,
+          run: finish(() => showFile(task, hit.path)),
+        }));
+  });
+
+  /** The files of the other tasks. They come after the ones of the task on screen, and later. */
+  const fileRowsElsewhere = createMemo<Row[]>(() =>
+    filesElsewhere().flatMap((hit): Row[] => {
+      const owner = state.tasks[hit.taskId];
+      if (!owner) return [];
+      return [
+        {
+          kind: 'files',
+          key: `file:${hit.taskId}:${hit.path}`,
+          text: hit.path,
+          marks: hit.positions,
+          note: whose(owner),
+          mono: true,
+          lead: fileGlyph,
+          run: finish(() => showFile(owner, hit.path)),
+        },
+      ];
+    }),
+  );
+
+  const commitRows = createMemo<Row[]>(() => {
+    const task = here();
     if (!task) return [];
-    return files().map((hit) => ({
-      kind: 'files' as const,
-      key: `file:${hit.path}`,
-      text: hit.path,
-      marks: hit.positions,
-      note: task.changed.some((file) => file.path === hit.path)
-        ? 'changed in this task'
-        : projectName(task.info.projectId),
-      mono: true,
-      lead: fileGlyph,
-      run: finish(() => showFile(task, hit.path)),
+    const text = parsed().text;
+    return commits().map((hit) => ({
+      kind: 'commits' as const,
+      key: `commit:${hit.hash}`,
+      text: hit.subject,
+      // A commit found by its id has nothing to mark in its first line.
+      marks: positionsOf(hit.subject, text) ?? [],
+      note: `${hit.onBranch ? 'this task' : projectName(task.info.projectId)} · ${hit.author}, ${ago(hit.at)}`,
+      lead: () => <span class="hit-id">{hit.short}</span>,
+      run: finish(() => {
+        // The commit is shown in the Changes view of the task, whatever that view was showing.
+        setWork(task.info.id, { lookBack: null });
+        showCommit(task.info.id, hit.hash);
+        go(taskHref(task.info.id, 'changes'));
+      }),
     }));
   });
 
@@ -258,75 +388,169 @@ export function SearchPalette(): JSX.Element {
 
   const codeRows = createMemo<Row[]>(() => {
     const task = here();
-    const hits = code();
-    if (!task || !hits) return [];
-    return hits.map((hit) => ({
-      kind: 'code' as const,
-      key: `code:${hit.path}:${hit.line}:${hit.column}`,
-      text: hit.text,
-      marks: Array.from({ length: hit.length }, (_, i) => hit.column + i),
-      note: `${hit.path}:${hit.line}`,
-      mono: true,
-      lead: fileGlyph,
-      run: finish(() => showFile(task, hit.path, hit.line, hit.column + 1, hit.length)),
-    }));
+    const mine: Row[] = !task
+      ? []
+      : (code() ?? []).map((hit) => ({
+          kind: 'code' as const,
+          key: `code:${hit.path}:${hit.line}:${hit.column}`,
+          ...aroundMatch(hit.text, hit.column, hit.length),
+          note: `${hit.path}:${hit.line}`,
+          mono: true,
+          lead: fileGlyph,
+          run: finish(() => showFile(task, hit.path, hit.line, hit.column + 1, hit.length)),
+        }));
+    const others = (codeElsewhere() ?? []).flatMap((hit): Row[] => {
+      const owner = state.tasks[hit.taskId];
+      if (!owner) return [];
+      return [
+        {
+          kind: 'code',
+          key: `code:${hit.taskId}:${hit.path}:${hit.line}:${hit.column}`,
+          ...aroundMatch(hit.text, hit.column, hit.length),
+          // The place first: it is what tells two lines apart when the note is cut short.
+          note: `${hit.path}:${hit.line} · ${whose(owner)}`,
+          mono: true,
+          lead: fileGlyph,
+          run: finish(() => showFile(owner, hit.path, hit.line, hit.column + 1, hit.length)),
+        },
+      ];
+    });
+    return [...mine, ...others];
   });
 
-  const groups = createMemo(() => {
-    const all: { kind: Kind; rows: Row[] }[] = [
-      { kind: 'tasks', rows: tasks().slice(0, scope() === 'tasks' ? 50 : 5) },
-      { kind: 'files', rows: fileRows().slice(0, scope() === 'files' ? 50 : 6) },
-      { kind: 'chats', rows: chatRows().slice(0, scope() === 'chats' ? 50 : 4) },
-      { kind: 'code', rows: codeRows() },
-      { kind: 'commands', rows: commands().slice(0, scope() === 'commands' ? 50 : parsed().text ? 4 : 6) },
-    ];
-    const wanted = scope();
-    return all.filter((group) => group.rows.length > 0 && (wanted === 'all' || wanted === group.kind));
-  });
+  /**
+   * The rows on screen, kind by kind. A row that reads the same as before is
+   * the same object as before, so what is drawn for it stays in place. Answers
+   * arrive one after another, some of them late: without this every answer
+   * would draw every row anew, and a click that began on a row would end on its
+   * replacement and be lost.
+   */
+  const shown = createMemo<Record<Kind, Row[]>>(
+    (before) => {
+      const wanted = scope();
+      const all: Record<Kind, Row[]> = {
+        tasks: tasks().slice(0, wanted === 'tasks' ? 50 : 5),
+        // Among everything else a few rows of each are shown: a task with many matches
+        // of its own must not push the other projects out of sight altogether.
+        files:
+          wanted === 'files'
+            ? [...fileRows(), ...fileRowsElsewhere()].slice(0, 100)
+            : [...fileRows().slice(0, 6), ...fileRowsElsewhere().slice(0, here() ? 3 : 6)],
+        chats: chatRows().slice(0, wanted === 'chats' ? 50 : 4),
+        commits: commitRows().slice(0, wanted === 'commits' ? 50 : 4),
+        code: codeRows(),
+        commands: commands().slice(0, wanted === 'commands' ? 50 : parsed().text ? 4 : 6),
+      };
+      const known = new Map(KINDS.flatMap((kind) => before[kind]).map((row) => [row.key, row]));
+      const same = (a: Row, b: Row) =>
+        a.text === b.text &&
+        a.note === b.note &&
+        a.marks.length === b.marks.length &&
+        a.marks.every((n, i) => n === b.marks[i]);
+      for (const kind of KINDS) {
+        all[kind] =
+          wanted === 'all' || wanted === kind
+            ? all[kind].map((row) => {
+                const old = known.get(row.key);
+                return old && same(old, row) ? old : row;
+              })
+            : [];
+      }
+      return all;
+    },
+    { tasks: [], files: [], chats: [], commits: [], code: [], commands: [] },
+  );
 
-  /** The row that starts a search through the code. It is offered once there is something to look for. */
-  const codeOffer = createMemo<Row | null>(() => {
+  /**
+   * Looks through the code for `text`: in the task on screen first, then,
+   * with `everywhere`, in every other task. The first answer is shown at
+   * once; the second is added under it when it arrives.
+   */
+  const lookInCode = (text: string, everywhere: boolean) => {
+    // A click on the row takes the keyboard away from the search field, and the row then
+    // disappears: give the keyboard back, so the arrows, Enter and Esc go on working.
+    input?.focus();
+    const run = ++codeRun;
     const task = here();
-    // The row is made anew whenever the query changes, so the text it holds is the text on screen.
-    // eslint-disable-next-line solid/reactivity -- see above
+    const mine =
+      task && code() === null
+        ? searchText(task.info.id, text, 100).then(
+            (result) => result.hits,
+            () => [],
+          )
+        : null;
+    setSearchingCode(mine !== null);
+    setSearchingElsewhere(everywhere);
+    void (async () => {
+      if (mine) {
+        const hits = await mine;
+        if (run !== codeRun) return;
+        setCode(hits);
+        setFilter('code');
+        setPickedKey(null);
+        setSearchingCode(false);
+      }
+      if (!everywhere) return;
+      const hits = await searchTextEverywhere(text, task?.info.id, 100).then(
+        (result) => result.hits,
+        () => [],
+      );
+      if (run !== codeRun) return;
+      // Rows found in the task on screen may be there already, and one of them under the user's hand.
+      if (codeRows().length > 0) holdPick();
+      setCodeElsewhere(hits);
+      setFilter('code');
+      setSearchingElsewhere(false);
+    })();
+  };
+
+  /**
+   * The rows that start a search through the code: of the task on screen, and
+   * of every project. They are offered once there is something to look for.
+   */
+  const offers = createMemo<Row[]>(() => {
+    const task = here();
+    // The rows are made anew whenever the query changes, so the text they hold is the text on screen.
     const text = parsed().text;
-    if (!task || text.length < 2 || code() !== null || parsed().forced) return null;
-    if (scope() !== 'all' && scope() !== 'code') return null;
-    return {
+    if (text.length < 2 || parsed().forced || codeElsewhere() !== null || searchingElsewhere()) return [];
+    if (scope() !== 'all' && scope() !== 'code') return [];
+    const offer = (key: string, where: string, everywhere: boolean): Row => ({
       kind: 'code',
-      key: 'code:offer',
-      text: `Look for “${text}” inside the code of this task`,
+      key,
+      text: `Look for “${text}” inside the code of ${where}`,
       marks: Array.from({ length: text.length }, (_, i) => 'Look for “'.length + i),
       note: 'full text',
       lead: arrow,
-      run: () => {
-        // A click on this row takes the keyboard away from the search field, and the row then
-        // disappears: give the keyboard back, so the arrows, Enter and Esc go on working.
-        input?.focus();
-        setSearchingCode(true);
-        void searchText(task.info.id, text, 100)
-          .then((result) => {
-            if (parsed().text === text) {
-              setCode(result.hits);
-              setFilter('code');
-              setPicked(0);
-            }
-          })
-          .catch(() => setCode([]))
-          .finally(() => setSearchingCode(false));
-      },
-    };
+      run: () => lookInCode(text, everywhere),
+    });
+    return [
+      ...(task && code() === null ? [offer('code:offer', 'this task', false)] : []),
+      offer('code:offer:everywhere', 'every project', true),
+    ];
   });
 
-  const rows = createMemo(() => {
-    const flat = groups().flatMap((group) => group.rows);
-    const offer = codeOffer();
-    return offer ? [...flat, offer] : flat;
-  });
-  const counts = createMemo(() => ({
+  const rows = createMemo(() => [...KINDS.flatMap((kind) => shown()[kind]), ...offers()]);
+  const picked = createMemo(() =>
+    Math.max(
+      0,
+      rows().findIndex((row) => row.key === pickedKey()),
+    ),
+  );
+  const setPicked = (index: number) => setPickedKey(rows()[index]?.key ?? null);
+  /**
+   * Keeps the highlight on the result it is on now, whatever is added above it
+   * next. Called before rows that come late are shown: the user may be about to
+   * press Enter. A row that only offers a search gives way to what was found.
+   */
+  const holdPick = () => {
+    const row = rows()[picked()];
+    if (row && !offers().includes(row)) setPickedKey(row.key);
+  };
+  const counts = createMemo<Record<Kind, number>>(() => ({
     tasks: tasks().length,
-    files: fileRows().length,
+    files: fileRows().length + fileRowsElsewhere().length,
     chats: chatRows().length,
+    commits: commitRows().length,
     code: codeRows().length,
     commands: commands().length,
   }));
@@ -337,24 +561,41 @@ export function SearchPalette(): JSX.Element {
     on(
       () => [parsed().text, open()] as const,
       ([text, isOpen]) => {
+        // Whatever was being looked for in the code belongs to the query that is gone.
+        codeRun++;
         setCode(null);
-        setPicked(0);
+        setCodeElsewhere(null);
+        setSearchingCode(false);
+        setSearchingElsewhere(false);
+        setPickedKey(null);
         if (filter() === 'code') setFilter('all');
         if (!isOpen || text === '') {
           setFiles([]);
           setChats([]);
+          setFoundCommits(nothing);
+          setFoundElsewhere(nothing);
+          elsewhere.forget();
           return;
         }
         const task = here();
+        const hereId = task?.info.id;
+        // "@" and ">" ask for tasks and commands alone, and those are known without the core.
+        const wantsFiles = parsed().forced === undefined || parsed().forced === 'files';
         const timer = setTimeout(() => {
           if (task) {
             void searchFiles(task.info.id, text, 50)
               .then((result) => setFiles(result.hits, text))
               .catch(() => setFiles([], text));
+            void searchCommits(task.info.id, text, 50).then(
+              (result) => setFoundCommits({ query: text, here: hereId, hits: result.hits }),
+              () => setFoundCommits({ query: text, here: hereId, hits: [] }),
+            );
           }
           void searchChats(text, 50)
             .then((result) => setChats(result.hits, text))
             .catch(() => setChats([], text));
+          // The other tasks last, and apart: their answer may take a while and is added when it comes.
+          if (wantsFiles) elsewhere.ask({ query: text, here: hereId, session });
         }, 90);
         onCleanup(() => clearTimeout(timer));
       },
@@ -363,6 +604,7 @@ export function SearchPalette(): JSX.Element {
 
   createEffect(
     on(open, (isOpen) => {
+      session++;
       if (!isOpen) return;
       setQuery('');
       setFilter('all');
@@ -411,7 +653,9 @@ export function SearchPalette(): JSX.Element {
     'tasks',
     'files',
     'chats',
-    ...(code() ? (['code'] as const) : []),
+    // Commits are those of the task on screen and of its project; without a task there are none to look through.
+    ...(here() ? (['commits'] as const) : []),
+    ...(code() || codeElsewhere() ? (['code'] as const) : []),
     'commands',
   ];
   const rowIndex = (row: Row) => rows().indexOf(row);
@@ -429,7 +673,9 @@ export function SearchPalette(): JSX.Element {
       <span class="hit-text" classList={{ mono: row.mono }}>
         <Marked text={row.text} marks={row.marks} />
       </span>
-      <span class="hit-note">{row.note}</span>
+      <span class="hit-note" title={row.note}>
+        {row.note}
+      </span>
       <Show when={rowIndex(row) === picked()}>
         <kbd>Enter</kbd>
       </Show>
@@ -446,8 +692,10 @@ export function SearchPalette(): JSX.Element {
           <input
             ref={input}
             type="search"
-            aria-label="Search tasks, files, chats and commands"
-            placeholder={here() ? 'Search tasks, files, chats and commands' : 'Search tasks, chats and commands'}
+            aria-label="Search tasks, files, chats, commits and commands"
+            placeholder={
+              here() ? 'Search tasks, files, chats, commits and commands' : 'Search tasks, files, chats and commands'
+            }
             value={query()}
             onInput={(event) => setQuery(event.currentTarget.value)}
           />
@@ -472,29 +720,29 @@ export function SearchPalette(): JSX.Element {
         </Show>
 
         <div class="palette-list" ref={list}>
-          <For each={groups()}>
-            {(group) => (
-              <>
-                <h3>{kindNames[group.kind]}</h3>
-                <For each={group.rows}>{renderRow}</For>
-              </>
+          <For each={KINDS}>
+            {(kind) => (
+              <Show when={shown()[kind].length > 0}>
+                <h3>{kindNames[kind]}</h3>
+                <For each={shown()[kind]}>{renderRow}</For>
+              </Show>
             )}
           </For>
-          {/* Keyed: the row is drawn anew for every query, so it never offers to look for an older one. */}
-          <Show when={codeOffer()} keyed>
-            {(offer) => renderRow(offer)}
-          </Show>
           <Show when={searchingCode()}>
             <p class="palette-empty">Looking through the code</p>
           </Show>
-          <Show when={rows().length === 0 && !searchingCode()}>
+          <Show when={searchingElsewhere() && !searchingCode()}>
+            <p class="palette-empty">Looking through every project</p>
+          </Show>
+          <Show when={filter() === 'code' && codeRows().length === 0 && !searchingCode() && !searchingElsewhere()}>
             <p class="palette-empty">
-              {code() && filter() === 'code'
-                ? 'Nothing in the code matches.'
-                : parsed().text
-                  ? 'Nothing matches.'
-                  : 'Type to search.'}
+              {codeElsewhere() ? 'Nothing in the code matches.' : 'Nothing in the code of this task matches.'}
             </p>
+          </Show>
+          {/* The rows are drawn anew for every query, so none of them offers to look for an older one. */}
+          <For each={offers()}>{renderRow}</For>
+          <Show when={rows().length === 0 && filter() !== 'code' && !searchingCode() && !searchingElsewhere()}>
+            <p class="palette-empty">{parsed().text ? 'Nothing matches.' : 'Type to search.'}</p>
           </Show>
         </div>
 
