@@ -7,22 +7,74 @@
 //! taken on this machine is moved to a free one, so two tasks never fight over
 //! a port, a container name or a volume.
 //!
+//! Everything is started with the task's environment (see `env`). Packages are
+//! installed first when they are missing or the lock file changed since.
+//!
 //! The functions block and may run Docker. Call them from `spawn_blocking`.
+
+mod commands;
+pub mod env;
+pub mod resources;
+
+pub use commands::command;
 
 use crate::terminals::{Terminals, strip_codes};
 use anyhow::{Context, Result, anyhow, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, SystemTime};
 
 /// The names a compose file goes by, in the order Docker itself looks for them.
 const COMPOSE_FILES: [&str; 4] = ["compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"];
 /// Scripts worth offering as things to run. Others are still reachable from the terminal.
 const SCRIPT_NAMES: [&str; 6] = ["dev", "start", "serve", "api", "worker", "preview"];
+/// Lock files, each with the program that writes it. The order is the one a project with two of them is judged by.
+const LOCK_FILES: [(&str, &str); 6] = [
+    ("pnpm-lock.yaml", "pnpm"),
+    ("yarn.lock", "yarn"),
+    ("bun.lockb", "bun"),
+    ("bun.lock", "bun"),
+    ("package-lock.json", "npm"),
+    ("npm-shrinkwrap.json", "npm"),
+];
+/// What package managers write into `node_modules` when an install is done.
+const INSTALL_MARKS: [&str; 4] = [".package-lock.json", ".modules.yaml", ".yarn-integrity", ".yarn-state.yml"];
+/// A lock file this much newer than the install is a changed one. Less than that
+/// is the install itself: some package managers write the lock file last.
+const SAME_INSTALL: Duration = Duration::from_secs(2);
+/// Images that are databases: their data is worth a volume, and their port is not a web page.
+const DATABASE_IMAGES: [&str; 14] = [
+    "postgres",
+    "postgresql",
+    "postgis",
+    "pgvector",
+    "timescaledb",
+    "mysql",
+    "mysql-server",
+    "mariadb",
+    "percona",
+    "mongo",
+    "mongodb",
+    "mongodb-community-server",
+    "cockroach",
+    "clickhouse-server",
+];
+/// Other images whose port speaks something a browser cannot show.
+const NOT_WEB_IMAGES: [&str; 4] = ["redis", "valkey", "memcached", "keydb"];
+/// Where the usual database images look for scripts to fill a new, empty database.
+const SEED_FOLDER: &str = "/docker-entrypoint-initdb.d";
+
+/// What the terminal that installs packages is for.
+pub(crate) const INSTALL: &str = "deps:install";
+/// What the terminal that starts the Docker services is for.
+const UP: &str = "docker:up";
+/// The profile every project has: everything that was read from its files.
+pub const FULL_STACK: &str = "Full stack";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,12 +86,76 @@ pub struct Service {
     pub runs: String,
     /// "stopped", "starting", "running", "failed" or "exited".
     pub state: &'static str,
-    /// Where it can be opened, such as `localhost:3000`.
+    /// Where it can be reached, such as `localhost:3000`.
     pub address: Option<String>,
     /// What went wrong, or what was changed to make it start.
     pub note: Option<String>,
     /// The terminal that shows its output right now, if one is open.
     pub term_id: Option<u32>,
+    /// False for a database or a cache: its address is not a page to open.
+    pub web: bool,
+    /// Whether the chosen profile starts it.
+    pub in_profile: bool,
+}
+
+/// Commands and services that are started together, under a name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    pub name: String,
+    pub services: Vec<String>,
+    /// True for "Full stack", which is not kept anywhere: it is whatever the files say.
+    #[serde(default, skip_deserializing)]
+    pub built_in: bool,
+}
+
+/// The project's packages: what installs them and whether that is done.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Dependencies {
+    /// What installs them, such as `npm ci`.
+    pub command: String,
+    /// The lock file the command installs from, if the project has one.
+    pub lock_file: Option<&'static str>,
+    /// "none" when the project names no packages; else "missing", "stale",
+    /// "installing", "failed" or "installed".
+    pub state: &'static str,
+    /// When they were last installed, in milliseconds.
+    pub installed_at: Option<u64>,
+    /// How the last install failed.
+    pub note: Option<String>,
+    /// The terminal the install runs in right now.
+    pub term_id: Option<u32>,
+}
+
+impl Dependencies {
+    /// Whether something that needs the packages has to wait for an install first.
+    fn needs_install(&self) -> bool {
+        matches!(self.state, "missing" | "stale" | "failed")
+    }
+}
+
+/// A named volume a database keeps its data in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbVolume {
+    /// The volume as Docker knows it.
+    pub name: String,
+    /// False when the compose file gives the volume a fixed name: then every task shares it.
+    pub own: bool,
+}
+
+/// A database among the Docker services, with where it keeps its data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Database {
+    /// The service's name.
+    pub name: String,
+    pub image: String,
+    /// Its named volumes. Empty when the data lives inside the container only.
+    pub volumes: Vec<DbVolume>,
+    /// Whether the compose file gives it scripts to fill a new database with.
+    pub seed: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -55,6 +171,44 @@ pub struct RunState {
     pub docker_hint: Option<String>,
     /// What could not be read, in words for the user.
     pub problem: Option<String>,
+    /// The project's launch profiles, "Full stack" first.
+    pub profiles: Vec<Profile>,
+    /// The profile "Start all" starts.
+    pub profile: String,
+    /// `None` for a project without a `package.json`.
+    pub dependencies: Option<Dependencies>,
+    pub databases: Vec<Database>,
+}
+
+/// A task as the runner sees it: where it works and what its programs are given.
+#[derive(Debug, Clone)]
+pub struct Place {
+    pub task_id: String,
+    /// The project's name, which the compose project is named after.
+    pub project: String,
+    /// The task's folder.
+    pub root: PathBuf,
+    /// The task's environment: the project's `.env` with the task's own values on top.
+    pub env: Vec<(String, String)>,
+    /// The values among them that must not be shown, to clean messages of.
+    pub secrets: Vec<String>,
+}
+
+impl Place {
+    /// A task without its environment: enough for stopping and removing.
+    pub fn bare(task_id: &str, project: &str, root: &Path) -> Self {
+        Self {
+            task_id: task_id.into(),
+            project: project.into(),
+            root: root.to_path_buf(),
+            env: vec![],
+            secrets: vec![],
+        }
+    }
+
+    fn compose_project(&self) -> String {
+        compose_project(&self.project, &self.task_id)
+    }
 }
 
 /// One thing the project can run on this machine.
@@ -64,25 +218,23 @@ pub struct Script {
     pub command: String,
 }
 
+/// The lock file of a project and the program that wrote it.
+fn lock_file(root: &Path) -> Option<(&'static str, &'static str)> {
+    LOCK_FILES.iter().copied().find(|(name, _)| root.join(name).is_file())
+}
+
 /// The program that runs a project's scripts, judged by its lock file.
 fn package_manager(root: &Path) -> &'static str {
-    if root.join("pnpm-lock.yaml").is_file() {
-        "pnpm"
-    } else if root.join("yarn.lock").is_file() {
-        "yarn"
-    } else if root.join("bun.lockb").is_file() || root.join("bun.lock").is_file() {
-        "bun"
-    } else {
-        "npm"
-    }
+    lock_file(root).map_or("npm", |(_, manager)| manager)
+}
+
+fn package_json(root: &Path) -> Option<Value> {
+    serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).ok()?).ok()
 }
 
 /// The scripts of `package.json` that start something long-running.
 pub fn scripts(root: &Path) -> Vec<Script> {
-    let Ok(text) = std::fs::read_to_string(root.join("package.json")) else {
-        return vec![];
-    };
-    let Ok(package) = serde_json::from_str::<Value>(&text) else {
+    let Some(package) = package_json(root) else {
         return vec![];
     };
     let manager = package_manager(root);
@@ -103,6 +255,49 @@ pub fn scripts(root: &Path) -> Vec<Script> {
     // "dev" first: it is what people start most.
     found.sort_by_key(|script| (script.name != "dev", script.name.clone()));
     found
+}
+
+/// What installs a project's packages. With a lock file it installs exactly
+/// what the lock file says and leaves the file alone: running a project must
+/// not change what git tracks.
+pub fn install_command(root: &Path) -> String {
+    match lock_file(root) {
+        Some((_, "pnpm")) => "pnpm install --frozen-lockfile".into(),
+        // The newer Yarn has its own word for the same promise.
+        Some((_, "yarn")) if root.join(".yarnrc.yml").is_file() => "yarn install --immutable".into(),
+        Some((_, "yarn")) => "yarn install --frozen-lockfile".into(),
+        Some((_, "bun")) => "bun install --frozen-lockfile".into(),
+        Some(_) => "npm ci".into(),
+        None => "npm install".into(),
+    }
+}
+
+/// Whether a `package.json` names anything to install.
+fn wants_packages(package: &Value) -> bool {
+    let named = |list: &str| package.get(list).and_then(Value::as_object).is_some_and(|names| !names.is_empty());
+    // A workspace root may name nothing itself: its packages do.
+    named("dependencies")
+        || named("devDependencies")
+        || named("optionalDependencies")
+        || package.get("workspaces").is_some()
+}
+
+/// When the packages were last installed: the newest of the marks package
+/// managers leave in `node_modules`, or of the folder itself. Without the
+/// folder, the map Yarn writes when it keeps packages elsewhere counts as
+/// the install. `None` when there is neither.
+fn installed_at(root: &Path) -> Option<SystemTime> {
+    let changed = |path: PathBuf| path.metadata().ok()?.modified().ok();
+    let folder = root.join("node_modules");
+    if !folder.is_dir() {
+        return changed(root.join(".pnp.cjs"));
+    }
+    let made = changed(folder.clone())?;
+    Some(INSTALL_MARKS.iter().filter_map(|mark| changed(folder.join(mark))).fold(made, SystemTime::max))
+}
+
+fn millis(time: SystemTime) -> u64 {
+    time.duration_since(SystemTime::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0)
 }
 
 pub fn compose_file(root: &Path) -> Option<PathBuf> {
@@ -155,22 +350,85 @@ pub fn free_ports(config: &mut Value, is_free: &dyn Fn(u16) -> bool) -> Vec<(Str
     moved
 }
 
+/// The name of an image without where it comes from and which version it is:
+/// `ghcr.io/acme/postgres:16` is `postgres`.
+fn image_name(image: &str) -> &str {
+    let last = image.rsplit('/').next().unwrap_or(image);
+    last.split([':', '@']).next().unwrap_or(last)
+}
+
+fn is_database(image: &str) -> bool {
+    DATABASE_IMAGES.contains(&image_name(image))
+}
+
+/// The databases among the services of a resolved compose file, each with its
+/// named volumes. `project` is the task's compose project: a volume that
+/// carries its name belongs to the task alone.
+pub fn databases(config: &Value, project: &str) -> Vec<Database> {
+    let mut found = Vec::new();
+    for (name, service) in config.get("services").and_then(Value::as_object).into_iter().flatten() {
+        let Some(image) = service.get("image").and_then(Value::as_str).filter(|image| is_database(image)) else {
+            continue;
+        };
+        let mounts: Vec<&Value> = service.get("volumes").and_then(Value::as_array).into_iter().flatten().collect();
+        let target = |mount: &Value| mount.get("target").and_then(Value::as_str).unwrap_or_default().to_string();
+        let volumes = mounts
+            .iter()
+            .filter(|mount| mount.get("type").and_then(Value::as_str) == Some("volume"))
+            .filter_map(|mount| mount.get("source").and_then(Value::as_str))
+            .map(|key| {
+                let declared = config.pointer(&format!("/volumes/{}", key.replace('~', "~0").replace('/', "~1")));
+                let external = declared.and_then(|v| v.get("external")).and_then(Value::as_bool).unwrap_or(false);
+                let own_name = format!("{project}_{key}");
+                let name = declared.and_then(|v| v.get("name")).and_then(Value::as_str).unwrap_or(&own_name);
+                DbVolume { name: name.to_string(), own: !external && name == own_name }
+            })
+            .collect();
+        found.push(Database {
+            name: name.clone(),
+            image: image.to_string(),
+            volumes,
+            seed: mounts.iter().any(|mount| target(mount).starts_with(SEED_FOLDER)),
+        });
+    }
+    found
+}
+
 /// Starts and stops what a task runs, and says how each part stands.
 pub struct Runner {
-    terminals: Arc<Terminals>,
-    docker: PathBuf,
-    data_dir: PathBuf,
+    pub(crate) terminals: Arc<Terminals>,
+    pub(crate) docker: PathBuf,
+    pub(crate) data_dir: PathBuf,
+    /// The scripts of each task that are started once its install has ended.
+    waiting: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    /// Tells every interface that what a task runs has changed. Set by whoever
+    /// can reach them; needed where something starts later, with no command to answer.
+    told: Arc<OnceLock<Told>>,
 }
+
+/// A way to say "what this task runs has changed".
+pub type Told = Box<dyn Fn(&str) + Send + Sync>;
 
 impl Runner {
     pub fn new(terminals: Arc<Terminals>, docker: PathBuf, data_dir: PathBuf) -> Self {
-        Self { terminals, docker, data_dir }
+        Self { terminals, docker, data_dir, waiting: Arc::default(), told: Arc::default() }
     }
 
-    fn docker(&self, args: &[&str], cwd: &Path) -> Result<String> {
+    /// Gives the runner its way to tell the interfaces of a change, unless it has one already.
+    pub fn tell_with(&self, make: impl FnOnce() -> Told) {
+        self.told.get_or_init(make);
+    }
+
+    pub(crate) fn docker(&self, args: &[&str], cwd: &Path) -> Result<String> {
+        self.docker_with(args, cwd, &[])
+    }
+
+    /// Runs Docker with more in its environment: a compose file may use the task's values.
+    fn docker_with(&self, args: &[&str], cwd: &Path, env: &[(String, String)]) -> Result<String> {
         let output = Command::new(&self.docker)
             .args(args)
             .current_dir(cwd)
+            .envs(env.iter().map(|(name, value)| (name, value)))
             .stdin(Stdio::null())
             .output()
             .map_err(|_| anyhow!("Docker is not installed on this machine"))?;
@@ -180,7 +438,7 @@ impl Runner {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
-    fn docker_running(&self) -> (bool, Option<String>) {
+    pub(crate) fn docker_running(&self) -> (bool, Option<String>) {
         let installed = self.docker.is_file() || which::which(&self.docker).is_ok();
         if !installed {
             return (false, Some("Docker is not installed on this machine.".into()));
@@ -197,15 +455,25 @@ impl Runner {
         )
     }
 
-    /// The compose file as Docker understands it, with every default and path filled in.
-    fn resolved(&self, root: &Path, file: &Path) -> Result<Value> {
-        let text = self.docker(&["compose", "-f", &file.to_string_lossy(), "config", "--format", "json"], root)?;
+    /// The compose file as Docker understands it, with every default and path
+    /// filled in. It is read as the task's own compose project, so the names
+    /// Docker gives its volumes and its network carry the task's name, and
+    /// with the task's environment, which the file may refer to.
+    fn resolved(&self, place: &Place, file: &Path) -> Result<Value> {
+        let project = place.compose_project();
+        let args = ["compose", "-p", &project, "-f", &file.to_string_lossy(), "config", "--format", "json"];
+        let text = self.docker_with(&args, &place.root, &place.env)?;
         serde_json::from_str(&text).context("Docker's reading of the compose file could not be understood")
+    }
+
+    /// Where the core keeps what it needs for running one task.
+    pub(crate) fn task_folder(&self, task_id: &str) -> PathBuf {
+        self.data_dir.join("run").join(task_id)
     }
 
     /// Where the task's own copy of the compose file is kept.
     fn task_file(&self, task_id: &str) -> PathBuf {
-        self.data_dir.join("run").join(task_id).join("compose.json")
+        self.task_folder(task_id).join("compose.json")
     }
 
     /// The compose arguments that point at the task's project.
@@ -217,6 +485,13 @@ impl Runner {
             "-f".into(),
             self.task_file(task_id).to_string_lossy().into_owned(),
         ]
+    }
+
+    /// A compose command for the task's project, as one line for a shell.
+    fn compose_line(&self, place: &Place, rest: &str) -> String {
+        let args = self.compose_args(&place.compose_project(), &place.task_id);
+        let args = args.iter().map(|arg| quote(arg)).collect::<Vec<_>>().join(" ");
+        format!("{} {args} {rest}", quote(&self.docker.to_string_lossy()))
     }
 
     /// The containers of a compose project, as `docker compose ps` lists them.
@@ -231,17 +506,76 @@ impl Runner {
         text.lines().filter_map(|line| serde_json::from_str(line).ok()).collect()
     }
 
-    /// Everything the Run tab shows for a task.
-    pub fn state(&self, task_id: &str, project_name: &str, root: &Path) -> RunState {
-        let project = compose_project(project_name, task_id);
-        let mut services = Vec::new();
+    fn is_running(&self, place: &Place, service: &str) -> bool {
+        self.containers(&place.compose_project(), &place.root).iter().any(|container| {
+            container.get("Service").and_then(Value::as_str) == Some(service)
+                && container.get("State").and_then(Value::as_str) == Some("running")
+        })
+    }
 
+    /// The scripts of a task that wait for its install to end.
+    fn waiting_for_install(&self, task_id: &str) -> Vec<String> {
+        self.waiting.lock().unwrap().get(task_id).cloned().unwrap_or_default()
+    }
+
+    /// The project's packages and whether they are installed in this task's folder.
+    pub fn dependencies(&self, place: &Place) -> Option<Dependencies> {
+        let (task_id, root) = (&place.task_id, &place.root);
+        let package = package_json(root)?;
+        let command = install_command(root);
+        let lock = lock_file(root).map(|(name, _)| name);
+        let installing = self.terminals.find(task_id, INSTALL);
+        let failed = self.terminals.last_exit(task_id, INSTALL).filter(|code| *code != 0);
+        let installed = installed_at(root);
+        let lock_changed = lock.and_then(|name| root.join(name).metadata().ok()?.modified().ok());
+        let stale = installed.zip(lock_changed).is_some_and(|(done, changed)| changed > done + SAME_INSTALL);
+
+        let state = match (wants_packages(&package), &installing, installed, stale) {
+            (false, ..) => "none",
+            (_, Some(_), ..) => "installing",
+            (_, _, Some(_), false) => "installed",
+            // The install was tried and stopped half way: saying only "missing" would hide why.
+            _ if failed.is_some() => "failed",
+            (_, _, None, _) => "missing",
+            _ => "stale",
+        };
+        let note = (state == "failed").then(|| {
+            let code = failed.unwrap_or(1);
+            // Its last words are the best guess at why.
+            let said = self.terminals.last_output(task_id, INSTALL).unwrap_or_default();
+            let last = said.lines().rev().map(str::trim).find(|line| !line.is_empty());
+            let last: String = last.unwrap_or_default().chars().take(240).collect();
+            let why = if last.is_empty() { String::new() } else { format!(" Its last words: {last}") };
+            env::scrub(&format!("It stopped with code {code}.{why}"), &place.secrets)
+        });
+        Some(Dependencies {
+            command,
+            lock_file: lock,
+            state,
+            installed_at: installed.filter(|_| state != "none").map(millis),
+            note,
+            term_id: installing.map(|info| info.term_id),
+        })
+    }
+
+    /// Everything the Run tab shows for a task.
+    pub fn state(&self, place: &Place) -> RunState {
+        let (task_id, root) = (place.task_id.as_str(), place.root.as_path());
+        let project = place.compose_project();
+        let mut services = Vec::new();
+        let dependencies = self.dependencies(place);
+
+        let waiting = self.waiting_for_install(task_id);
         for script in scripts(root) {
             let purpose = format!("run:{}", script.name);
             let running = self.terminals.find(task_id, &purpose);
             let exit = self.terminals.last_exit(task_id, &purpose);
             let (state, note) = match (&running, exit) {
                 (Some(_), _) => ("running", None),
+                (None, _) if waiting.contains(&script.name) => {
+                    let install = dependencies.as_ref().map_or("the install", |deps| deps.command.as_str());
+                    ("starting", Some(format!("Waiting for {install} to finish.")))
+                }
                 (None, Some(0)) => ("exited", None),
                 (None, Some(code)) => ("failed", Some(format!("It stopped with code {code}. The log says why."))),
                 (None, None) => ("stopped", None),
@@ -254,21 +588,25 @@ impl Runner {
                 address: running.as_ref().and_then(|info| self.terminals.address(info.term_id)),
                 note,
                 term_id: running.map(|info| info.term_id),
+                web: true,
+                in_profile: true,
             });
         }
 
         let file = compose_file(root);
         let mut problem = None;
+        let mut found_databases = Vec::new();
         let (mut docker_ready, mut docker_hint) = (true, None);
         if let Some(file) = &file {
             let (ready, hint) = self.docker_running();
             docker_ready = ready;
             docker_hint = hint;
-            match self.resolved(root, file) {
+            match self.resolved(place, file) {
                 Ok(config) => {
+                    found_databases = databases(&config, &project);
                     let containers = if ready { self.containers(&project, root) } else { vec![] };
-                    let starting = self.terminals.find(task_id, "docker:up");
-                    let last_start = self.terminals.last_exit(task_id, "docker:up");
+                    let starting = self.terminals.find(task_id, UP);
+                    let last_start = self.terminals.last_exit(task_id, UP);
                     let moved = self.moved_ports(task_id);
                     for (name, service) in config.get("services").and_then(Value::as_object).into_iter().flatten() {
                         let container =
@@ -294,25 +632,31 @@ impl Runner {
                             .find(|(service, ..)| service == name && matches!(state, "running" | "starting"))
                             .map(|(_, wanted, given)| format!("Port {wanted} was taken, so this task uses {given}."));
                         if state == "failed" {
-                            note = Some(self.why_failed(task_id, name, container));
+                            note = Some(env::scrub(&self.why_failed(task_id, name, container), &place.secrets));
                         }
                         let logs = self.terminals.find(task_id, &format!("logs:{name}")).or(starting.clone());
+                        let image = service.get("image").and_then(Value::as_str);
                         services.push(Service {
                             name: name.clone(),
                             kind: "docker",
-                            runs: service
-                                .get("image")
-                                .and_then(Value::as_str)
-                                .map(str::to_string)
+                            // An image may be named with one of the task's values in it.
+                            runs: image
+                                .map(|image| env::scrub(image, &place.secrets))
                                 .unwrap_or_else(|| "built from a Dockerfile".into()),
                             state,
                             address,
                             note,
                             term_id: logs.map(|info| info.term_id),
+                            web: !image
+                                .is_some_and(|image| is_database(image) || NOT_WEB_IMAGES.contains(&image_name(image))),
+                            in_profile: true,
                         });
                     }
                 }
-                Err(error) => problem = Some(format!("The compose file could not be read: {error:#}")),
+                Err(error) => {
+                    let said = env::scrub(&format!("{error:#}"), &place.secrets);
+                    problem = Some(format!("The compose file could not be read: {said}"));
+                }
             }
         }
 
@@ -323,6 +667,10 @@ impl Runner {
             docker_ready,
             docker_hint,
             problem,
+            profiles: vec![],
+            profile: FULL_STACK.into(),
+            dependencies,
+            databases: found_databases,
         }
     }
 
@@ -341,10 +689,10 @@ impl Runner {
         // Docker's complaint is in what the start printed; the line naming this service is the one to show.
         let printed = self
             .terminals
-            .find(task_id, "docker:up")
+            .find(task_id, UP)
             .and_then(|info| self.terminals.scrollback(info.term_id).ok())
             .map(|(bytes, _)| strip_codes(&String::from_utf8_lossy(&bytes)))
-            .or_else(|| std::fs::read_to_string(self.task_file(task_id).with_file_name("last-start.log")).ok())
+            .or_else(|| self.terminals.last_output(task_id, UP))
             .unwrap_or_default();
         printed
             .lines()
@@ -355,26 +703,80 @@ impl Runner {
             .unwrap_or_else(|| "It did not start. The log says why.".into())
     }
 
-    /// Starts one service, or all of them when `only` is `None`.
-    pub fn start(&self, task_id: &str, project_name: &str, root: &Path, only: Option<&str>) -> Result<()> {
-        let wanted_scripts: Vec<Script> =
-            scripts(root).into_iter().filter(|script| only.is_none_or(|name| name == script.name)).collect();
-        for script in &wanted_scripts {
-            let purpose = format!("run:{}", script.name);
-            if self.terminals.find(task_id, &purpose).is_none() {
-                self.terminals.run(task_id, root, &script.command, &purpose, &[])?;
+    /// Starts what is named in `only`, or everything when it is `None`.
+    pub fn start(&self, place: &Place, only: Option<&[String]>) -> Result<()> {
+        self.launch(place, only, false)
+    }
+
+    /// Stops and starts again what is named in `only`, or everything when it is `None`.
+    pub fn restart(&self, place: &Place, only: Option<&[String]>) -> Result<()> {
+        let task_id = &place.task_id;
+        let mut ending = Vec::new();
+        for info in self.terminals.list(task_id) {
+            let wanted = info
+                .purpose
+                .strip_prefix("run:")
+                .is_some_and(|name| only.is_none_or(|names| names.iter().any(|wanted| wanted == name)));
+            if wanted && self.terminals.stop(info.term_id).is_ok() {
+                ending.push(info.purpose);
+            }
+        }
+        // A program is gone a moment after it is told to end; its place is free only then.
+        for _ in 0..100 {
+            if ending.iter().all(|purpose| self.terminals.find(task_id, purpose).is_none()) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        self.launch(place, only, true)
+    }
+
+    /// Starts scripts and services. `anew` also makes the containers anew, which is how a service is restarted.
+    fn launch(&self, place: &Place, only: Option<&[String]>, anew: bool) -> Result<()> {
+        let (task_id, root) = (place.task_id.as_str(), place.root.as_path());
+        let named = |name: &str| only.is_none_or(|names| names.iter().any(|wanted| wanted == name));
+        let all_scripts = scripts(root);
+        let wanted_scripts: Vec<&Script> = all_scripts.iter().filter(|script| named(&script.name)).collect();
+        let to_run: Vec<Script> = wanted_scripts
+            .iter()
+            .filter(|script| self.terminals.find(task_id, &format!("run:{}", script.name)).is_none())
+            .map(|script| (*script).clone())
+            .collect();
+        if !to_run.is_empty() {
+            // A script without its packages fails at once: they are installed first.
+            let install = self.dependencies(place).filter(|deps| deps.needs_install() || deps.state == "installing");
+            match install {
+                Some(deps) => self.start_after_install(place, &deps.command, to_run)?,
+                None => {
+                    for script in &to_run {
+                        self.terminals.run(
+                            task_id,
+                            root,
+                            &script.command,
+                            &format!("run:{}", script.name),
+                            &place.env,
+                        )?;
+                    }
+                }
             }
         }
         let Some(file) = compose_file(root) else {
-            if wanted_scripts.is_empty() {
+            if wanted_scripts.is_empty() && only.is_none() {
                 bail!("There is nothing to start here: no dev script in package.json and no compose file");
             }
             return Ok(());
         };
-        let mut config = self.resolved(root, &file)?;
-        let docker_service = only.filter(|name| config.pointer(&format!("/services/{name}")).is_some());
-        if only.is_some() && docker_service.is_none() {
-            // The one thing asked for was a script, and it is started.
+        // Everything that was asked for by name is a script: Docker has no part in it.
+        if only.is_some_and(|names| names.iter().all(|name| all_scripts.iter().any(|script| &script.name == name))) {
+            return Ok(());
+        }
+        let mut config = self.resolved(place, &file)?;
+        let in_docker: Vec<&String> = only
+            .into_iter()
+            .flatten()
+            .filter(|name| config.get("services").and_then(|services| services.get(name.as_str())).is_some())
+            .collect();
+        if only.is_some() && in_docker.is_empty() {
             return Ok(());
         }
         let (ready, hint) = self.docker_running();
@@ -383,7 +785,7 @@ impl Runner {
         }
 
         // Ports this task's own containers hold already are its own, not "taken".
-        let project = compose_project(project_name, task_id);
+        let project = place.compose_project();
         let mine: HashSet<u16> = self
             .containers(&project, root)
             .iter()
@@ -394,40 +796,114 @@ impl Runner {
 
         let task_file = self.task_file(task_id);
         std::fs::create_dir_all(task_file.parent().context("The data folder has no place for this task")?)?;
-        std::fs::write(&task_file, serde_json::to_string_pretty(&config)?)?;
+        // The file holds the task's values wherever the compose file uses them: it is for this user only.
+        env::write_private(&task_file, &serde_json::to_string_pretty(&config)?)?;
         std::fs::write(task_file.with_file_name("moved.json"), serde_json::to_string(&moved)?)?;
+        // Kept so the containers and volumes can still be found once the task itself is gone.
+        std::fs::write(task_file.with_file_name("project"), &project)?;
 
-        if self.terminals.find(task_id, "docker:up").is_some() {
+        if self.terminals.find(task_id, UP).is_some() {
             bail!("The services are being started already");
         }
-        let mut line = format!(
-            "{} {}",
-            quote(&self.docker.to_string_lossy()),
-            self.compose_args(&project, task_id).iter().map(|a| quote(a)).collect::<Vec<_>>().join(" ")
-        );
-        line.push_str(" up -d --remove-orphans");
-        if let Some(name) = docker_service {
-            line.push(' ');
-            line.push_str(&quote(name));
+        let mut rest = String::from("up -d --remove-orphans");
+        if anew {
+            rest.push_str(" --force-recreate");
         }
-        self.terminals.run(task_id, root, &line, "docker:up", &[])?;
+        for name in in_docker {
+            rest.push(' ');
+            rest.push_str(&quote(name));
+        }
+        self.terminals.run(task_id, root, &self.compose_line(place, &rest), UP, &place.env)?;
+        Ok(())
+    }
+
+    /// Installs the project's packages in a terminal of its own.
+    pub fn install(&self, place: &Place) -> Result<u32> {
+        let Some(deps) = self.dependencies(place) else {
+            bail!("There is no package.json in this task's folder, so there is nothing to install");
+        };
+        if let Some(term_id) = deps.term_id {
+            return Ok(term_id);
+        }
+        Ok(self.terminals.run(&place.task_id, &place.root, &deps.command, INSTALL, &place.env)?.term_id)
+    }
+
+    /// Installs the packages, then starts the scripts that need them. The
+    /// scripts are started only when the install ended well.
+    fn start_after_install(&self, place: &Place, command: &str, scripts_to_run: Vec<Script>) -> Result<()> {
+        let task_id = &place.task_id;
+        if self.terminals.find(task_id, INSTALL).is_none() {
+            self.terminals.run(task_id, &place.root, command, INSTALL, &place.env)?;
+        }
+        let watched = {
+            let mut waiting = self.waiting.lock().unwrap();
+            let watched = waiting.contains_key(task_id);
+            let names = waiting.entry(task_id.clone()).or_default();
+            for script in scripts_to_run {
+                if !names.contains(&script.name) {
+                    names.push(script.name);
+                }
+            }
+            watched
+        };
+        if watched {
+            // Someone waits for this install already and will start these scripts too.
+            return Ok(());
+        }
+        let (terminals, waiting, place) = (self.terminals.clone(), self.waiting.clone(), place.clone());
+        let told = self.told.clone();
+        std::thread::Builder::new()
+            .name("deps-wait".into())
+            .spawn(move || {
+                let task_id = &place.task_id;
+                while terminals.find(task_id, INSTALL).is_some() {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                // Read now, not before: a script that was stopped while it waited is no longer wanted.
+                let names = waiting.lock().unwrap().get(task_id).cloned().unwrap_or_default();
+                // An install that failed, or was stopped, is not followed by a start.
+                if terminals.last_exit(task_id, INSTALL) == Some(0) {
+                    for script in scripts(&place.root).into_iter().filter(|script| names.contains(&script.name)) {
+                        let purpose = format!("run:{}", script.name);
+                        if terminals.find(task_id, &purpose).is_none() {
+                            let _ = terminals.run(task_id, &place.root, &script.command, &purpose, &place.env);
+                        }
+                    }
+                }
+                // Forgotten last, so the scripts never read as "stopped" between the install and their start.
+                waiting.lock().unwrap().remove(task_id);
+                // The end of the install was announced before the scripts were started: say it again now.
+                if let Some(tell) = told.get() {
+                    tell(task_id);
+                }
+            })
+            .context("Could not wait for the install to end")?;
         Ok(())
     }
 
     /// Stops one service, or everything when `only` is `None`. Volumes are kept.
-    pub fn stop(&self, task_id: &str, project_name: &str, root: &Path, only: Option<&str>) -> Result<()> {
+    pub fn stop(&self, place: &Place, only: Option<&str>) -> Result<()> {
+        let (task_id, root) = (place.task_id.as_str(), place.root.as_path());
+        {
+            let mut waiting = self.waiting.lock().unwrap();
+            match (only, waiting.get_mut(task_id)) {
+                (Some(name), Some(names)) => names.retain(|waits| waits != name),
+                (None, Some(names)) => names.clear(),
+                _ => {}
+            }
+        }
         for info in self.terminals.list(task_id) {
-            let is_run = info.purpose.strip_prefix("run:").is_some_and(|name| only.is_none_or(|wanted| wanted == name));
-            let is_logs =
-                info.purpose.strip_prefix("logs:").is_some_and(|name| only.is_none_or(|wanted| wanted == name));
-            if is_run || is_logs || (only.is_none() && info.purpose == "docker:up") {
+            let of_service = ["run:", "logs:", "shell:"].iter().any(|kind| {
+                info.purpose.strip_prefix(kind).is_some_and(|name| only.is_none_or(|wanted| wanted == name))
+            });
+            if of_service || (only.is_none() && (info.purpose == UP || info.purpose == INSTALL)) {
                 let _ = self.terminals.stop(info.term_id);
             }
         }
         if !self.task_file(task_id).is_file() {
             return Ok(());
         }
-        let project = compose_project(project_name, task_id);
+        let project = place.compose_project();
         let mut args = self.compose_args(&project, task_id);
         match only {
             Some(name) if scripts(root).iter().any(|script| script.name == name) => return Ok(()),
@@ -442,20 +918,29 @@ impl Runner {
     /// Stops everything of a task and removes its containers, network and volumes.
     /// Used when the task is finished for good.
     pub fn remove(&self, task_id: &str, project_name: &str, root: &Path) {
-        let _ = self.stop(task_id, project_name, root, None);
+        let place = Place::bare(task_id, project_name, root);
+        let _ = self.stop(&place, None);
+        let mut gone = true;
         if self.task_file(task_id).is_file() {
-            let project = compose_project(project_name, task_id);
-            let mut args = self.compose_args(&project, task_id);
+            let mut args = self.compose_args(&place.compose_project(), task_id);
             args.extend(["down".into(), "--volumes".into(), "--remove-orphans".into()]);
             let args: Vec<&str> = args.iter().map(String::as_str).collect();
             let cwd = if root.is_dir() { root } else { self.data_dir.as_path() };
-            let _ = self.docker(&args, cwd);
+            gone = self.docker(&args, cwd).is_ok();
         }
-        let _ = std::fs::remove_dir_all(self.data_dir.join("run").join(task_id));
+        let folder = self.task_folder(task_id);
+        if gone {
+            let _ = std::fs::remove_dir_all(folder);
+        } else {
+            // Docker could not be asked, so the containers and volumes are still there. What it
+            // takes to remove them later stays; the task's own values, which may be secrets, do not.
+            let _ = std::fs::remove_file(folder.join("env.json"));
+        }
     }
 
     /// The terminal that shows a service's output, opening one for a container's log when needed.
-    pub fn logs(&self, task_id: &str, project_name: &str, root: &Path, service: &str) -> Result<u32> {
+    pub fn logs(&self, place: &Place, service: &str) -> Result<u32> {
+        let (task_id, root) = (place.task_id.as_str(), place.root.as_path());
         if let Some(info) = self.terminals.find(task_id, &format!("run:{service}")) {
             return Ok(info.term_id);
         }
@@ -469,14 +954,75 @@ impl Runner {
         if !self.task_file(task_id).is_file() {
             bail!("{service} has not been started in this task yet");
         }
-        let project = compose_project(project_name, task_id);
-        let line = format!(
-            "{} {} logs --follow --tail 200 {}",
-            quote(&self.docker.to_string_lossy()),
-            self.compose_args(&project, task_id).iter().map(|a| quote(a)).collect::<Vec<_>>().join(" "),
-            quote(service)
-        );
+        let line = self.compose_line(place, &format!("logs --follow --tail 200 {}", quote(service)));
         Ok(self.terminals.run(task_id, root, &line, &purpose, &[])?.term_id)
+    }
+
+    /// A terminal inside a service's container: `bash` when the image has it, `sh` otherwise.
+    pub fn shell(&self, place: &Place, service: &str) -> Result<u32> {
+        let (task_id, root) = (place.task_id.as_str(), place.root.as_path());
+        let purpose = format!("shell:{service}");
+        if let Some(info) = self.terminals.find(task_id, &purpose) {
+            return Ok(info.term_id);
+        }
+        if scripts(root).iter().any(|script| script.name == service) {
+            bail!("{service} runs on this machine, not in a container. The Terminal tab is its shell.");
+        }
+        if !self.task_file(task_id).is_file() || !self.is_running(place, service) {
+            bail!("{service} is not running, so there is no container to open a shell in. Start it first.");
+        }
+        let pick = "if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi";
+        let line = self.compose_line(place, &format!("exec {} sh -c {}", quote(service), quote(pick)));
+        Ok(self.terminals.run(task_id, root, &line, &purpose, &[])?.term_id)
+    }
+
+    /// Throws away what a database of the task holds: its container and its
+    /// volumes go, and it is started again if it was running. A new, empty
+    /// volume is filled by the image itself, from the seed when there is one.
+    pub fn reset_database(&self, place: &Place, service: &str) -> Result<()> {
+        let (task_id, root) = (place.task_id.as_str(), place.root.as_path());
+        let file = compose_file(root).ok_or_else(|| anyhow!("This project has no compose file"))?;
+        let (ready, hint) = self.docker_running();
+        if !ready {
+            bail!("{}", hint.unwrap_or_else(|| "Docker is not ready".into()));
+        }
+        let config = self.resolved(place, &file)?;
+        let database = databases(&config, &place.compose_project())
+            .into_iter()
+            .find(|database| database.name == service)
+            .ok_or_else(|| anyhow!("{service} is not a database of this project"))?;
+        if let Some(shared) = database.volumes.iter().find(|volume| !volume.own) {
+            bail!(
+                "{service} keeps its data in the volume {}, which the compose file names itself, so other \
+                 tasks may use it too. It is not reset from here.",
+                shared.name
+            );
+        }
+        let was_running = self.is_running(place, service);
+        for info in self.terminals.list(task_id) {
+            if info.purpose == format!("logs:{service}") || info.purpose == format!("shell:{service}") {
+                let _ = self.terminals.stop(info.term_id);
+            }
+        }
+        // The container goes first: a volume that is in use cannot be removed.
+        if self.task_file(task_id).is_file() {
+            let mut args = self.compose_args(&place.compose_project(), task_id);
+            args.extend(["rm".into(), "--stop".into(), "--force".into(), "--volumes".into(), service.into()]);
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            self.docker(&args, root)?;
+        }
+        for volume in &database.volumes {
+            if let Err(error) = self.docker(&["volume", "rm", &volume.name], root) {
+                // A volume that was never made is already as empty as it gets.
+                if !format!("{error:#}").to_lowercase().contains("no such volume") {
+                    return Err(error.context(format!("The volume {} could not be removed", volume.name)));
+                }
+            }
+        }
+        if was_running {
+            self.start(place, Some(&[service.to_string()]))?;
+        }
+        Ok(())
     }
 }
 
@@ -572,5 +1118,90 @@ mod tests {
             assert_eq!(quote("/Users/me/Application Support/x.json"), "'/Users/me/Application Support/x.json'");
             assert_eq!(quote("it's"), r"'it'\''s'");
         }
+    }
+
+    #[test]
+    fn the_install_is_the_one_that_keeps_to_the_lock_file() {
+        let dir = folder("install");
+        assert_eq!(install_command(&dir), "npm install", "without a lock file there is nothing to keep to");
+        std::fs::write(dir.join("package-lock.json"), "{}").unwrap();
+        assert_eq!(install_command(&dir), "npm ci");
+        std::fs::write(dir.join("bun.lock"), "").unwrap();
+        assert_eq!(install_command(&dir), "bun install --frozen-lockfile");
+        std::fs::write(dir.join("yarn.lock"), "").unwrap();
+        assert_eq!(install_command(&dir), "yarn install --frozen-lockfile");
+        std::fs::write(dir.join(".yarnrc.yml"), "").unwrap();
+        assert_eq!(install_command(&dir), "yarn install --immutable");
+        std::fs::write(dir.join("pnpm-lock.yaml"), "").unwrap();
+        assert_eq!(install_command(&dir), "pnpm install --frozen-lockfile");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_package_file_that_names_nothing_wants_no_install() {
+        assert!(!wants_packages(&json!({ "name": "shop", "scripts": { "dev": "vite" }, "dependencies": {} })));
+        assert!(wants_packages(&json!({ "devDependencies": { "vite": "^8" } })));
+        assert!(wants_packages(&json!({ "workspaces": ["packages/*"] })), "the packages of a workspace name theirs");
+    }
+
+    #[test]
+    fn packages_are_installed_as_of_the_newest_mark_in_node_modules() {
+        let dir = folder("marks");
+        assert_eq!(installed_at(&dir), None);
+        std::fs::create_dir_all(dir.join("node_modules")).unwrap();
+        let made = installed_at(&dir).expect("the folder itself is a mark");
+        let later = made + Duration::from_secs(90);
+        let mark = std::fs::File::create(dir.join("node_modules/.modules.yaml")).unwrap();
+        mark.set_modified(later).unwrap();
+        assert_eq!(installed_at(&dir), Some(later));
+
+        // Yarn may keep the packages outside the project and leave only a map of them.
+        std::fs::remove_dir_all(dir.join("node_modules")).unwrap();
+        assert_eq!(installed_at(&dir), None);
+        std::fs::File::create(dir.join(".pnp.cjs")).unwrap().set_modified(later).unwrap();
+        assert_eq!(installed_at(&dir), Some(later));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_database_is_known_by_its_image_and_its_volume_by_the_tasks_project() {
+        assert_eq!(image_name("ghcr.io/acme/postgres:16"), "postgres");
+        assert_eq!(image_name("localhost:5000/mysql@sha256:abc"), "mysql");
+        assert!(is_database("postgres") && is_database("docker.io/library/mariadb:11"));
+        assert!(!is_database("mongo-express:1") && !is_database("redis:7") && !is_database("postgres-exporter"));
+
+        let config = json!({
+            "services": {
+                "db": { "image": "postgres:16", "volumes": [
+                    { "type": "volume", "source": "dbdata", "target": "/var/lib/postgresql/data" },
+                    { "type": "bind", "source": "/shop/seed", "target": "/docker-entrypoint-initdb.d" }
+                ] },
+                "legacy": { "image": "mysql:8", "volumes": [{ "type": "volume", "source": "kept", "target": "/var/lib/mysql" }] },
+                "bare": { "image": "mongo:8", "volumes": [{ "type": "volume", "target": "/data/db" }] },
+                "cache": { "image": "redis:7" },
+                "web": { "build": { "context": "." } }
+            },
+            "volumes": { "dbdata": { "name": "ae-shop-1234_dbdata" }, "kept": { "name": "shop-data" } }
+        });
+        assert_eq!(
+            databases(&config, "ae-shop-1234"),
+            vec![
+                // No named volume: the data lives in the container.
+                Database { name: "bare".into(), image: "mongo:8".into(), volumes: vec![], seed: false },
+                Database {
+                    name: "db".into(),
+                    image: "postgres:16".into(),
+                    volumes: vec![DbVolume { name: "ae-shop-1234_dbdata".into(), own: true }],
+                    seed: true
+                },
+                // A name the compose file fixes is the same volume in every task.
+                Database {
+                    name: "legacy".into(),
+                    image: "mysql:8".into(),
+                    volumes: vec![DbVolume { name: "shop-data".into(), own: false }],
+                    seed: false
+                },
+            ]
+        );
     }
 }

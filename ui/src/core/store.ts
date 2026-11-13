@@ -1344,6 +1344,10 @@ export type RunService = {
   address: string | null;
   note: string | null;
   termId: number | null;
+  /** False for a database or a cache: its address is not a page to open. */
+  web: boolean;
+  /** Whether the chosen profile starts it. */
+  inProfile: boolean;
 };
 
 export type RunState = {
@@ -1353,6 +1357,13 @@ export type RunState = {
   dockerReady: boolean;
   dockerHint: string | null;
   problem: string | null;
+  /** The project's launch profiles, "Full stack" first. */
+  profiles: RunProfile[];
+  /** The profile "Start all" starts. */
+  profile: string;
+  /** Null for a project without a package.json. */
+  dependencies: RunDependencies | null;
+  databases: RunDatabase[];
 };
 
 export function runState(taskId: string) {
@@ -1493,4 +1504,112 @@ export async function reloadAgents() {
 export function defaultAgentId(): string {
   const installed = state.agents.filter((agent) => agent.available);
   return (installed.find((agent) => agent.isDefault) ?? installed[0])?.id ?? '';
+}
+
+// ----- the Run tab: profiles, the task's environment, packages, databases, what is used -----
+
+/** Commands and services that start together. "Full stack" is built in: everything the project's files name. */
+export type RunProfile = { name: string; services: string[]; builtIn: boolean };
+
+export type RunDependencies = {
+  /** What installs the packages, such as `npm ci`. */
+  command: string;
+  lockFile: string | null;
+  /** "none" when package.json names no packages. */
+  state: 'none' | 'missing' | 'stale' | 'installing' | 'failed' | 'installed';
+  installedAt: number | null;
+  note: string | null;
+  termId: number | null;
+};
+
+/** A database among the Docker services. `own` is false for a volume the compose file names itself. */
+export type RunDatabase = { name: string; image: string; volumes: { name: string; own: boolean }[]; seed: boolean };
+
+/** One value of a task's environment. A secret's `value` is masked by the core; the whole value never gets here. */
+export type EnvValue = {
+  name: string;
+  value: string;
+  secret: boolean;
+  /** Set for this task only. */
+  own: boolean;
+  /** What the project's own file says, and which file. Null for a name only this task has. */
+  project: { value: string; from: string } | null;
+};
+
+export type TaskEnv = { files: string[]; values: EnvValue[]; own: number };
+
+/** Something another task has running. */
+export type RunOther = {
+  taskId: string;
+  title: string;
+  /** Its agent is at work or waits for an answer. */
+  inUse: boolean;
+  idleSince: number | null;
+  /** In bytes; null where neither Docker nor the system gave a number. */
+  memory: number | null;
+  running: string[];
+};
+
+export type RunResources = {
+  /** Memory by service of this task, in bytes. */
+  memory: Record<string, number>;
+  others: RunOther[];
+  othersMemory: number | null;
+  /** Finished tasks whose containers and volumes are still there. */
+  leftovers: number;
+  /** Only in an answer that was asked for it. Null when Docker could not say. */
+  disk?: { images: number | null; volumes: number; tasks: number } | null;
+  /** The size of each volume of this task, in bytes. Comes with `disk`. */
+  volumes?: Record<string, number>;
+};
+
+/** Stops and starts again one service, or the chosen profile. */
+export function runRestart(taskId: string, service?: string) {
+  return core.request<RunState>('run.restart', { taskId, service });
+}
+
+/** Opens a terminal inside a service's container. */
+export function runShell(taskId: string, service: string) {
+  return core.request<{ termId: number }>('run.shell', { taskId, service });
+}
+
+export function runPickProfile(taskId: string, name: string) {
+  return core.request<RunState>('run.profile', { taskId, name });
+}
+
+/** Keeps a profile for the project; `was` names the one it replaces. */
+export function runSaveProfile(taskId: string, name: string, services: string[], was?: string) {
+  return core.request<RunState>('run.saveProfile', { taskId, name, services, was });
+}
+
+export function runRemoveProfile(taskId: string, name: string) {
+  return core.request<RunState>('run.removeProfile', { taskId, name });
+}
+
+export function envGet(taskId: string) {
+  return core.request<TaskEnv>('env.get', { taskId });
+}
+
+/** Sets a value for this task only; `null` takes the task's own value away. */
+export function envSet(taskId: string, name: string, value: string | null) {
+  return core.request<TaskEnv>('env.set', { taskId, name, value });
+}
+
+export function depsInstall(taskId: string) {
+  return core.request<RunState>('deps.install', { taskId });
+}
+
+/** Throws away what a database of the task holds and starts it again if it was running. */
+export function dbReset(taskId: string, service: string) {
+  return core.request<RunState>('db.reset', { taskId, service });
+}
+
+/** What running things use. Docker is asked about its disk only with `disk`: that question is slow. */
+export function resourcesGet(taskId: string, disk: boolean) {
+  return core.request<RunResources>('resources.get', { taskId, disk });
+}
+
+/** Stops what idle tasks run and removes what finished tasks left in Docker. */
+export function resourcesCleanUp(taskId: string) {
+  return core.request<{ stopped: number; removed: number }>('resources.cleanUp', { taskId });
 }

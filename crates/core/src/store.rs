@@ -551,6 +551,19 @@ impl Store {
 }
 
 impl Store {
+    /// When the last event of a task was stored, in milliseconds, if it has any.
+    pub fn last_event_at(&self, task_id: &str) -> Result<Option<u64>> {
+        let conn = self.conn.lock().unwrap();
+        let at: Option<i64> = conn
+            .query_row("SELECT at FROM events WHERE task_id = ?1 ORDER BY seq DESC LIMIT 1", [task_id], |row| {
+                row.get(0)
+            })
+            .optional()?;
+        Ok(at.map(|at| at as u64))
+    }
+}
+
+impl Store {
     // ----- who wrote which line -----
 
     pub fn marks(&self, task_id: &str, path: &str) -> Result<Option<MarksRow>> {

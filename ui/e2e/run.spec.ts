@@ -26,6 +26,11 @@ async function expectInLog(app: App, expected: string) {
   await expect(log).toContainText(expected);
 }
 
+/** How many services are up, as the label of the Run tab says it: "1 of 2". */
+async function expectUp(app: App, count: string) {
+  await expect(app.bottom.getByRole('button', { name: /^Run / })).toHaveText(`Run ${count}`);
+}
+
 /** The line of the `docker` stand-in's log for one compose project. */
 const composeCalls = (app: App, composeProject: string) =>
   app.core.calls('docker').filter((call) => call.includes(`-p ${composeProject} `));
@@ -41,7 +46,8 @@ test.describe('Running the project of a task', () => {
     await openRun(app);
 
     // What can run: the dev script and the service of the compose file.
-    await expect(app.bottom).toContainText('0 of 2 up. Read from compose.yaml and package.json.');
+    await expectUp(app, '0 of 2');
+    await expect(app.bottom).toContainText('Read from compose.yaml and package.json.');
     const dev = app.service('dev');
     const db = app.service('db');
     await expect(dev).toContainText('npm run dev');
@@ -53,7 +59,7 @@ test.describe('Running the project of a task', () => {
     await dev.getByRole('button', { name: 'Start' }).click();
     const address = dev.getByRole('link', { name: 'localhost:4567' });
     await expect(address).toHaveAttribute('href', 'http://localhost:4567');
-    await expect(app.bottom).toContainText('1 of 2 up.');
+    await expectUp(app, '1 of 2');
     await expect(db).toContainText('stopped');
 
     // Its output can be read under the table.
@@ -69,7 +75,7 @@ test.describe('Running the project of a task', () => {
     await expect(dev).toContainText('stopped');
     await expect(dev).not.toContainText('did not start');
     await expect(dev.getByRole('button', { name: 'Start' })).toBeVisible();
-    await expect(app.bottom).toContainText('0 of 2 up.');
+    await expectUp(app, '0 of 2');
   });
 
   test('O-04 a command that ends by itself with an error "did not start", and can be handed to the agent', async ({
@@ -83,6 +89,13 @@ test.describe('Running the project of a task', () => {
     const dev = app.service('dev');
     await dev.getByRole('button', { name: 'Start' }).click();
     await expect(dev).toContainText('It stopped with code 7. The log says why.');
+    // A failed row stands out as the design has it: tinted, with the way to the agent as the one loud button.
+    await expect(dev).toHaveCSS('background-color', 'rgba(255, 122, 122, 0.08)');
+    await expect(dev.getByRole('img', { name: 'Failed' })).toHaveCSS('background-color', 'rgb(255, 138, 138)');
+    await expect(dev.getByRole('button', { name: 'Send to Practice agent' })).toHaveCSS(
+      'background-color',
+      'rgb(245, 181, 68)',
+    );
 
     await dev.getByRole('button', { name: 'Send to Practice agent' }).click();
     await expect(app.conversation.locator('.quote')).toContainText('service dev line 1');
@@ -99,15 +112,17 @@ test.describe('Running the project of a task', () => {
     await openRun(app);
     const composeProject = `ae-${shop.name}-${taskId.slice(0, 4)}`;
     await expect(app.bottom).toContainText(
-      `Docker services run as the compose project ${composeProject}, which belongs to this task alone.`,
+      `Each task gets its own ports and its own compose project, here ${composeProject}, so two tasks never fight over a port, a container name or a volume.`,
     );
 
     await app.bottom.getByRole('button', { name: 'Start all' }).click();
     const db = app.service('db');
     const dev = app.service('dev');
-    await expect(db.getByRole('link', { name: /^localhost:\d+$/ })).toBeVisible();
+    // A database's address is said, not linked: it is not a page to open.
+    await expect(db.getByText(/^localhost:\d+$/)).toBeVisible();
+    await expect(db.getByRole('link')).toHaveCount(0);
     await expect(dev.getByRole('link', { name: 'localhost:4567' })).toBeVisible();
-    await expect(app.bottom).toContainText('2 of 2 up.');
+    await expectUp(app, '2 of 2');
     // The stand-in for Docker was what got called, with the task's own project name and compose file.
     const taskFile = path.join(app.core.dataDir, 'run', taskId, 'compose.json');
     expect(composeCalls(app, composeProject)).toContain(
@@ -119,7 +134,7 @@ test.describe('Running the project of a task', () => {
     await expectInLog(app, 'database system is ready to accept connections');
 
     await app.bottom.getByRole('button', { name: 'Stop all' }).click();
-    await expect(app.bottom).toContainText('0 of 2 up.');
+    await expectUp(app, '0 of 2');
     await expect(db).toContainText('stopped');
     await expect(dev).toContainText('stopped');
     await expect(app.bottom.getByRole('button', { name: 'Stop all' })).toBeDisabled();
@@ -136,7 +151,7 @@ test.describe('Running the project of a task', () => {
       const db = app.service('db');
       await db.getByRole('button', { name: 'Start' }).click();
 
-      const address = db.getByRole('link', { name: /^localhost:\d+$/ });
+      const address = db.getByText(/^localhost:\d+$/);
       await expect(address).toBeVisible();
       const given = Number((await address.textContent())!.split(':')[1]);
       expect(given).toBeGreaterThan(held.port);
@@ -166,7 +181,7 @@ test.describe('Running the project of a task', () => {
     await expect(worker).toContainText('built from a Dockerfile');
 
     await app.bottom.getByRole('button', { name: 'Start all' }).click();
-    await expect(app.service('db').getByRole('link', { name: /^localhost:\d+$/ })).toBeVisible();
+    await expect(app.service('db').getByText(/^localhost:\d+$/)).toBeVisible();
     await expect(worker).toContainText('It stopped with code 3. The log says why.');
     await worker.getByRole('button', { name: 'Send to Practice agent' }).click();
     await expect(app.conversation.locator('.quote')).toContainText('service worker line 1');

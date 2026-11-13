@@ -50,6 +50,8 @@ export function TerminalView(props: {
   attach?: number;
   shell?: number | null;
   onShell?: (info: TermInfo) => void;
+  /** For a program the user types into, such as a shell in a container: it is told the size of this view. */
+  follow?: boolean;
 }): JSX.Element {
   let host: HTMLDivElement | undefined;
   let term: Xterm | undefined;
@@ -62,6 +64,8 @@ export function TerminalView(props: {
   const [problem, setProblem] = createSignal<string | null>(null);
 
   const size = () => ({ cols: term?.cols ?? 80, rows: term?.rows ?? 24 });
+  /** Whether the program is told the size of this view. A log is not: it keeps the size it was started with. */
+  const follows = () => props.attach === undefined || props.follow === true;
 
   /** Joins the terminal this view is for, or starts a new shell when it is for none yet. */
   const connect = async () => {
@@ -77,7 +81,7 @@ export function TerminalView(props: {
         termId = existing.termId;
         await core.request('terminal.attach', { termId });
         // A program's log keeps the size it was started with; only a shell follows this view.
-        if (props.attach === undefined) await core.request('terminal.resize', { termId, ...size() });
+        if (follows()) await core.request('terminal.resize', { termId, ...size() });
       } else if (wanted !== null) {
         // The terminal is gone: its program ended while nobody was looking.
         startAnew = true;
@@ -105,7 +109,7 @@ export function TerminalView(props: {
     const before = size();
     fit.fit();
     const after = size();
-    if (termId !== null && props.attach === undefined && (before.cols !== after.cols || before.rows !== after.rows)) {
+    if (termId !== null && follows() && (before.cols !== after.cols || before.rows !== after.rows)) {
       void core.request('terminal.resize', { termId, ...after }).catch(() => {});
     }
   };

@@ -87,7 +87,10 @@ struct Term {
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
-    kept: Mutex<Kept>,
+    /// Shared with what is remembered of an ended program, so its last words can still be read.
+    kept: Arc<Mutex<Kept>>,
+    /// The program's process, for asking the system what it uses.
+    pid: Option<u32>,
     /// The address the program said it serves on, once it has said so.
     address: Mutex<Option<String>>,
     /// Set when the user stopped it on purpose: then how it ended is not worth remembering.
@@ -103,12 +106,18 @@ struct Kept {
     plain: String,
 }
 
+/// How a program ended and what it printed up to then.
+struct Ended {
+    code: u32,
+    kept: Arc<Mutex<Kept>>,
+}
+
 /// Owns every open terminal.
 pub struct Terminals {
     next_id: AtomicU32,
     terms: Mutex<HashMap<u32, Arc<Term>>>,
-    /// How the last program of each (task, purpose) ended.
-    ended: Mutex<HashMap<(String, String), u32>>,
+    /// The last program of each (task, purpose) that ended by itself.
+    ended: Mutex<HashMap<(String, String), Ended>>,
     /// Variables of the core's own environment that programs started here must not inherit.
     scrub: Vec<String>,
     /// Held while a new shell gets its number, so two windows that open a
@@ -371,7 +380,8 @@ impl Terminals {
             writer: Mutex::new(writer),
             master: Mutex::new(pair.master),
             killer: Mutex::new(child.clone_killer()),
-            kept: Mutex::new(Kept::default()),
+            kept: Arc::new(Mutex::new(Kept::default())),
+            pid: child.process_id(),
             address: Mutex::new(None),
             stopped_on_purpose: std::sync::atomic::AtomicBool::new(false),
         });
@@ -427,11 +437,14 @@ impl Terminals {
             .name(format!("term-{term_id}-wait"))
             .spawn(move || {
                 let code = child.wait().map(|status| status.exit_code()).unwrap_or(1);
-                manager.terms.lock().unwrap().remove(&term_id);
+                // How it ended is known before the terminal is gone: whoever waits for
+                // "gone" can then ask "how" without a gap in between.
                 let closed = watched.stopped_on_purpose.load(Ordering::SeqCst);
                 if !closed {
-                    manager.ended.lock().unwrap().insert((task.clone(), why.clone()), code);
+                    let ended = Ended { code, kept: watched.kept.clone() };
+                    manager.ended.lock().unwrap().insert((task.clone(), why.clone()), ended);
                 }
+                manager.terms.lock().unwrap().remove(&term_id);
                 let _ = manager.events.send(TermEvent::Exit { term_id, task_id: task, purpose: why, code, closed });
             })
             .context("Could not watch the program")?;
@@ -539,7 +552,21 @@ impl Terminals {
 
     /// How the last program of a task with this purpose ended, if it has ended.
     pub fn last_exit(&self, task_id: &str, purpose: &str) -> Option<u32> {
-        self.ended.lock().unwrap().get(&(task_id.to_string(), purpose.to_string())).copied()
+        self.ended.lock().unwrap().get(&(task_id.to_string(), purpose.to_string())).map(|ended| ended.code)
+    }
+
+    /// What the last program of a task with this purpose printed before it ended
+    /// by itself, without colour codes: the tail that was kept.
+    pub fn last_output(&self, task_id: &str, purpose: &str) -> Option<String> {
+        let key = (task_id.to_string(), purpose.to_string());
+        let kept = self.ended.lock().unwrap().get(&key).map(|ended| ended.kept.clone())?;
+        let bytes: Vec<u8> = kept.lock().unwrap().bytes.iter().copied().collect();
+        Some(strip_codes(&String::from_utf8_lossy(&bytes)))
+    }
+
+    /// The process a terminal's program runs as.
+    pub fn pid(&self, term_id: u32) -> Option<u32> {
+        self.get(term_id).ok()?.pid
     }
 
     /// The output kept so far, for an interface that connects later, and how
@@ -559,8 +586,11 @@ impl Terminals {
     /// Ends every terminal of a task.
     pub fn close_task(&self, task_id: &str) {
         for info in self.infos(task_id, false) {
-            let _ = self.close(info.term_id);
+            // Ended on purpose: how they end is not worth remembering.
+            let _ = self.stop(info.term_id);
         }
+        // What its earlier programs printed is of no use to anyone now.
+        self.ended.lock().unwrap().retain(|(task, _), _| task != task_id);
     }
 
     /// Ends every terminal. Called when the core shuts down.
