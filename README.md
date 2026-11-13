@@ -219,6 +219,19 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   open in the system's browser, a window that remembers its size and place, a
   menu, one running copy at a time. Not signed, no auto-update.
 
+The first time the editor is opened it greets the user with a setup in four
+steps, and after each it says what the user has now. Agents: the ones the
+editor comes with, command-line agents found on this computer (added as agents
+in a terminal with one press), agents with an API key, and Claude's agent
+pointed at a local or self-hosted model. The editor calls no model itself, so
+a key or a local model is always given to an agent, in its environment.
+Services: GitHub, GitLab, Linear and Docker, with what is connected and how to
+connect the rest. A project: a folder, and what the editor found in it. Then a
+summary, a switch for notifications and a first task with the practice agent.
+Every step can be skipped; Escape puts the setup aside, and Settings opens it
+again. The ready-made agents with a key and for a local model were not tried
+against the real services.
+
 An agent that does not speak ACP runs in a terminal instead. Add it in
 Settings as an agent of your own and tick "It runs in a terminal". A task then
 shows that terminal in place of the conversation; what you send is typed into
