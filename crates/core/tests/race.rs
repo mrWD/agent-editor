@@ -6,7 +6,7 @@
 
 mod common;
 
-use ae_core::agents::{AgentDef, Registry};
+use ae_core::agents::{AgentDef, Registry, Speaks};
 use ae_core::server::{AppState, dispatch};
 use ae_core::tasks::{Manager, TaskState};
 use common::*;
@@ -21,8 +21,9 @@ const ASK: &str = "What does the limiter do?";
 /// A request for an edit: the practice agent asks before it changes the demo file.
 const EDIT: &str = "Fix the login limit";
 
-/// A core with three practice agents that can race ("red", "green", "blue"), one
-/// whose program ends at once ("broken") and one that is not installed ("missing").
+/// A core with practice agents that can race ("red", "green", "blue" and two more), one that is a
+/// program in a terminal ("term"), one whose program ends at once ("broken") and one that is not
+/// installed ("missing").
 struct Track {
     sandbox: Sandbox,
     repo: PathBuf,
@@ -61,16 +62,23 @@ impl Track {
         let mut missing = practice("missing", "Missing agent");
         missing.available = false;
         missing.note = Some("Install it first".into());
+        // The practice agent as a program in a terminal, which the editor types into.
+        let mut term = practice("term", "Terminal agent");
+        term.args.insert(0, "--terminal".into());
+        term.speaks = Speaks::Terminal;
         let registry = Registry::with(vec![
             practice("red", "Red agent"),
             practice("green", "Green agent"),
             practice("blue", "Blue agent"),
             practice("grey", "Grey agent"),
             practice("pink", "Pink agent"),
+            term,
             broken,
             missing,
         ]);
         let manager = Manager::with_hosts(registry, sandbox.store(), sandbox.data(), no_services());
+        // A program in a terminal is taken to be done after a short quiet.
+        manager.set_terminal_quiet(Duration::from_millis(300));
         let project_id = manager.add_project(&repo.to_string_lossy(), Some("Shop".into())).unwrap().id;
         Self { state: AppState::new(manager.clone()), sandbox, repo, manager, project_id, marker }
     }
@@ -627,6 +635,39 @@ async fn an_entrant_archived_or_cleaned_up_by_hand_does_not_break_the_race() {
     assert!(!Path::new(&archived.cwd).exists(), "the copy of the entrant archived by hand is removed too");
     assert_eq!((track.copies().len(), track.branches().len()), (1, 1), "only the picked one is left");
     assert_eq!(track.manager.list().unwrap().len(), 1);
+    track.until_running(1).await;
+    track.manager.stop_all().await;
+}
+
+#[tokio::test]
+async fn a_program_in_a_terminal_races_like_any_agent_and_goes_with_its_copy_when_it_loses() {
+    let track = Track::new("terminal");
+    let started = track.start(&["red", "term"], ASK).await;
+    let race_id = started["race"]["id"].as_str().unwrap().to_string();
+    let tasks = ids(&started["race"]["tasks"]);
+    assert_eq!((tasks.len(), started["failed"].clone()), (2, json!([])));
+    for id in &tasks {
+        track.until_state(id, TaskState::Idle).await;
+    }
+
+    // The program is in a terminal of its own task, in its own copy, and was typed the same text.
+    let terminal = track.state.terminals.find(&tasks[1], ae_core::terminals::AGENT).expect("it has a terminal");
+    let (kept, _) = track.state.terminals.scrollback(terminal.term_id).unwrap();
+    let shown = ae_core::terminals::strip_codes(&String::from_utf8_lossy(&kept));
+    assert!(shown.contains(&format!("You said: {ASK}")), "{shown}");
+    assert!(track.state.terminals.find(&tasks[0], ae_core::terminals::AGENT).is_none());
+    let copies: Vec<String> = tasks.iter().map(|id| track.manager.task(id).unwrap().row.cwd).collect();
+    assert_ne!(copies[0], copies[1]);
+    let race = track.get(&race_id).await;
+    assert_eq!(race["over"], true, "a turn that ended by its quiet is an end like any other");
+    assert_eq!((track.copies().len(), track.agents_running()), (2, 2));
+
+    // The other result is picked: the program is stopped, its terminal closed, its copy and branch removed.
+    track.ask("race.pick", json!({ "raceId": race_id, "taskId": tasks[0] })).await.unwrap();
+    assert!(track.manager.task(&tasks[1]).is_err(), "the loser is off the lists");
+    assert!(track.state.terminals.find(&tasks[1], ae_core::terminals::AGENT).is_none());
+    assert!(!Path::new(&copies[1]).exists(), "its working copy is removed");
+    assert_eq!((track.copies().len(), track.branches().len()), (1, 1));
     track.until_running(1).await;
     track.manager.stop_all().await;
 }

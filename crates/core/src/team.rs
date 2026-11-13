@@ -114,10 +114,17 @@ impl Manager {
         if matches!(self.state_of(task_id), TaskState::Running | TaskState::WaitingPermission) {
             bail!("The agent is working. Wait for its turn to end, then start the team.");
         }
-        for id in [Some(plan), Some(build), review].into_iter().flatten() {
+        for (role, id) in [("plan", Some(plan)), ("build", Some(build)), ("review", review)] {
+            let Some(id) = id else { continue };
             match self.registry().get(id) {
                 None => bail!("No such agent: {id}"),
                 Some(agent) if !agent.available => bail!("{} is not available on this computer", agent.name),
+                // What a planner and a reviewer answer goes on to the next agent, and what a program
+                // writes in its terminal is not the editor's to read. Its work on the files is: it can build.
+                Some(agent) if agent.speaks == crate::agents::Speaks::Terminal && role != "build" => bail!(
+                    "{} runs in a terminal, where the editor cannot read its answer, so it cannot {role} for a team. It can build: pick another agent to {role}.",
+                    agent.name
+                ),
                 Some(_) => {}
             }
         }
@@ -354,7 +361,11 @@ impl Manager {
         run: u64,
     ) -> Result<(&'static str, Option<String>)> {
         let step = &team.steps[index];
-        let note_of = |role: &str| team.steps.iter().find(|one| one.role == role).and_then(|one| one.note.clone());
+        // A step that left no words left no note: a program in a terminal builds without saying anything here.
+        let note_of = |role: &str| {
+            let note = team.steps.iter().find(|one| one.role == role).and_then(|one| one.note.clone());
+            note.filter(|note| !note.trim().is_empty())
+        };
         let name_of = |role: &str| {
             let id = team.steps.iter().find(|one| one.role == role).and_then(|one| one.agent_id.clone());
             id.map(|id| self.agent_name(&id)).unwrap_or_else(|| "nobody".into())

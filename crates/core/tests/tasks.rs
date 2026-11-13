@@ -160,11 +160,24 @@ async fn history_is_put_right_after_the_core_stopped_without_warning() {
     assert!(state_is(last, "asleep"), "{last}");
     assert!(history.iter().any(|e| is(e, "permission_resolved") && e["optionId"].is_null()));
     assert_eq!(second.list().unwrap()[0].state, TaskState::Asleep);
+    // The task says why it sleeps, right before it does: found asleep later, it would otherwise say nothing.
+    let why = &history[history.len() - 2];
+    assert!(is(why, "tracker"), "{why}");
+    assert_eq!(
+        why["text"],
+        "The editor stopped without warning while this task’s agent was running. Nothing said so far is lost: your next message starts the agent again."
+    );
 
-    // Recovering again changes nothing.
+    // Recovering again changes nothing: the reason is said once.
     second.recover().unwrap();
     assert_eq!(second.history(&id).unwrap().len(), history.len());
     first.stop_all().await;
+
+    // A core that was closed properly said its own goodbye; the next start adds no second reason to it.
+    let third = sandbox.manager();
+    let before = third.history(&id).unwrap().len();
+    third.recover().unwrap();
+    assert_eq!(third.history(&id).unwrap().len(), before);
 }
 
 #[tokio::test]

@@ -300,3 +300,48 @@ async fn a_message_typed_at_a_programs_own_question_answers_the_question_and_the
     assert!(message.contains("ended by itself with code 1"), "{message}");
     assert!(message.contains("Not trusted. Bye."), "{message}");
 }
+
+#[tokio::test]
+async fn a_task_is_handed_to_a_program_in_a_terminal_and_back_and_each_is_told_what_was_said() {
+    let sandbox = Sandbox::new("terminal-agent-handed");
+    let state = core(&sandbox);
+    let manager = &state.manager;
+    let mut events = manager.subscribe();
+    let project = manager.add_project(sandbox.project().to_str().unwrap(), None).unwrap();
+
+    // It begins with an agent that speaks the protocol.
+    let task = manager.create(&project.id, "mock", "What does the limiter do?").await.unwrap();
+    let id = task.row.id.clone();
+    until(&mut events, &id, |event| state_is(event, "idle")).await;
+    assert!(state.terminals.find(&id, AGENT).is_none());
+
+    // Handed to a program in a terminal: it starts with the next message and is told what was said so far.
+    let handed = manager.switch_agent(&id, "mock-terminal").await.unwrap();
+    assert_eq!(handed.row.agent_id, "mock-terminal");
+    manager.prompt(&id, "And who calls it?".into()).await.unwrap();
+    let seen = until(&mut events, &id, |event| state_is(event, "idle")).await;
+    assert!(seen.iter().any(|event| is(event, "agent_started") && event["terminal"] == true), "{seen:#?}");
+    let shown = screen(&state, &id);
+    assert!(shown.contains("This task continues an earlier conversation"), "{shown}");
+    assert!(shown.contains("And who calls it?"), "{shown}");
+    // The conversation shows only what the user typed.
+    let said = seen.iter().find(|event| is(event, "user_message")).unwrap();
+    assert_eq!(said["text"], "And who calls it?");
+
+    // Handed back: the program and its terminal go, and the agent that speaks the protocol is told the rest.
+    manager.switch_agent(&id, "mock").await.unwrap();
+    assert!(state.terminals.find(&id, AGENT).is_none(), "the program's terminal went with it");
+    manager.prompt(&id, "Thanks".into()).await.unwrap();
+    let seen = until(&mut events, &id, |event| state_is(event, "idle")).await;
+    let started = seen.iter().find(|event| is(event, "agent_started")).expect("an agent started");
+    assert_ne!(started["terminal"], true);
+    let thought = seen
+        .iter()
+        .find(|event| event["update"]["sessionUpdate"] == "agent_thought_chunk")
+        .and_then(|event| event["update"]["content"]["text"].as_str())
+        .unwrap_or_default()
+        .to_string();
+    assert!(thought.contains("continues an earlier conversation"), "{thought}");
+    assert!(thought.contains("User: And who calls it?"), "{thought}");
+    manager.stop_all().await;
+}
