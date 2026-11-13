@@ -219,6 +219,12 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   open in the system's browser, a window that remembers its size and place, a
   menu, one running copy at a time. Not signed, no auto-update.
 
+The editor is dark, as it was designed, and has a light theme: Settings, "The
+editor", Theme: Dark, Light, or "As the computer", which follows the system and
+changes with it. The code, the terminal and the marks of files change with
+everything else. The choice is kept in the browser, so the app and each
+browser have their own.
+
 The first time the editor is opened it greets the user with a setup in four
 steps, and after each it says what the user has now. Agents: the ones the
 editor comes with, command-line agents found on this computer (added as agents
