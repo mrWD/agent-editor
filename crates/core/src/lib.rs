@@ -20,6 +20,7 @@ pub mod integrations;
 pub mod lsp;
 pub mod map;
 pub mod marks;
+pub mod mcp;
 pub mod overlaps;
 pub mod plan;
 pub mod review;

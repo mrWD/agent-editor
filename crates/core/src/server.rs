@@ -118,6 +118,9 @@ impl AppState {
             own.push("PORT".into());
         }
         manager.checks.set_scrub(own.clone());
+        if let Some(port) = port {
+            manager.set_mcp_base(format!("http://127.0.0.1:{port}"));
+        }
         let terminals = Arc::new(Terminals::without(own));
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
         let lsp = Arc::new(Lsp::new(manager.clone()));
@@ -175,7 +178,11 @@ type Attached = HashMap<u32, u64>;
 /// Builds the HTTP routes. `ui_dir`, when given, is served as the interface.
 pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
     state.watch_requests();
-    let api = Router::new().route("/api/health", get(health)).route("/ws", get(upgrade)).with_state(state);
+    let api = Router::new()
+        .route("/api/health", get(health))
+        .route("/ws", get(upgrade))
+        .route("/mcp/{key}", axum::routing::post(mcp))
+        .with_state(state);
     match ui_dir {
         Some(dir) => {
             // Unknown paths fall back to index.html so links inside the interface survive a reload.
@@ -220,6 +227,24 @@ pub async fn serve_until(
     lsp.stop_all().await;
     manager.stop_all().await;
     Ok(())
+}
+
+/// The editor's own tools, as agents call them. The key in the address says which task's agent is asking.
+async fn mcp(
+    State(state): State<AppState>,
+    axum::extract::Path(key): axum::extract::Path<String>,
+    Json(message): Json<Value>,
+) -> axum::response::Response {
+    let Some(task_id) = state.manager.mcp_task(&key) else {
+        return (axum::http::StatusCode::NOT_FOUND, "No such key").into_response();
+    };
+    let manager = state.manager.clone();
+    let answer = tokio::task::spawn_blocking(move || manager.mcp_answer(&task_id, &message)).await.ok().flatten();
+    match answer {
+        Some(answer) => Json(answer).into_response(),
+        // A message that wants no answer is only taken note of.
+        None => axum::http::StatusCode::ACCEPTED.into_response(),
+    }
 }
 
 async fn health() -> Json<Value> {

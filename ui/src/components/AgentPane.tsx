@@ -310,7 +310,8 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         {(note) => (
           <div class="team-note">
             <span class="fine">
-              Note · {note().from} to {note().to}
+              Note · {note().from}
+              {note().to ? ` to ${note().to}` : ', for whoever works on this next'}
             </span>
             <Markdown text={note().text} onFile={showFile} />
           </div>

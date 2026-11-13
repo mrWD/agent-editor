@@ -12,6 +12,8 @@
 //! - if the prompt asks for "markdown": an answer with a heading, a list, code and a link;
 //! - if the prompt asks for a "commit message": a subject line, an empty line and a reason;
 //! - if the prompt asks to end with a "VERDICT:" line: a short review and that line, and nothing is edited;
+//! - if the prompt says "leave a note", "read the notes", "list the tasks" or "report a problem": the
+//!   editor's own tool of that name is called and its answer said back;
 //! - if the prompt asks for a flow (it holds a ```flow block as the pattern to follow): a fixed
 //!   flow in that format, and nothing is edited;
 //! - a prompt that starts with "Explain" is a question, even when it has the word "changed" in it;
@@ -75,12 +77,16 @@ struct Session {
     used: u64,
     /// What the session has "cost" so far.
     cost: f64,
+    /// Where the editor's own tools are, when the editor named them at the start of the session.
+    tools: Option<String>,
 }
 
 impl Session {
     fn in_folder(params: &Value) -> Self {
         let folder = params.get("cwd").and_then(Value::as_str).map(PathBuf::from).unwrap_or_default();
-        Self { folder, mode: "ask".into(), model: "practice".into(), used: 0, cost: 0.0 }
+        // The editor names its own tool server first.
+        let tools = params.pointer("/mcpServers/0/url").and_then(Value::as_str).map(str::to_string);
+        Self { folder, mode: "ask".into(), model: "practice".into(), used: 0, cost: 0.0, tools }
     }
 
     /// The settings as the protocol describes them.
@@ -240,6 +246,8 @@ fn handle(agent: &Arc<Agent>, message: Value) {
                 "protocolVersion": 1,
                 "agentCapabilities": {
                     "loadSession": agent.can_load,
+                    // The editor's own tools are reached by address.
+                    "mcpCapabilities": { "http": true, "sse": false },
                     "promptCapabilities": { "image": false, "audio": false, "embeddedContext": false }
                 },
                 "agentInfo": { "name": "mock-agent", "title": "Practice agent", "version": env!("CARGO_PKG_VERSION") },
@@ -332,6 +340,23 @@ fn handle(agent: &Arc<Agent>, message: Value) {
             agent.respond_error(&id, -32601, &format!("Method not found: {other}"));
         }
         _ => {}
+    }
+}
+
+/// Calls one of the editor's own tools and returns what it said.
+fn call_tool(url: &str, name: &str, arguments: Value) -> String {
+    let request = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": name, "arguments": arguments } });
+    let answer: Result<Value, String> = ureq::post(url)
+        .send_json(&request)
+        .map_err(|error| error.to_string())
+        .and_then(|mut response| response.body_mut().read_json::<Value>().map_err(|error| error.to_string()));
+    match answer {
+        Ok(answer) => answer
+            .pointer("/result/content/0/text")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("The tool gave no text: {answer}")),
+        Err(error) => format!("The tool could not be reached: {error}"),
     }
 }
 
@@ -561,7 +586,34 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         agent.pause();
     }
 
-    let answer = if wants_verdict {
+    // A prompt that asks for one of the editor's tools gets it called, and the tool's answer said back.
+    let asked = last_paragraph(&text).to_lowercase();
+    let tool = if asked.contains("leave a note") {
+        Some(("leave_note", json!({ "text": "The limit lives in config/limits.ts. Do not put the number back." })))
+    } else if asked.contains("report a problem") {
+        Some((
+            "report_problem",
+            json!({ "title": "POST /register has no rate limit", "detail": "Only /login is limited, in src/middleware/rateLimit.ts." }),
+        ))
+    } else if asked.contains("list the tasks") {
+        Some(("list_tasks", json!({})))
+    } else if asked.contains("read the notes") {
+        Some(("read_notes", json!({})))
+    } else {
+        None
+    };
+    let edit = edit && tool.is_none();
+    let tool_said = tool.map(|(name, arguments)| {
+        let url = known.as_ref().and_then(|s| s.tools.clone());
+        match url {
+            Some(url) => call_tool(&url, name, arguments),
+            None => "The editor gave this session no tools.".to_string(),
+        }
+    });
+
+    let answer = if let Some(said) = tool_said {
+        said
+    } else if wants_verdict {
         // A task that asks to be "strict" is sent back once; a second look, and everything else, is fine.
         if text.to_lowercase().contains("strict") && !text.contains("You looked at this change before") {
             "Line 3 still holds a number that should come from config.\n\nVERDICT: redo".to_string()

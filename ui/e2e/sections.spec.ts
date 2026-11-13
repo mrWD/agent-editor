@@ -230,3 +230,30 @@ test.describe('Health: what the projects are missing', () => {
     await expect(app.page.locator('.subbar .project')).toHaveText(shop.name);
   });
 });
+
+test.describe("The editor's own tools for agents", () => {
+  test('W-10 W-11 a note an agent leaves is in the conversation; a problem it reports is on Health', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({ scripts: { lint: 'echo ok', test: 'echo ok' } });
+    await app.openHome();
+    const title = unique('Describe the limiter');
+    await app.createTask({ text: title, folder: shop.dir });
+
+    await app.say('Please leave a note for whoever comes next');
+    const note = app.conversation.locator('.team-note');
+    await expect(note).toContainText('Note · Practice agent, for whoever works on this next');
+    await expect(note).toContainText('The limit lives in config/limits.ts. Do not put the number back.');
+    await expect(app.answers.last()).toHaveText('The note is kept with the task. Whoever works on it next is told.');
+
+    await app.say('Please report a problem you noticed');
+    await app.page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Health' }).click();
+    const row = app.page
+      .getByRole('region', { name: 'What is missing' })
+      .locator('.finding', { hasText: 'POST /register has no rate limit' })
+      .filter({ hasText: shop.name });
+    await expect(row).toContainText('Noticed');
+    await expect(row).toContainText(`Noticed by Practice agent while it worked on “${title}”.`);
+  });
+});

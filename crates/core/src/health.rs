@@ -261,6 +261,28 @@ impl Manager {
                     "fix": one.fix,
                 }));
             }
+            // What agents noticed in passing and reported through the editor's tools.
+            for one in self.noticed().iter().filter(|one| one["projectId"] == project.id.as_str()) {
+                let id = format!("{}:noticed-{}", project.id, one["id"].as_str().unwrap_or(""));
+                if ignored.contains(&id) {
+                    left_out += 1;
+                    continue;
+                }
+                let (title, detail) = (one["title"].as_str().unwrap_or(""), one["detail"].as_str().unwrap_or(""));
+                let by = format!(
+                    "Noticed by {} while it worked on “{}”.",
+                    one["agent"].as_str().unwrap_or("an agent"),
+                    one["taskTitle"].as_str().unwrap_or("a task")
+                );
+                findings.push(json!({
+                    "id": id,
+                    "projectId": project.id,
+                    "category": "Noticed",
+                    "title": title,
+                    "detail": if detail.is_empty() { by.clone() } else { format!("{detail} {by}") },
+                    "fix": format!("An agent noticed this while working on another task: {title}. {detail}\n\nLook into it and put it right. Say what you found."),
+                }));
+            }
             projects.push(json!({ "projectId": project.id, "checks": self.project_checks_list(&project)? }));
         }
         Ok(json!({

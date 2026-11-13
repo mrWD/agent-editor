@@ -272,6 +272,17 @@ export function applyEvent(task: Task, event: any) {
     case 'user_edit':
       feed.push({ kind: 'edit', path: String(event.path), at });
       return;
+    case 'agent_note':
+      // A note an agent left through the editor's own tools, for whoever works on the task next.
+      feed.push({
+        kind: 'note',
+        role: 'note',
+        from: String(event.from ?? 'An agent'),
+        to: '',
+        text: String(event.text ?? ''),
+        at,
+      });
+      return;
     case 'team_note':
       feed.push({
         kind: 'note',
@@ -679,7 +690,7 @@ export function setRuleOffers(projectId: string, on: boolean) {
 export type Finding = {
   id: string;
   projectId: string;
-  category: 'Security' | 'Tests' | 'Pipeline' | 'Housekeeping';
+  category: 'Security' | 'Tests' | 'Pipeline' | 'Housekeeping' | 'Noticed';
   title: string;
   detail: string;
   /** What an agent is told when the user presses "Fix". */

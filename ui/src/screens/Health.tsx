@@ -45,7 +45,7 @@ export function Health(): JSX.Element {
   onMount(() => {
     void load();
     const stop = core.onEvent((event) => {
-      if (event.event === 'projects.changed' || event.event === 'checks.changed') void load();
+      if (['projects.changed', 'checks.changed', 'health.changed'].includes(event.event)) void load();
     });
     onCleanup(stop);
   });
@@ -88,7 +88,8 @@ export function Health(): JSX.Element {
 
         <h1 class="headline">{health() ? missingHeadline(health()!.findings.length) : 'Looking at the projects'}</h1>
         <p class="soft">
-          Found by looking at each project's own files; no agent is asked for this. Fix starts a task for an agent.
+          Found by looking at each project's own files, and by agents that noticed something while they worked. Fix
+          starts a task for an agent.
         </p>
         <Show when={problem()}>
           <p class="banner danger flush" role="alert">

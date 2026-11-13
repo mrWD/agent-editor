@@ -176,6 +176,10 @@ pub struct Manager {
     pub(crate) hand_edits: Mutex<std::collections::HashSet<String>>,
     /// The checks that were run in each task, and how they ended.
     pub checks: crate::checks::Checks,
+    /// Where the core's own web server listens, once it does. Agents are given this address for the editor's tools.
+    pub(crate) mcp_base: Mutex<Option<String>>,
+    /// The keys agents call the editor's tools with, each with the task it was made for.
+    pub(crate) mcp_keys: Mutex<HashMap<String, String>>,
     /// The way out to GitHub, GitLab, Linear and Docker.
     pub(crate) hosts: Hosts,
     /// What was last read from those services, so screens do not ask them on every look.
@@ -214,6 +218,8 @@ impl Manager {
             manual: Mutex::new(HashMap::new()),
             hand_edits: Mutex::new(Default::default()),
             checks: Default::default(),
+            mcp_base: Mutex::new(None),
+            mcp_keys: Mutex::new(HashMap::new()),
             hosts,
             remembered: Default::default(),
             events,
@@ -423,6 +429,7 @@ impl Manager {
         agent: &AgentDef,
         cwd: &Path,
         resume: Option<&str>,
+        task_id: &str,
     ) -> Result<(Arc<Live>, mpsc::UnboundedReceiver<Incoming>, Value, bool)> {
         if !cwd.is_dir() {
             bail!("The task's folder is gone: {}", cwd.display());
@@ -448,16 +455,21 @@ impl Manager {
                 )
                 .await?;
             let can_load = init.pointer("/agentCapabilities/loadSession").and_then(Value::as_bool).unwrap_or(false);
+            // The editor's own tools, for an agent that can reach a tool server by address.
+            let can_reach =
+                init.pointer("/agentCapabilities/mcpCapabilities/http").and_then(Value::as_bool).unwrap_or(false);
+            let servers: Vec<Value> =
+                if can_reach { self.mcp_server_for(task_id).into_iter().collect() } else { vec![] };
             if let (Some(id), true) = (resume, can_load) {
                 // A session the agent no longer has is not an error: a new one is opened below.
                 if let Ok(mut loaded) =
-                    conn.request("session/load", json!({ "sessionId": id, "cwd": cwd, "mcpServers": [] })).await
+                    conn.request("session/load", json!({ "sessionId": id, "cwd": cwd, "mcpServers": servers })).await
                 {
                     loaded["sessionId"] = json!(id);
                     return Ok((init, loaded, true));
                 }
             }
-            let created = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": [] })).await?;
+            let created = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": servers })).await?;
             Ok::<_, RpcError>((init, created, false))
         };
 
@@ -664,7 +676,7 @@ impl Manager {
         };
 
         let (cwd, branch, base_branch) = self.prepare_folder(&project, &id, &title).await?;
-        let (live, incoming, init, _) = match self.start_agent(&agent, &cwd, None).await {
+        let (live, incoming, init, _) = match self.start_agent(&agent, &cwd, None, &id).await {
             Ok(started) => started,
             Err(error) => {
                 // Leave nothing behind for a task that never existed.
@@ -712,7 +724,7 @@ impl Manager {
     async fn wake(self: &Arc<Self>, row: &TaskRow) -> Result<(Arc<Live>, bool)> {
         let agent = self.agent(&row.agent_id)?;
         let (live, incoming, init, loaded) =
-            self.start_agent(&agent, Path::new(&row.cwd), row.agent_session.as_deref()).await?;
+            self.start_agent(&agent, Path::new(&row.cwd), row.agent_session.as_deref(), &row.id).await?;
         if row.agent_session.as_deref() != Some(live.acp_session_id.as_str()) {
             self.store.set_agent_session(&row.id, &live.acp_session_id)?;
         }
@@ -1096,6 +1108,14 @@ fn recap(events: &[Value]) -> Option<String> {
             Some("update") if event["update"]["sessionUpdate"] == "agent_message_chunk" => {
                 if let Some(text) = event["update"]["content"]["text"].as_str() {
                     agent.push_str(text);
+                }
+            }
+            // A note an agent left for whoever comes next is exactly what the next agent must hear.
+            Some("agent_note") => {
+                flush(&mut agent, &mut lines);
+                if let Some(text) = event.get("text").and_then(Value::as_str) {
+                    let from = event.get("from").and_then(Value::as_str).unwrap_or("an agent");
+                    lines.push(format!("Note left by {from}: {}", text.trim()));
                 }
             }
             _ => {}

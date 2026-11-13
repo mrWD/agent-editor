@@ -38,6 +38,7 @@ name = "ae-mock-agent"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "ureq",
 ]
 
 [[package]]
