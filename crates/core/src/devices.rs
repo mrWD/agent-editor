@@ -435,21 +435,30 @@ impl Devices {
     }
 
     /// Starts an emulator that is off and waits until Android in it is ready. Gives what adb calls it.
-    async fn start_emulator(&self, name: &str) -> Result<String> {
+    ///
+    /// With `start` off, one of that name is there already and still starting (somebody started it a
+    /// moment ago): it is only waited for, and it is theirs, not the core's.
+    async fn start_emulator(&self, name: &str, start: bool) -> Result<String> {
         let shown = name.replace('_', " ");
-        let emulator = self.emulator().ok_or_else(|| anyhow!(NO_EMULATOR))?;
-        let mut program = tools::start_apart(&emulator, words(["-avd", name]))
-            .with_context(|| format!("{shown} could not be started"))?;
+        let mut program = match start {
+            true => {
+                let emulator = self.emulator().ok_or_else(|| anyhow!(NO_EMULATOR))?;
+                let started = tools::start_apart(&emulator, words(["-avd", name]));
+                Some(started.with_context(|| format!("{shown} could not be started"))?)
+            }
+            false => None,
+        };
         let limit = self.tools.limit(BOOT_LIMIT);
         let until = Instant::now() + limit;
         let started = loop {
-            match self.emulator_named(name).await {
+            let there = match self.emulator_named(name).await {
                 Ok(Some((serial, true))) => break Ok(serial),
-                Ok(_) => {}
+                Ok(found) => found.is_some(),
                 Err(error) => break Err(error),
-            }
+            };
             // Its program ended and no emulator of that name is there: it will not come.
-            if let Ok(Some(ended)) = program.try_wait()
+            if !there
+                && let Some(Ok(Some(ended))) = program.as_mut().map(|program| program.try_wait())
                 && !ended.success()
             {
                 let code = ended.code().map_or("no code".into(), |code| format!("code {code}"));
@@ -463,7 +472,9 @@ impl Devices {
             tokio::time::sleep(BOOT_LOOK.min(limit / 20)).await;
         };
         // The program goes on for as long as the emulator's window: it is collected when it ends, not waited for here.
-        std::thread::spawn(move || program.wait());
+        if let Some(mut program) = program {
+            std::thread::spawn(move || program.wait());
+        }
         started
     }
 
@@ -552,7 +563,9 @@ impl Devices {
             }
             match self.emulator_named(&name).await? {
                 Some((serial, true)) => id = serial,
-                _ => to_start = Some(name),
+                // One that is there and not ready yet is somebody else's start: it is waited for, not started twice.
+                Some((_, false)) => to_start = Some((name, false)),
+                None => to_start = Some((name, true)),
             }
         }
         let before = self.sessions.lock().unwrap().get(task_id).cloned();
@@ -561,9 +574,12 @@ impl Devices {
         if before.as_ref().is_some_and(other) {
             self.close(task_id).await;
         }
-        if let Some(name) = to_start {
-            id = self.start_emulator(&name).await?;
-            self.started.lock().unwrap().insert(id.clone());
+        if let Some((name, start)) = to_start {
+            id = self.start_emulator(&name, start).await?;
+            // Only one the core started itself is the core's to shut down.
+            if start {
+                self.started.lock().unwrap().insert(id.clone());
+            }
         }
         let id = id.as_str();
         let listed = self.list(kind).await?;

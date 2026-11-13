@@ -62,7 +62,11 @@ if [ "$1" = "-s" ]; then serial="$2"; shift 2; fi
 case "$1 $2" in
   "devices -l") echo "List of devices attached"; cat "$here/emulators.txt"; echo ;;
   "emu avd") cat "$here/$serial.name" 2>/dev/null || exit 1; echo OK ;;
-  "shell getprop") if [ "$3" = sys.boot_completed ]; then echo 1; else echo 15; fi ;;
+  "shell getprop")
+    if [ "$3" != sys.boot_completed ]; then echo 15; exit 0; fi
+    # An emulator that is "still starting" says so a few times, then is ready.
+    left=$(cat "$here/$serial.booting" 2>/dev/null || echo 0)
+    if [ "$left" -gt 0 ]; then echo $((left - 1)) > "$here/$serial.booting"; echo; else echo 1; fi ;;
   "shell input")
     if [ -f "$here/will-not-touch" ]; then echo "Error: Injecting input events requires the caller to be allowed" >&2; exit 255; fi ;;
   "shell cmd") exit 0 ;;
@@ -572,6 +576,21 @@ async fn an_emulator_that_is_off_is_started_from_here_and_shut_down_again_when_i
     open(&state, &task_id, "android", EMULATOR, "localhost:3000").await.unwrap();
     close(&state, &task_id).await;
     assert!(!asked(&tools, "adb").contains(&format!("-s {EMULATOR} emu kill")));
+
+    // One that somebody else started a moment ago and that is not ready yet: it is waited for, not
+    // started a second time, and it is theirs, so it stays on.
+    std::fs::write(tools.join("emulators.txt"), format!("{STARTED}   device product:sdk model:sdk transport_id:7\n"))
+        .unwrap();
+    std::fs::write(tools.join(format!("{STARTED}.booting")), "1\n").unwrap();
+    let before = asked(&tools, "emulator").iter().filter(|call| call.starts_with("-avd")).count();
+    let opened = open(&state, &task_id, "android", off, "localhost:3000").await.unwrap();
+    assert_eq!((opened["id"].as_str(), opened["startedHere"].as_bool()), (Some(STARTED), Some(false)));
+    assert_eq!(asked(&tools, "emulator").iter().filter(|call| call.starts_with("-avd")).count(), before);
+    let kills = || asked(&tools, "adb").iter().filter(|call| call.ends_with("emu kill")).count();
+    let killed = kills();
+    close(&state, &task_id).await;
+    assert_eq!(kills(), killed);
+    std::fs::write(tools.join("emulators.txt"), "").unwrap();
 
     // One whose program ends at once is not waited for, and a name nobody could have listed is refused.
     std::fs::write(tools.join("will-not-boot"), "").unwrap();
