@@ -1,5 +1,6 @@
 import { createEffect, createSignal, For, lazy, on, onCleanup, onMount, Show, Suspense, type JSX } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
+import { recallCopy, rememberCopy } from '../core/kept';
 import { core } from '../core/client';
 import { readFrom, setRunCount, shownServices, size } from '../core/run';
 import {
@@ -69,14 +70,16 @@ export function RunTab(props: { task: Task; visible: boolean }): JSX.Element {
   // Kept in a store and brought in line service by service: a row stays the same row
   // while its state changes. Drawn anew on every look, a row would lose a press that
   // lands between two looks, and its buttons would flicker.
+  // The tab opens on what it showed last time, and reads again behind that.
+  const kept = (what: string) => `task:${taskId}:run.${what}`;
   const [held, setHeld] = createStore<{ run: RunState | null; env: TaskEnv | null; use: RunResources | null }>({
-    run: null,
-    env: null,
-    use: null,
+    run: recallCopy<RunState>(kept('run')),
+    env: recallCopy<TaskEnv>(kept('env')),
+    use: recallCopy<RunResources>(kept('use')),
   });
   const run = () => held.run;
   const setRun = (next: RunState) => {
-    setHeld('run', reconcile(next, { key: 'name' }));
+    setHeld('run', reconcile(rememberCopy(kept('run'), next), { key: 'name' }));
     const shown = shownServices(next);
     setRunCount(taskId, shown.filter((service) => service.state === 'running').length, shown.length);
   };
@@ -101,7 +104,7 @@ export function RunTab(props: { task: Task; visible: boolean }): JSX.Element {
 
   const loadEnv = async () => {
     try {
-      setHeld('env', reconcile(await envGet(taskId), { key: 'name' }));
+      setHeld('env', reconcile(rememberCopy(kept('env'), await envGet(taskId)), { key: 'name' }));
     } catch (error) {
       setProblem(message(error));
     }
@@ -129,8 +132,8 @@ export function RunTab(props: { task: Task; visible: boolean }): JSX.Element {
     try {
       const next = await resourcesGet(taskId, disk);
       // An answer without the disk says nothing about it: what was known before stays.
-      const kept = disk ? next : { ...next, disk: held.use?.disk, volumes: held.use?.volumes };
-      setHeld('use', reconcile(kept, { key: 'taskId' }));
+      const whole = disk ? next : { ...next, disk: held.use?.disk, volumes: held.use?.volumes };
+      setHeld('use', reconcile(rememberCopy(kept('use'), whole), { key: 'taskId' }));
     } catch {
       // The numbers are a courtesy: without them the tab still works, and the next look asks again.
     } finally {
@@ -615,7 +618,7 @@ export function RunTab(props: { task: Task; visible: boolean }): JSX.Element {
               use={held.use}
               busy={busy()}
               act={act}
-              onEnv={(next) => setHeld('env', reconcile(next, { key: 'name' }))}
+              onEnv={(next) => setHeld('env', reconcile(rememberCopy(kept('env'), next), { key: 'name' }))}
               onUse={() => void loadUse(true)}
               onProblem={setProblem}
               onInstallLog={(termId) => {

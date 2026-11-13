@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, Chip, StageGlyph } from '../components/bits';
 import { core } from '../core/client';
@@ -36,14 +37,15 @@ type Filter = 'open' | 'free';
  * with one press.
  */
 export function Issues(): JSX.Element {
-  const [projects, setProjects] = createSignal<ProjectIssues[] | null>(null);
-  const [mine, setMine] = createSignal<LinearMine>(null);
-  const [account, setAccount] = createSignal<LinearAccount | null>(null);
+  // What was read last time is shown at once; it is read again behind that.
+  const [projects, setProjects] = createKept<ProjectIssues[] | null>('issues.projects', null);
+  const [mine, setMine] = createKept<LinearMine>('issues.mine', null);
+  const [account, setAccount] = createKept<LinearAccount | null>('issues.account', null);
   const [accountProblem, setAccountProblem] = createSignal<string | null>(null);
   /** For each of the user's Linear issues, the project its task would start in. */
-  const [placeOf, setPlaceOf] = createSignal<Record<string, string>>({});
-  const [services, setServices] = createSignal<Integrations | null>(null);
-  const [syncedAt, setSyncedAt] = createSignal<number | null>(null);
+  const [placeOf, setPlaceOf] = createKept<Record<string, string>>('issues.placeOf', {});
+  const [services, setServices] = createKept<Integrations | null>('issues.services', null);
+  const [syncedAt, setSyncedAt] = createKept<number | null>('issues.syncedAt', null);
   const [syncing, setSyncing] = createSignal(false);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [filter, setFilter] = createSignal<Filter>('open');

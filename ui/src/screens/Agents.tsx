@@ -1,4 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createKept } from '../core/kept';
 import { taskHref } from '../app/router';
 import { ago, Chip, money, whenLabel } from '../components/bits';
 import { core } from '../core/client';
@@ -70,10 +71,11 @@ function headline(summary: UsageSummary): string {
 
 /** Limits, cost and who is doing what, across all projects. */
 export function Agents(): JSX.Element {
-  const [summary, setSummary] = createSignal<UsageSummary | null>(null);
+  // What was read last time is shown at once; it is read again behind that.
+  const [summary, setSummary] = createKept<UsageSummary | null>('agents.summary', null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [daily, setDaily] = createSignal('');
-  const [rules, setRules] = createSignal<{ scope: string; rules: Rule[] }[]>([]);
+  const [rules, setRules] = createKept<{ scope: string; rules: Rule[] }[]>('agents.rules', []);
   const [ruleText, setRuleText] = createSignal('');
   const [ruleScope, setRuleScope] = createSignal(ALL_PROJECTS);
   const loadRules = async () => {

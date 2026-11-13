@@ -1,5 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
+import { recallCopy, rememberCopy } from '../core/kept';
 import { Chip } from '../components/bits';
 import { core } from '../core/client';
 import { askPermission, permission, refusal, type Permission } from '../core/notify';
@@ -92,9 +93,12 @@ function TriedLine(props: { name: string; found: Tried | 'trying' }): JSX.Elemen
 export function Settings(): JSX.Element {
   // A store, so that reading the settings again leaves every row that did not change as it is:
   // a form that is being typed into must not be drawn anew because something else changed.
-  const [kept, setKept] = createStore<{ settings: SettingsState | null }>({ settings: null });
+  // It opens on what it showed last time, and reads again behind that.
+  const [kept, setKept] = createStore<{ settings: SettingsState | null }>({
+    settings: recallCopy<SettingsState>('settings'),
+  });
   const settings = () => kept.settings;
-  const setKnown = (now: SettingsState) => setKept('settings', reconcile(now, { key: 'id' }));
+  const setKnown = (now: SettingsState) => setKept('settings', reconcile(rememberCopy('settings', now), { key: 'id' }));
   const [problem, setProblem] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   /** The agent whose form is open, `NEW` for the form of a new one, `null` for none. */

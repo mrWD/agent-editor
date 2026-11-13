@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
+import { recall, remember } from '../core/kept';
 import { Chip, clock } from '../components/bits';
 import { core } from '../core/client';
 import {
@@ -84,7 +85,7 @@ export function LookBackView(props: { task: Task }): JSX.Element {
       const listed = await gitFiles(taskId, `checkpoint:${at}`);
       if (at !== n()) return;
       setProblem(null);
-      setFiles(listed.files);
+      setFiles(remember(`task:${taskId}:back:${at}`, listed.files));
       const loaded = await Promise.all(
         listed.files.map((file) =>
           gitDiffOver(taskId, file.path, `checkpoint:${at}`).then((diff) => [file.path, diff] as const),
@@ -98,7 +99,8 @@ export function LookBackView(props: { task: Task }): JSX.Element {
 
   createEffect(
     on(n, () => {
-      setFiles(null);
+      // A moment that was looked at before shows its files at once; they are read again behind that.
+      setFiles(recall<SpanFile[]>(`task:${taskId}:back:${n()}`));
       setDiffs({});
       setSelected(null);
       void load();

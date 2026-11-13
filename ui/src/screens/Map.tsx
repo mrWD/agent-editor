@@ -11,6 +11,7 @@ import {
   type JSX,
 } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
+import { recallCopy, rememberCopy } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago } from '../components/bits';
 import { core } from '../core/client';
@@ -480,7 +481,9 @@ export function MapView(props: { task: Task }): JSX.Element {
   const agentName = () => agentOf(props.task)?.name ?? 'the agent';
   const canSend = () => props.task.info.state === 'idle' || props.task.info.state === 'asleep';
 
-  const [state, setState] = createStore<{ map: CodeMap | null }>({ map: null });
+  // The map as it was drawn last time is there at once; it is read anew behind that.
+  const kept = `task:${taskId}:map`;
+  const [state, setState] = createStore<{ map: CodeMap | null }>({ map: recallCopy<CodeMap>(kept) });
   const [problem, setProblem] = createSignal<string | null>(null);
   const [sendProblem, setSendProblem] = createSignal<string | null>(null);
   const [sending, setSending] = createSignal(false);
@@ -492,7 +495,7 @@ export function MapView(props: { task: Task }): JSX.Element {
       const next = await getMap(taskId, picked[taskId]);
       if (mine !== asked) return;
       // Boxes that are the same as before stay as they are, so the keyboard keeps its place.
-      setState('map', reconcile(next));
+      setState('map', reconcile(rememberCopy(kept, next)));
       setProblem(null);
     } catch (error) {
       if (mine !== asked) return;

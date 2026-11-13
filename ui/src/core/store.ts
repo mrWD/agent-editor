@@ -1,6 +1,7 @@
 import { createSignal } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { core, type CoreEvent } from './client';
+import { forget } from './kept';
 import { setWork } from './work';
 
 export type AgentDef = {
@@ -669,6 +670,7 @@ function onEvent(event: CoreEvent) {
       return;
     }
     case 'task.archived':
+      forget(`task:${event.data.taskId}:`);
       waitingForHistory.delete(event.data.taskId);
       setState('tasks', event.data.taskId, undefined!);
       void reloadAgents().catch(() => {});

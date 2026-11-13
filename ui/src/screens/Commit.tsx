@@ -1,4 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, whenLabel } from '../components/bits';
 import { commitShown, showCommit } from '../core/commits';
@@ -20,7 +21,8 @@ export function CommitView(props: { task: Task; hash: string }): JSX.Element {
   const taskId = props.task.info.id;
   // eslint-disable-next-line solid/reactivity -- and for each commit
   const hash = props.hash;
-  const [commit, setCommit] = createSignal<ShownCommit | null>(null);
+  // A commit does not change: read once, it is there at once the next time it is opened.
+  const [commit, setCommit] = createKept<ShownCommit | null>(`task:${taskId}:commit:${hash}`, null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [open, setOpen] = createSignal<Record<string, FileDiff | 'loading' | { problem: string }>>({});
 

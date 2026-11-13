@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, Chip } from '../components/bits';
 import { RequestCard } from '../components/RequestCard';
@@ -112,14 +113,15 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
   const agentName = () => agent()?.name ?? 'the agent';
   const git = () => props.git.state();
 
-  const [selected, setSelected] = createSignal<string | null>(null);
-  const [diff, setDiff] = createSignal<FileDiff | null>(null);
+  // The file that was picked and its lines are there at once when the view is opened again.
+  const [selected, setSelected] = createKept<string | null>(`task:${taskId}:changes.picked`, null);
+  const [diff, setDiff] = createKept<FileDiff | null>(`task:${taskId}:changes.diff`, null);
   const [diffProblem, setDiffProblem] = createSignal<string | null>(null);
   const [off, setOff] = createStore<Off>({});
   const [text, setText] = createSignal('');
   const [touched, setTouched] = createSignal(false);
   const [after, setAfter] = createSignal<'stop' | 'push' | 'request'>('stop');
-  const [host, setHost] = createSignal<{ name: string; word: string } | null>(null);
+  const [host, setHost] = createKept<{ name: string; word: string } | null>(`task:${taskId}:changes.host`, null);
   const [amend, setAmend] = createSignal(false);
   const [busy, setBusy] = createSignal<string | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
@@ -279,7 +281,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
     }
   };
   // ----- lines that another open task changes too -----
-  const [overlaps, setOverlaps] = createSignal<Overlap[]>([]);
+  const [overlaps, setOverlaps] = createKept<Overlap[]>(`task:${taskId}:changes.overlaps`, []);
   const loadOverlaps = async () => {
     try {
       setOverlaps((await listOverlaps(taskId)).overlaps);
@@ -383,7 +385,6 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
 
   // Other windows may change the same task; the core tells every one of them.
   onMount(() => {
-    // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
     const stop = core.onEvent((event) => {
       if (event.event === 'git.changed' && event.data.taskId === taskId) void loadDiff();
       // Another task of the project may have moved too; its changes are read from disk each time.
