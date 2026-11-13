@@ -16,6 +16,7 @@ pub mod hosts;
 pub mod integrations;
 pub mod marks;
 pub mod overlaps;
+pub mod preview;
 pub mod review;
 pub mod runner;
 pub mod search;

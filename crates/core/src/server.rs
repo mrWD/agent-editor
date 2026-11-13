@@ -43,6 +43,8 @@ pub struct AppState {
     pub terminals: Arc<Terminals>,
     pub search: Arc<Search>,
     pub runner: Arc<Runner>,
+    /// The relays the Preview view shows running apps through.
+    pub previews: Arc<crate::preview::Previews>,
     /// What the desktop app lends to the core. `None` when the core runs on its own.
     pub desktop: Option<Desktop>,
 }
@@ -91,7 +93,8 @@ impl AppState {
         }
         let terminals = Arc::new(Terminals::without(own));
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
-        Self { manager, terminals, search: Arc::new(Search::new()), runner, desktop: None }
+        let previews = Arc::new(crate::preview::Previews::new());
+        Self { manager, terminals, search: Arc::new(Search::new()), runner, previews, desktop: None }
     }
 
     /// The desktop app, when the one who asks is the app's own window.
@@ -112,6 +115,7 @@ impl AppState {
     /// Stops what a task runs and removes its containers and volumes. For a task that is finished for good.
     async fn stop_everything(&self, task_id: &str) {
         self.terminals.close_task(task_id);
+        self.previews.close(task_id).await;
         if let Ok((project, root)) = self.run_place(task_id) {
             let runner = self.runner.clone();
             let id = task_id.to_string();
@@ -182,8 +186,10 @@ pub async fn serve_until(
 ) -> Result<()> {
     let manager = state.manager.clone();
     let terminals = state.terminals.clone();
+    let previews = state.previews.clone();
     axum::serve(listener, router(state, ui_dir)).with_graceful_shutdown(stop).await?;
     terminals.close_all();
+    previews.close_all().await;
     manager.stop_all().await;
     Ok(())
 }
@@ -829,6 +835,10 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
                 Ok(json!(runner.state(&task_id, &project, &root)))
             })
             .await?
+        }
+
+        "preview.state" | "preview.open" | "preview.close" | "preview.remember" => {
+            crate::preview::command(&state.previews, manager, method, params).await
         }
 
         "search.files" | "search.text" => {

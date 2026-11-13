@@ -58,6 +58,7 @@ import { watchGit, type GitWatch } from '../core/gitstate';
 import { EditorHost, type FileMeta } from '../editor/host';
 import { ChangesView } from './Changes';
 import { LookBackView } from './LookBack';
+import { PreviewView } from './Preview';
 import { SpanView } from './Span';
 import { languageOf } from '../editor/languages';
 
@@ -76,7 +77,6 @@ const viewNames: Record<View, string> = {
 /** Which milestone brings each view that is not built yet. Shown instead of a blank pane. */
 const notBuilt: Partial<Record<View, { milestone: string; what: string }>> = {
   plan: { milestone: 'M6', what: 'The flowchart the task is built from.' },
-  preview: { milestone: 'M7', what: 'The running app on several devices at once.' },
   map: { milestone: 'M7', what: 'Diagrams of the code this task touches.' },
   checks: { milestone: 'M5', what: 'The list of what must be true before the task is done.' },
 };
@@ -1026,7 +1026,10 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
           <ChangesView task={props.task} git={git} />
         </Show>
       </Show>
-      <Show when={props.view !== 'code' && props.view !== 'changes' && !lookingBack()}>
+      <Show when={props.view === 'preview' && !lookingBack()}>
+        <PreviewView task={props.task} />
+      </Show>
+      <Show when={props.view !== 'code' && props.view !== 'changes' && props.view !== 'preview' && !lookingBack()}>
         <section class="center">
           <div class="center-note">
             <h2>{viewNames[props.view]} is not built yet</h2>

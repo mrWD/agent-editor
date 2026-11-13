@@ -15,10 +15,12 @@ import {
   type Task,
 } from '../core/store';
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
+import { clearPointed, pointedText } from '../core/previewState';
 import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
 import { ago, Check, Chip, clock, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
+import { PointedChips, PreviewPointed } from './PreviewPointed';
 import { WhereStopped } from './WhereStopped';
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
@@ -208,11 +210,15 @@ export function AgentPane(props: { task: Task }): JSX.Element {
     if (!typed || !canSend() || starting()) return;
     const quote = work().quote;
     // Code picked in the editor goes first, so the agent knows what the message is about.
-    const text = quote
+    const said = quote
       ? `About \`${quote.path}\`, ${linesOf(quote)}:\n\n\`\`\`\n${quote.text.replace(/\n$/, '')}\n\`\`\`\n\n${typed}`
       : typed;
+    // What was pointed at in the Preview goes first too, in words: the agent gets text.
+    const pointed = pointedText(taskId(), props.task.info.cwd);
+    const text = pointed ? `${pointed}\n\n${said}` : said;
     if (instead === undefined) setDraft('');
     setWork(taskId(), { quote: null, pausedByTyping: false });
+    clearPointed(taskId());
     hideSince(taskId());
     pinnedToEnd = true;
     // Waking a sleeping task starts an agent first, which can take a while.
@@ -545,6 +551,8 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           </Match>
         </Switch>
 
+        <PreviewPointed task={props.task} agentName={name()} onOpen={showFile} />
+
         <div class="feed" ref={feedEl} onScroll={onScroll}>
           <For each={props.task.feed}>{item}</For>
           <Show when={work().editing}>
@@ -573,6 +581,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               </div>
             )}
           </Show>
+          <PointedChips taskId={taskId()} />
           <textarea
             id={`msg-${props.task.info.id}`}
             rows="2"
