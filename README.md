@@ -111,8 +111,11 @@ cd ui && npm run e2e
 ```
 
 Every automated test uses the practice agent, stand-ins for `gh`, `glab` and
-`docker`, and a local stand-in for Linear, so nothing is spent and no real
-account is touched. The test cases are listed in [docs/TEST-CASES.md](docs/TEST-CASES.md).
+`docker`, for the browser that takes screenshots and for the device tools
+(`xcrun`, `adb`, `emulator`, `idb`), a local stand-in for Linear, and a home
+folder of its own in which the "conversations of Claude Code" are written by
+the test, so nothing is spent, no real account is touched and no real device
+is started. The test cases are listed in [docs/TEST-CASES.md](docs/TEST-CASES.md).
 
 A local SonarQube run (needs Docker):
 
@@ -173,7 +176,12 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   or merge request is opened from there with its review comments, which go to
   the agent or get a reply; "Merge now" merges it, deletes the branch and the
   working copy and archives the task, and "Merge by itself" does that once the
-  checks are green. A checkpoint is taken before every message: "Look back"
+  checks are green. Under the request stands the pipeline of the branch
+  (GitLab's, or the runs of GitHub Actions for the newest commit), stage by
+  stage: what failed, runs or waits is listed, what went well is folded away.
+  A failed job is run again with one press; starting a job that waits,
+  stopping, running everything again and starting a new pipeline take two. A
+  checkpoint is taken before every message: "Look back"
   shows any earlier moment and rewinds to it, keeping your own lines. Coming
   back to a task says where you stopped and what happened since. Two open
   tasks that change the same lines are shown to each other.
@@ -201,8 +209,15 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   once, in light and dark, lets you pick an element or draw on the page, and
   sends that to the agent in words. A screenshot of each width goes into the
   message (it needs Chrome, Chromium or Edge on this computer). The iOS
-  simulator and the Android emulator each have a tab that opens the app there
-  and shows the screen (they need Xcode and the Android tools). Map shows the files the task changed, what
+  simulator and the Android emulator each have a tab that lists the devices,
+  starts one that is off, opens the app there and shows its screen as a
+  picture taken again every second. A press on the picture is a tap and a
+  drag is a swipe; under it are the device's buttons, a field that types on
+  it, and Light and Dark. A device the editor started is shut down when the
+  tab is left; one that ran already is left alone. They need Xcode and the
+  Android tools (`adb`, and `emulator` to start one that is off); tapping a
+  simulator also needs `idb`, and without it stays in the Simulator window.
+  Map shows the files the task changed, what
   they define, who needs them and what they call, and draws a flow the agent
   describes.
 - **M8, the sections.** Issues from GitHub, GitLab or a Linear team; "Start"
@@ -218,6 +233,13 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   macOS, Windows and Linux: a folder dialog for "Another folder", links that
   open in the system's browser, a window that remembers its size and place, a
   menu, one running copy at a time. Not signed, no auto-update.
+
+A conversation begun in Claude Code can be gone on with here: "Bring in a
+conversation from Claude Code" on the home screen lists the conversations
+Claude Code had in a project's folder (read from its own files under
+`~/.claude`, which are never changed) and makes a task of one, with its words
+and tool calls, in the folder it worked in. The task sleeps; the next message
+wakes Claude with the session it had.
 
 The editor is dark, as it was designed, and has a light theme: Settings, "The
 editor", Theme: Dark, Light, or "As the computer", which follows the system and
@@ -258,7 +280,9 @@ when it asks whether to trust a new folder, takes the Enter for its answer. The 
 such a program means, so a turn is taken to be over when the program has
 printed nothing for a moment (2.5 seconds), and "your turn" may also mean that
 it is asking you something. Line marks, checkpoints, Changes and checks work
-as with any agent; a team or a race with such an agent has not been tried. There are no tool calls in the conversation, no
+as with any agent. Such a program races like any agent and builds for a team;
+it cannot plan or review for one, because the editor cannot read its answer.
+There are no tool calls in the conversation, no
 questions to answer there, no settings in the head, no pictures, no cost, and
 none of the editor's own tools. A program started again is told what was said
 before as one long message.
@@ -267,8 +291,13 @@ Not checked: anything on Windows or Linux (the CI is written and has never
 run); GitLab and Linear against the real services; Codex and Gemini; the
 real language servers for Rust, Go and Python (the one for TypeScript and
 JavaScript was tried by hand; the tests use a practice server); the
-screenshot with a real browser, the real iOS simulator and Android emulator,
-and a notification of the real system (the tests use stand-ins for each); the
+screenshot with a real browser, the real iOS simulator and Android emulator
+(this Mac has neither Xcode nor the Android tools; starting an emulator,
+touch through `adb` and `idb`, and light and dark are written from the tools'
+documentation), and a notification of the real system (the tests use
+stand-ins for each); acting on a real pipeline (reading one was tried
+against a GitLab pipeline of fifty jobs; no job was started or stopped
+there); waking the real Claude in a conversation that was brought in; the
 command-line programs of Codex and Gemini as agents in a terminal (Claude's
 was tried by hand: started with a message, its question about the folder
 answered in the terminal, a second message of two lines typed into it).
