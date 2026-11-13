@@ -92,7 +92,8 @@ impl Manager {
         self.broadcast("team.changed", json!({ "taskId": task_id, "team": team }));
     }
 
-    fn agent_name(&self, agent_id: &str) -> String {
+    /// What an agent is called, or its id when it is no longer in the list.
+    pub(crate) fn agent_name(&self, agent_id: &str) -> String {
         self.registry().get(agent_id).map_or_else(|| agent_id.to_string(), |agent| agent.name.clone())
     }
 

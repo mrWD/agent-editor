@@ -25,6 +25,7 @@ pub mod overlaps;
 pub mod pictures;
 pub mod plan;
 pub mod preview;
+pub mod race;
 pub mod review;
 pub mod rules;
 pub mod runner;

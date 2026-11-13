@@ -36,6 +36,7 @@ import {
 import { RuleOffer } from './RuleOffer';
 import { TeamPanel } from './TeamPanel';
 import { PointedChips, PreviewPointed } from './PreviewPointed';
+import { PickResult, TalkingTo } from './RacePane';
 import { WhereStopped } from './WhereStopped';
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
@@ -479,7 +480,14 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   );
 
   return (
-    <aside class="agent-pane" aria-label={`Conversation with ${name()}`}>
+    <aside
+      class="agent-pane"
+      classList={{ racing: Boolean(props.task.info.race) }}
+      aria-label={`Conversation with ${name()}`}
+    >
+      <Show when={props.task.info.race}>
+        <TalkingTo task={props.task} />
+      </Show>
       <div class="agent-head">
         <span class="agent-name">
           <Chip agentId={agentId()} short={short()} />
@@ -520,15 +528,18 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             More
           </button>
         </Show>
-        <button
-          type="button"
-          class="btn small ghost"
-          aria-expanded={teamOpen() || Boolean(team())}
-          title="Several agents on this task, one after another: one plans, one builds, one reviews"
-          onClick={() => setTeamOpen(!teamOpen())}
-        >
-          {team() ? (team()!.running ? 'Team at work' : 'Team') : 'Solo'}
-        </button>
+        {/* An entrant of a race works alone: a team on it would be a race inside a race. */}
+        <Show when={!props.task.info.race}>
+          <button
+            type="button"
+            class="btn small ghost"
+            aria-expanded={teamOpen() || Boolean(team())}
+            title="Several agents on this task, one after another: one plans, one builds, one reviews"
+            onClick={() => setTeamOpen(!teamOpen())}
+          >
+            {team() ? (team()!.running ? 'Team at work' : 'Team') : 'Solo'}
+          </button>
+        </Show>
         <Show when={props.task.info.branch}>
           <button
             type="button"
@@ -594,7 +605,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         </Show>
         <RuleOffer task={props.task} />
         <Switch>
-          <Match when={sessionState() === 'waiting_permission'}>
+          <Match when={sessionState() === 'waiting_permission' && !props.task.info.race}>
             <section class="card pinned">
               <h2>{name()} is waiting for your answer</h2>
               <p>It asked before doing something. The question is at the end of the conversation.</p>
@@ -611,7 +622,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               </div>
             </section>
           </Match>
-          <Match when={sessionState() === 'idle' && props.task.feed.length > 0}>
+          <Match when={sessionState() === 'idle' && props.task.feed.length > 0 && !props.task.info.race}>
             <section class="card pinned">
               <h2>Your turn</h2>
               <p>{name()} finished this turn. Say what to do next.</p>
@@ -623,13 +634,17 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               <p>It is told what was said so far, then gets your message.</p>
             </section>
           </Match>
-          <Match when={sessionState() === 'asleep'}>
+          <Match when={sessionState() === 'asleep' && !props.task.info.race}>
             <section class="card pinned">
               <h2>No agent is running</h2>
               <p>Everything said so far is kept. Your next message starts {name()} again and tells it what was said.</p>
             </section>
           </Match>
         </Switch>
+        {/* In a race the next step is to pick a result: that card stands where the cards above would. */}
+        <Show when={props.task.info.race}>
+          <PickResult task={props.task} />
+        </Show>
 
         <PreviewPointed task={props.task} agentName={name()} onOpen={showFile} />
 

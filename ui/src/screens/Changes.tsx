@@ -40,7 +40,7 @@ const plural = (count: number, one: string, many = `${one}s`) => `${count} ${cou
  * A button for something that cannot be taken back with one click. The first
  * press asks, the second does it; looking away for a few seconds disarms it.
  */
-function Sure(props: {
+export function Sure(props: {
   label: string;
   sure: string;
   class?: string;

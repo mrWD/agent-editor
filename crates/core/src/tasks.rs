@@ -56,6 +56,8 @@ pub struct TaskInfo {
     /// What the running agent lets the user set for this session (mode, model and
     /// the like) and the commands it knows. `None` while no agent is running.
     pub config: Option<Value>,
+    /// The race this task is an entrant of, while that race is not decided. See `race`.
+    pub race: Option<crate::race::RaceRef>,
 }
 
 /// The running agent of one task.
@@ -369,7 +371,8 @@ impl Manager {
     fn info(&self, row: TaskRow) -> TaskInfo {
         let state = self.state_of(&row.id);
         let config = self.live_of(&row.id).map(|live| live.config());
-        TaskInfo { row, state, config }
+        let race = self.race_ref(&row.id);
+        TaskInfo { row, state, config, race }
     }
 
     pub fn list(&self) -> Result<Vec<TaskInfo>> {
@@ -729,7 +732,7 @@ impl Manager {
         self.apply_remembered(&live, &agent.id, &row.id).await;
         self.broadcast(
             "task.created",
-            json!(TaskInfo { row: row.clone(), state: TaskState::Idle, config: Some(live.config()) }),
+            json!(TaskInfo { row: row.clone(), state: TaskState::Idle, config: Some(live.config()), race: None }),
         );
         self.emit(
             &id,
