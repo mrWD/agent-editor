@@ -1,6 +1,7 @@
 import { createSignal } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { core, type CoreEvent } from './client';
+import { setWork } from './work';
 
 export type AgentDef = {
   id: string;
@@ -535,6 +536,14 @@ function onEvent(event: CoreEvent) {
       void loadHistory(info.id, info.state);
       return;
     }
+    case 'rule.offer':
+      // The user has just rewritten a line an agent wrote: the conversation asks whether to keep it as a rule.
+      if (state.tasks[event.data.taskId]) {
+        setWork(event.data.taskId, {
+          ruleOffer: { path: String(event.data.path), was: event.data.was ?? [], now: event.data.now ?? [] },
+        });
+      }
+      return;
     case 'task.updated': {
       const info = event.data as TaskInfo;
       if (state.tasks[info.id]) setState('tasks', info.id, 'info', info);
@@ -622,6 +631,29 @@ export async function setTaskOption(taskId: string, optionId: string, value: str
 export async function switchAgent(taskId: string, agentId: string) {
   const info = await core.request<TaskInfo>('tasks.switchAgent', { taskId, agentId });
   if (state.tasks[taskId]) setState('tasks', taskId, 'info', info);
+}
+
+/** One sentence the user wants every agent to keep to. */
+export type Rule = { id: string; text: string; from: 'you' | 'edit'; at: number; agents: string[] };
+
+/** Where a rule holds: one project (its id), or all of them. */
+export const ALL_PROJECTS = 'all';
+
+export function listRules() {
+  return core.request<{ lists: { scope: string; rules: Rule[] }[] }>('rules.list');
+}
+
+export function addRule(scope: string, text: string, options: { from?: 'you' | 'edit'; agents?: string[] } = {}) {
+  return core.request<{ rule: Rule }>('rules.add', { scope, text, ...options });
+}
+
+export function removeRule(scope: string, id: string) {
+  return core.request('rules.remove', { scope, id });
+}
+
+/** Stops, or starts again, the question "Make this a rule?" for a project. */
+export function setRuleOffers(projectId: string, on: boolean) {
+  return core.request<{ on: boolean }>('rules.offers', { projectId, on });
 }
 
 /** One thing a project is missing, found by looking at its files. */

@@ -3337,3 +3337,34 @@ button.map-step:hover {
 .health-check code {
   font-size: 12.5px;
 }
+
+/* ---------- Rules ---------- */
+
+.rule-offer {
+  border-color: var(--accent);
+}
+.rule-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+}
+.rule-scope legend {
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.rule-offer .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rule-add {
+  gap: 8px;
+}
+.rule-row .name {
+  flex: 1 1 260px;
+}

@@ -24,6 +24,8 @@ export type Work = {
    * is open with none picked, else the number of the checkpoint being looked at.
    */
   lookBack: number | null;
+  /** The user has just rewritten lines an agent wrote: what they were and what they are now. */
+  ruleOffer: { path: string; was: string[]; now: string[] } | null;
 };
 
 const empty: Work = {
@@ -33,6 +35,7 @@ const empty: Work = {
   quote: null,
   changes: 'head',
   lookBack: null,
+  ruleOffer: null,
 };
 
 const [work, setWorkStore] = createStore<Record<string, Work>>({});

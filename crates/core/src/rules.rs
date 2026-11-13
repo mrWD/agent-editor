@@ -127,4 +127,51 @@ impl Manager {
         self.store().project(project_id)?;
         self.store().set_setting(&format!("project.{project_id}.ruleOffers"), (!on).then_some("off"))
     }
+
+    /// The lines of a file that an agent wrote and nobody has reviewed yet, as text.
+    pub fn agent_lines(&self, task_id: &str, path: &str) -> Vec<String> {
+        let Ok(Some(row)) = self.store().marks(task_id, path) else { return vec![] };
+        let authors = crate::marks::decode(&row.authors);
+        row.seen
+            .as_deref()
+            .unwrap_or_default()
+            .lines()
+            .zip(authors)
+            .filter(|(_, author)| *author == crate::marks::Author::Agent)
+            .map(|(line, _)| line.to_string())
+            .collect()
+    }
+
+    /// Tells the task's windows that the user has just rewritten lines an agent
+    /// wrote, with the lines before and after, so they can ask "Make this a
+    /// rule?". Nothing is kept: the question is asked once, at that moment.
+    pub fn offer_rule(&self, task_id: &str, path: &str, agents_before: &[String]) {
+        if agents_before.is_empty() {
+            return;
+        }
+        let Ok(task) = self.store().task(task_id) else { return };
+        if !self.rule_offers(&task.project_id) {
+            return;
+        }
+        let Ok(Some(row)) = self.store().marks(task_id, path) else { return };
+        let authors = crate::marks::decode(&row.authors);
+        let text = row.seen.unwrap_or_default();
+        let now: Vec<(&str, crate::marks::Author)> = text.lines().zip(authors).collect();
+        // An agent's line that is no longer there, in any author's hand, was rewritten or removed.
+        let was: Vec<&String> = agents_before
+            .iter()
+            .filter(|line| !line.trim().is_empty() && !now.iter().any(|(kept, _)| kept == line))
+            .take(5)
+            .collect();
+        let yours: Vec<&str> = now
+            .iter()
+            .filter(|(line, author)| *author == crate::marks::Author::You && !line.trim().is_empty())
+            .map(|(line, _)| *line)
+            .take(5)
+            .collect();
+        if was.is_empty() || yours.is_empty() {
+            return;
+        }
+        self.broadcast("rule.offer", json!({ "taskId": task_id, "path": path, "was": was, "now": yours }));
+    }
 }

@@ -21,6 +21,7 @@ import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
 import { ago, Check, Chip, clock, money, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
+import { RuleOffer } from './RuleOffer';
 import { WhereStopped } from './WhereStopped';
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
@@ -526,6 +527,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         <Show when={since()}>
           {(told) => <WhereStopped task={props.task} since={told()} onHide={() => hideSince(taskId())} />}
         </Show>
+        <RuleOffer task={props.task} />
         <Switch>
           <Match when={sessionState() === 'waiting_permission'}>
             <section class="card pinned">

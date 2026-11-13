@@ -2,7 +2,19 @@ import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js'
 import { taskHref } from '../app/router';
 import { ago, Chip, money, whenLabel } from '../components/bits';
 import { core } from '../core/client';
-import { projectName, setBudget, usageSummary, type AgentUsage, type UsageSummary } from '../core/store';
+import {
+  addRule,
+  ALL_PROJECTS,
+  listRules,
+  projectName,
+  removeRule,
+  setBudget,
+  state,
+  usageSummary,
+  type AgentUsage,
+  type Rule,
+  type UsageSummary,
+} from '../core/store';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -61,6 +73,25 @@ export function Agents(): JSX.Element {
   const [summary, setSummary] = createSignal<UsageSummary | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [daily, setDaily] = createSignal('');
+  const [rules, setRules] = createSignal<{ scope: string; rules: Rule[] }[]>([]);
+  const [ruleText, setRuleText] = createSignal('');
+  const [ruleScope, setRuleScope] = createSignal(ALL_PROJECTS);
+  const loadRules = async () => {
+    try {
+      setRules((await listRules()).lists);
+    } catch (error) {
+      setProblem(message(error));
+    }
+  };
+  const saveRule = async () => {
+    try {
+      await addRule(ruleScope(), ruleText());
+      setRuleText('');
+      await loadRules();
+    } catch (error) {
+      setProblem(message(error));
+    }
+  };
 
   const load = async () => {
     try {
@@ -77,7 +108,9 @@ export function Agents(): JSX.Element {
 
   onMount(() => {
     void load();
+    void loadRules();
     const stop = core.onEvent((event) => {
+      if (event.event === 'rules.changed') void loadRules();
       if (event.event === 'usage.changed' || event.event === 'task.created' || event.event === 'task.archived')
         void load();
       // A turn that ended may have cost something.
@@ -242,6 +275,78 @@ export function Agents(): JSX.Element {
                     <span class="name">All tasks today</span>
                     <span class="mono">{money(known().today, known().currency)}</span>
                   </div>
+                </Show>
+              </section>
+              <section class="stage" aria-label="Rules given to the agents">
+                <div class="stage-head">
+                  <h2 class="stage-title">Rules given to the agents</h2>
+                  <span class="stage-note">
+                    Each agent is told them with the first message of a session. Nothing is written into your projects.
+                  </span>
+                </div>
+                <form
+                  class="stage-row rule-add"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveRule();
+                  }}
+                >
+                  <input
+                    class="field grow"
+                    aria-label="A new rule"
+                    placeholder="A new rule, in one sentence"
+                    value={ruleText()}
+                    onInput={(event) => setRuleText(event.currentTarget.value)}
+                  />
+                  <select
+                    class="select-button"
+                    aria-label="Where the rule applies"
+                    value={ruleScope()}
+                    onChange={(event) => setRuleScope(event.currentTarget.value)}
+                  >
+                    <option value={ALL_PROJECTS}>All my projects</option>
+                    <For each={state.projects}>{(project) => <option value={project.id}>{project.name}</option>}</For>
+                  </select>
+                  <button type="submit" class="btn small" disabled={ruleText().trim() === ''}>
+                    Add the rule
+                  </button>
+                </form>
+                <For each={rules()}>
+                  {(list) => (
+                    <For each={list.rules}>
+                      {(rule) => (
+                        <div class="stage-row rule-row">
+                          <span class="project-tag">
+                            {list.scope === ALL_PROJECTS ? 'All projects' : projectName(list.scope)}
+                          </span>
+                          <span class="name">{rule.text}</span>
+                          <span class="fine">
+                            {rule.from === 'edit' ? 'From your correction' : 'Written by hand'}, {ago(rule.at)}
+                            {rule.agents.length > 0
+                              ? ` · only for ${rule.agents.map((id) => known().agents.find((one) => one.id === id)?.name ?? id).join(', ')}`
+                              : ''}
+                          </span>
+                          <button
+                            type="button"
+                            class="btn small ghost"
+                            aria-label={`Remove the rule: ${rule.text}`}
+                            onClick={() =>
+                              void removeRule(list.scope, rule.id)
+                                .then(loadRules)
+                                .catch((error) => setProblem(message(error)))
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </For>
+                  )}
+                </For>
+                <Show when={rules().every((list) => list.rules.length === 0)}>
+                  <p class="stage-row plain">
+                    No rules yet. One is offered when you rewrite a line an agent wrote, or write one above.
+                  </p>
                 </Show>
               </section>
               <p class="fine">

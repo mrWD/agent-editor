@@ -617,9 +617,13 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
                     // The file was not text before; there is nothing to compare line by line.
                     Some(Err(_)) => None,
                 };
+                // The agent's lines of this file as they stood right before the save.
+                let agents_before = manager.agent_lines(&task_id, &path);
                 if let Ok(true) = manager.observe(&task_id, &file.path, Author::You, before) {
                     manager.announce_review(&task_id, std::slice::from_ref(&file.path));
                 }
+                // The user rewrote a line an agent wrote: the moment a correction is worth keeping as a rule.
+                manager.offer_rule(&task_id, &file.path, &agents_before);
                 manager.note_manual_edit(&task_id, &file.path);
                 let review = manager.review_of(&task_id, &file.path)?;
                 anyhow::Ok((file, review))
