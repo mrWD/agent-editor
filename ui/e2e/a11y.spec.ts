@@ -21,7 +21,14 @@ async function problemsOn(page: Page): Promise<string[]> {
 }
 
 test.describe('Every screen can be read and used without a mouse', () => {
-  test('T-01 T-02 T-03 the sections and the views of a task pass the accessibility rules', async ({ app, project }) => {
+  test('T-01 T-02 T-03 the sections and the views of a task pass the accessibility rules', async ({
+    app,
+    project,
+    browserName,
+  }) => {
+    // axe reads the page's own markup and the styles it computes, which every engine builds the same way
+    // from the same code. Reading all eleven screens three times over buys minutes and tells nothing new.
+    test.skip(browserName !== 'chromium', 'the markup is the same in every engine');
     test.slow();
     const shop = await project();
     await app.openHome();

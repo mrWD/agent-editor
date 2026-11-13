@@ -222,6 +222,7 @@ async fn a_team_cut_short_by_the_core_stopping_is_at_rest_and_can_go_on() {
     second.team_continue(&id).unwrap();
     at_rest(&second, &id).await;
     allowing.abort();
-    assert_eq!(second.team(&id).unwrap().steps[1].state, "done");
+    let team = second.team(&id).unwrap();
+    assert_eq!(team.steps[1].state, "done", "{:?} {:?}", states(&second, &id), team.stopped);
     second.stop_all().await;
 }

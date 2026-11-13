@@ -58,7 +58,7 @@ async fn the_core_starts_on_a_free_port_serves_the_interface_and_stops() {
     assert_ne!(core.addr().port(), 0, "the real port is known");
     assert_ne!(core.addr().port(), ae_core::DEFAULT_PORT, "a free port is not the one a real core sits on");
     assert_eq!(core.url(), format!("http://127.0.0.1:{}", core.addr().port()));
-    assert_eq!(core.data_dir(), data.canonicalize().unwrap());
+    assert_eq!(core.data_dir(), ae_core::paths::real_path(&data).unwrap());
     assert!(data.join("agent-editor.db").is_file(), "the database is in the data folder");
 
     assert_eq!(health(&core).await["ok"], true);

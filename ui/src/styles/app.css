@@ -4945,3 +4945,158 @@ button.picked-source:hover {
 .task-plan-waits:hover {
   text-decoration: underline;
 }
+
+/* ---------- Icons in the file tree ---------- */
+
+:root {
+  --icon-folder: #8b93a1;
+  --icon-muted: #7b8392;
+  --icon-ts: #6fb1ff;
+  --icon-js: #e3c05f;
+  --icon-data: #c8a35a;
+  --icon-env: #9fb87a;
+  --icon-npm: #e0705f;
+  --icon-words: #9aa6b8;
+  --icon-css: #56d4c4;
+  --icon-html: #ff9a6c;
+  --icon-rust: #e08a5f;
+  --icon-python: #7fb2e0;
+  --icon-go: #6fd3ea;
+  --icon-ruby: #e07a7a;
+  --icon-php: #9b94e8;
+  --icon-java: #d98d55;
+  --icon-swift: #ff8f6b;
+  --icon-c: #8fa7c7;
+  --icon-csharp: #a98ce0;
+  --icon-vue: #63d49a;
+  --icon-svelte: #ff7a56;
+  --icon-sql: #8fc4d8;
+  --icon-image: #c99ae0;
+  --icon-svg: #d9a05f;
+  --icon-pdf: #e07a7a;
+  --icon-shell: #8fd08a;
+  --icon-docker: #6fb1ff;
+  --icon-git: #e07a5f;
+}
+
+.file-icon {
+  flex: 0 0 14px;
+  color: var(--icon-muted);
+}
+.file-icon[data-tone='folder'] {
+  color: var(--icon-folder);
+}
+.file-icon[data-tone='ts'] {
+  color: var(--icon-ts);
+}
+.file-icon[data-tone='js'] {
+  color: var(--icon-js);
+}
+.file-icon[data-tone='data'] {
+  color: var(--icon-data);
+}
+.file-icon[data-tone='env'] {
+  color: var(--icon-env);
+}
+.file-icon[data-tone='npm'] {
+  color: var(--icon-npm);
+}
+.file-icon[data-tone='words'] {
+  color: var(--icon-words);
+}
+.file-icon[data-tone='css'] {
+  color: var(--icon-css);
+}
+.file-icon[data-tone='html'] {
+  color: var(--icon-html);
+}
+.file-icon[data-tone='rust'] {
+  color: var(--icon-rust);
+}
+.file-icon[data-tone='python'] {
+  color: var(--icon-python);
+}
+.file-icon[data-tone='go'] {
+  color: var(--icon-go);
+}
+.file-icon[data-tone='ruby'] {
+  color: var(--icon-ruby);
+}
+.file-icon[data-tone='php'] {
+  color: var(--icon-php);
+}
+.file-icon[data-tone='java'] {
+  color: var(--icon-java);
+}
+.file-icon[data-tone='swift'] {
+  color: var(--icon-swift);
+}
+.file-icon[data-tone='c'] {
+  color: var(--icon-c);
+}
+.file-icon[data-tone='csharp'] {
+  color: var(--icon-csharp);
+}
+.file-icon[data-tone='vue'] {
+  color: var(--icon-vue);
+}
+.file-icon[data-tone='svelte'] {
+  color: var(--icon-svelte);
+}
+.file-icon[data-tone='sql'] {
+  color: var(--icon-sql);
+}
+.file-icon[data-tone='image'] {
+  color: var(--icon-image);
+}
+.file-icon[data-tone='svg'] {
+  color: var(--icon-svg);
+}
+.file-icon[data-tone='pdf'] {
+  color: var(--icon-pdf);
+}
+.file-icon[data-tone='shell'] {
+  color: var(--icon-shell);
+}
+.file-icon[data-tone='docker'] {
+  color: var(--icon-docker);
+}
+.file-icon[data-tone='git'] {
+  color: var(--icon-git);
+}
+/* A row that is open, or under the pointer, brings its icon up with it. */
+.tree-row[aria-current='true'] .file-icon,
+.tree-row:hover .file-icon {
+  opacity: 1;
+}
+.tree-row .file-icon {
+  opacity: 0.85;
+}
+.tab .file-icon {
+  opacity: 0.9;
+}
+.file-icon-wrap {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+/* ---------- Issues: Linear without hunting for settings ---------- */
+
+.issues-linear-how {
+  line-height: 1.5;
+}
+.issues-linear-how strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.issue-place {
+  height: 28px;
+  max-width: 200px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--text);
+  font-size: 12px;
+}

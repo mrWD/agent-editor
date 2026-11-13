@@ -17,6 +17,7 @@ import {
 import { createStore } from 'solid-js/store';
 import { RACE_VIEW, taskHref, VIEWS, type View } from '../app/router';
 import { AgentPane } from '../components/AgentPane';
+import { FileIcon } from '../components/FileIcon';
 import { LspBadge, LspStatus } from '../components/LspStatus';
 import { ProblemsTab } from '../components/ProblemsTab';
 import { RunTab } from '../components/RunTab';
@@ -315,6 +316,7 @@ function FileTree(props: {
                         aria-expanded={entry.isDir ? Boolean(folders[entry.path]?.open) : undefined}
                         onClick={() => (entry.isDir ? toggle(entry.path) : props.onOpen(entry.path))}
                       >
+                        <FileIcon path={entry.path} isDir={entry.isDir} open={Boolean(folders[entry.path]?.open)} />
                         <span class="label">
                           {entry.name}
                           {entry.isDir ? '/' : ''}
@@ -410,6 +412,7 @@ function ChangedList(props: {
             when={file.exists}
             fallback={
               <div class="tree-row gone">
+                <FileIcon path={file.path} />
                 <span class="label" title={file.path}>
                   {file.path}
                 </span>
@@ -428,6 +431,7 @@ function ChangedList(props: {
               aria-current={file.path === props.current ? 'true' : undefined}
               onClick={() => props.onOpen(file.path)}
             >
+              <FileIcon path={file.path} />
               <span class="label" title={file.path}>
                 {file.path}
               </span>
@@ -906,6 +910,7 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
                     title={file.dirty ? `${file.path} — not saved` : file.path}
                     onClick={() => setCurrent(file.path)}
                   >
+                    <FileIcon path={file.path} />
                     {baseName(file.path)}
                     <Show when={file.dirty}>
                       <span class="unsaved-dot" role="img" aria-label="not saved" />

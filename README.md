@@ -6,13 +6,13 @@ drawn screens are in [design/](design/).
 
 ## What is here
 
-| Folder | What it is |
-|---|---|
-| `crates/core` | The core: one process that starts agents, keeps sessions and does everything heavy. |
-| `crates/mock-agent` | A practice agent. It speaks the agent protocol, calls no model and spends nothing. |
-| `crates/shell` | The desktop app: a window (Tauri 2) with the core running inside it. A workspace of its own. |
-| `ui` | The interface: TypeScript and Solid. It talks to the core over one WebSocket. |
-| `design` | The design mockups the interface is built from. |
+| Folder              | What it is                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------------- |
+| `crates/core`       | The core: one process that starts agents, keeps sessions and does everything heavy.          |
+| `crates/mock-agent` | A practice agent. It speaks the agent protocol, calls no model and spends nothing.           |
+| `crates/shell`      | The desktop app: a window (Tauri 2) with the core running inside it. A workspace of its own. |
+| `ui`                | The interface: TypeScript and Solid. It talks to the core over one WebSocket.                |
+| `design`            | The design mockups the interface is built from.                                              |
 
 ## Run it
 
@@ -150,9 +150,10 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   dropped into a message and goes to agents that take images. Checked with the
   real Claude on its cheapest model; Codex and Gemini have not been started.
 - **M3, code.** Files open in an editor (CodeMirror) and are saved with
-  Cmd/Ctrl+S. Lines are marked by who wrote them since the last review, the
-  agent or you; "Keep" accepts the agent's lines, "Undo" takes them back and
-  leaves yours. The agent is told what you changed by hand, and its turn stops
+  Cmd/Ctrl+S. The tree draws what each entry is: a folder open or closed, and
+  a file by what is written in it, coloured by its language. Lines are marked
+  by who wrote them since the last review, the agent or you; "Keep" accepts
+  the agent's lines, "Undo" takes them back and leaves yours. The agent is told what you changed by hand, and its turn stops
   when you start typing in the code. Files and folders are made, renamed and
   deleted from the tree; a deleted one can be put back. A real terminal runs in
   the task's folder. Cmd/Ctrl+K searches tasks, files, conversations, commands

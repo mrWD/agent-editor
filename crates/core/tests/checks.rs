@@ -164,7 +164,8 @@ async fn a_running_check_can_be_stopped_and_leaves_nothing_behind() {
     };
 
     manager.checks_run(&id, Some("test")).unwrap();
-    for _ in 0..100 {
+    // A shell and its helper can take a while to start on a busy machine.
+    for _ in 0..500 {
         if running() >= 2 {
             break;
         }

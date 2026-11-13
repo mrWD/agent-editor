@@ -106,7 +106,7 @@ impl Sandbox {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("project")).unwrap();
         std::fs::create_dir_all(dir.join("data")).unwrap();
-        Self(dir.canonicalize().unwrap())
+        Self(ae_core::paths::real_path(&dir).unwrap())
     }
     pub fn project(&self) -> PathBuf {
         self.0.join("project")
@@ -211,7 +211,10 @@ pub fn git_project(sandbox: &Sandbox) -> PathBuf {
     .unwrap();
     std::fs::write(project.join("README.md"), "# Shop\n").unwrap();
     git(&project, &["init", "-q", "-b", "main"]);
+    // Who commits here, so that commits made through the core work on a machine with no git identity set.
+    git(&project, &["config", "user.name", "Test"]);
+    git(&project, &["config", "user.email", "test@example.com"]);
     git(&project, &["add", "."]);
-    git(&project, &["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "Start"]);
+    git(&project, &["commit", "-q", "-m", "Start"]);
     project
 }

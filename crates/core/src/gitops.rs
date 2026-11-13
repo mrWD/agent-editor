@@ -509,7 +509,7 @@ pub fn commit(root: &Path, message: &str, picks: &[Pick], amend: bool) -> Result
         if amend {
             args.push("--amend");
         }
-        git(root, &args)?;
+        git(root, &args).map_err(no_identity)?;
         Ok(())
     })();
     if staged.is_err() {
@@ -745,6 +745,20 @@ pub fn commit_of(root: &Path, name: &str) -> Option<String> {
     rev(root, name)
 }
 
+/// Git refuses to commit until it knows who is committing. Said plainly, with what to do about it.
+fn no_identity(error: anyhow::Error) -> anyhow::Error {
+    let said = error.to_string();
+    // Git says this three ways: no identity at all, no name, or no email.
+    let lost = ["Please tell me who you are", "Author identity unknown", "no name was given", "no email was given"];
+    if lost.iter().any(|words| said.contains(words)) {
+        return anyhow!(
+            "Git does not know who you are, so it will not make a commit. Set it once:\n\n  \
+             git config --global user.name \"Your Name\"\n  git config --global user.email \"you@example.com\""
+        );
+    }
+    error
+}
+
 /// The newest commit two commits both come from.
 pub fn common_start(root: &Path, a: &str, b: &str) -> Option<String> {
     let text = git(root, &["merge-base", a, b]).ok()?;
@@ -900,6 +914,23 @@ mod tests {
         assert!(commit(&dir, "  ", &[Pick { path: "src/long.txt".into(), changes: None }], false).is_err());
         assert!(commit(&dir, "Nothing", &[], false).is_err());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn git_with_nobody_to_commit_as_says_what_to_do() {
+        let plain = |raw: &str| no_identity(anyhow!("{raw}")).to_string();
+        for raw in [
+            "*** Please tell me who you are.",
+            "fatal: Author identity unknown",
+            "fatal: no name was given and auto-detection is disabled",
+            "fatal: no email was given and auto-detection is disabled",
+        ] {
+            let said = plain(raw);
+            assert!(said.starts_with("Git does not know who you are"), "{said}");
+            assert!(said.contains("git config --global user.name"), "{said}");
+        }
+        // Anything else is passed on as git said it.
+        assert_eq!(plain("fatal: pathspec 'x' did not match any files"), "fatal: pathspec 'x' did not match any files");
     }
 
     #[test]
