@@ -3,7 +3,7 @@ import { DEMO_FILE, expect, test, unique } from './support/fixtures';
 type Event = { type: string; requestId?: string };
 
 test.describe('Coming back to a task', () => {
-  test('S-01 S-02 the task says where the user stopped and what happened since; Changes shows only what is new', async ({
+  test('SN-01 SN-02 the task says where the user stopped and what happened since; Changes shows only what is new', async ({
     app,
     core,
     project,
@@ -64,7 +64,7 @@ test.describe('Coming back to a task', () => {
     await expect(app.diffRow('add', 'limit: limits.login,')).toBeVisible();
   });
 
-  test('S-03 the reminder can be hidden, goes away with the next message, and is not shown after a glance', async ({
+  test('SN-03 the reminder can be hidden, goes away with the next message, and is not shown after a glance', async ({
     app,
     core,
     project,

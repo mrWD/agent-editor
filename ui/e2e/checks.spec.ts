@@ -12,7 +12,7 @@ const checksLink = (app: App) =>
   app.page.getByRole('navigation', { name: 'Views of this task' }).getByRole('link', { name: /^Checks/ });
 
 test.describe('The checks of a task', () => {
-  test("T-01 T-02 the project's own checks are listed, run, and what they name opens at the line", async ({
+  test("CK-01 CK-02 the project's own checks are listed, run, and what they name opens at the line", async ({
     app,
     project,
   }) => {
@@ -49,7 +49,7 @@ test.describe('The checks of a task', () => {
     await expect(app.bottom.getByLabel('Problems').getByRole('button')).toContainText('Unit tests pass');
   });
 
-  test('T-03 T-04 a failed check goes to the agent with what it printed; a change to the files makes verdicts old', async ({
+  test('CK-03 CK-04 a failed check goes to the agent with what it printed; a change to the files makes verdicts old', async ({
     app,
     core,
     project,
@@ -87,7 +87,7 @@ test.describe('The checks of a task', () => {
     expect((await core.request<{ done: number }>('checks.state', { taskId })).done).toBe(1);
   });
 
-  test("T-05 T-06 lines for the user to confirm, commands of the user's own, and turning a check off", async ({
+  test("CK-05 CK-06 lines for the user to confirm, commands of the user's own, and turning a check off", async ({
     app,
     project,
   }) => {
@@ -139,7 +139,7 @@ test.describe('The checks of a task', () => {
     await expect(doneWhen(app)).toContainText('1 of 2');
   });
 
-  test('T-07 a failed check stands in the way of "Merge now" until it passes or is turned off', async ({
+  test('CK-07 a failed check stands in the way of "Merge now" until it passes or is turned off', async ({
     app,
     project,
   }) => {
@@ -177,7 +177,7 @@ test.describe('The checks of a task', () => {
     await expect(merge).toBeEnabled();
   });
 
-  test('T-08 a project without checks says so, and a running check can be stopped', async ({ app, project }) => {
+  test('CK-08 a project without checks says so, and a running check can be stopped', async ({ app, project }) => {
     const plain = await project({});
     await app.openHome();
     await app.createTask({ text: unique('Describe the limiter'), folder: plain.dir });

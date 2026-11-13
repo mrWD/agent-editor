@@ -3,7 +3,7 @@ import { AGENT_LINE, DEMO_FILE, DEMO_TEXT, expect, readIn, test, unique } from '
 const EDITED_TEXT = DEMO_TEXT.replace('  limit: 5,', AGENT_LINE);
 
 test.describe('Looking back and rewinding', () => {
-  test('R-01 R-02 a point shows what rewinding would change; Rewind puts the code back; the rewind can be undone', async ({
+  test('RW-01 RW-02 a point shows what rewinding would change; Rewind puts the code back; the rewind can be undone', async ({
     app,
     project,
   }) => {
@@ -63,7 +63,7 @@ test.describe('Looking back and rewinding', () => {
     expect(readIn(folder, DEMO_FILE)).toBe(EDITED_TEXT);
   });
 
-  test('R-03 a rewind keeps the lines the user wrote by hand', async ({ app, project }) => {
+  test('RW-03 a rewind keeps the lines the user wrote by hand', async ({ app, project }) => {
     const shop = await project();
     await app.openHome();
     const taskId = await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
@@ -94,7 +94,7 @@ test.describe('Looking back and rewinding', () => {
     expect(text).toContain('windowMs: 60 * 1000, // mine');
   });
 
-  test('R-04 a rewind can take the later messages out of the chat', async ({ app, project }) => {
+  test('RW-04 a rewind can take the later messages out of the chat', async ({ app, project }) => {
     const shop = await project();
     await app.openHome();
     const first = unique('Describe the limiter');
@@ -123,7 +123,7 @@ test.describe('Looking back and rewinding', () => {
     await expect(app.thoughts.last()).not.toContainText('Change the limit');
   });
 
-  test('R-05 "Back to now" leaves everything as it is; a folder without git has nothing to look back at', async ({
+  test('RW-05 "Back to now" leaves everything as it is; a folder without git has nothing to look back at', async ({
     app,
     project,
   }) => {

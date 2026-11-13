@@ -3,7 +3,7 @@ import { DEMO_FILE, DEMO_TEXT, expect, readIn, test, unique } from './support/fi
 const AGENT_LINE_TEXT = 'limit: limits.login,';
 
 test.describe("The agent's settings, its context and what it writes", () => {
-  test('M-01 the model is picked in the head and goes with the agent to the next task', async ({ app, project }) => {
+  test('AG-01 the model is picked in the head and goes with the agent to the next task', async ({ app, project }) => {
     const shop = await project();
     await app.openHome();
     await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
@@ -25,7 +25,7 @@ test.describe("The agent's settings, its context and what it writes", () => {
     await expect(app.conversation.getByLabel('Model of Practice agent')).toHaveValue('practice');
   });
 
-  test('M-02 in the mode that edits freely nothing is asked; the next task asks again', async ({ app, project }) => {
+  test('AG-02 in the mode that edits freely nothing is asked; the next task asks again', async ({ app, project }) => {
     const shop = await project();
     await app.openHome();
     const taskId = await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
@@ -49,7 +49,7 @@ test.describe("The agent's settings, its context and what it writes", () => {
     await expect(app.conversation.getByLabel('What Practice agent may do without asking')).toHaveValue('ask');
   });
 
-  test('M-03 the head says how full the context is', async ({ app, project }) => {
+  test('AG-03 the head says how full the context is', async ({ app, project }) => {
     const shop = await project();
     await app.openHome();
     await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
@@ -64,7 +64,7 @@ test.describe("The agent's settings, its context and what it writes", () => {
       .toBeGreaterThan(before);
   });
 
-  test('M-04 a sleeping task offers no settings; they come back with the agent, as they were', async ({
+  test('AG-04 a sleeping task offers no settings; they come back with the agent, as they were', async ({
     app,
     core,
     project,
@@ -86,7 +86,7 @@ test.describe("The agent's settings, its context and what it writes", () => {
     await expect(app.conversation.getByLabel('Model of Practice agent')).toBeVisible();
   });
 
-  test('M-05 an answer in Markdown is shown as it is meant, opens the files it names and runs nothing', async ({
+  test('AG-05 an answer in Markdown is shown as it is meant, opens the files it names and runs nothing', async ({
     app,
     project,
   }) => {

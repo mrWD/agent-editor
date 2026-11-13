@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DEMO_FILE, DEMO_TEXT, expect, readIn, test, unique } from './support/fixtures';
 
 test.describe('Making, renaming and deleting files in the tree', () => {
-  test('F-01 F-02 a new file opens in the editor; a new folder takes files; the agent is told', async ({
+  test('FL-01 FL-02 a new file opens in the editor; a new folder takes files; the agent is told', async ({
     app,
     project,
   }) => {
@@ -45,7 +45,7 @@ test.describe('Making, renaming and deleting files in the tree', () => {
     await expect(app.thoughts.last()).toContainText('`src/limits/extra.ts`');
   });
 
-  test('F-03 a renamed file keeps its tab, its text and the marks of who wrote it', async ({ app, project }) => {
+  test('FL-03 a renamed file keeps its tab, its text and the marks of who wrote it', async ({ app, project }) => {
     const shop = await project();
     await app.openHome();
     const taskId = await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
@@ -73,7 +73,7 @@ test.describe('Making, renaming and deleting files in the tree', () => {
     await expect(app.files.getByRole('button', { name: /^limiter\.ts/ })).toContainText('Pr');
   });
 
-  test('F-04 a deleted file asks twice, closes its tab, and can be put back from the conversation', async ({
+  test('FL-04 a deleted file asks twice, closes its tab, and can be put back from the conversation', async ({
     app,
     project,
   }) => {
@@ -108,7 +108,7 @@ test.describe('Making, renaming and deleting files in the tree', () => {
     await expect(told.getByRole('button', { name: 'Put it back' })).toHaveCount(0);
   });
 
-  test('F-05 a whole folder is deleted and put back with everything in it', async ({ app, project }) => {
+  test('FL-05 a whole folder is deleted and put back with everything in it', async ({ app, project }) => {
     const shop = await project();
     await app.openHome();
     const taskId = await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });

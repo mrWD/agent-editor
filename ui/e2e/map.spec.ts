@@ -39,7 +39,7 @@ async function backToMap(app: App) {
 }
 
 test.describe('Map: pictures of what a task changed', () => {
-  test('V-01 the cards show the file the agent changed, what it defines, who needs it and what it calls', async ({
+  test('MP-01 the cards show the file the agent changed, what it defines, who needs it and what it calls', async ({
     app,
     project,
   }) => {
@@ -103,7 +103,7 @@ test.describe('Map: pictures of what a task changed', () => {
     await expect(card(app, 'Flow').getByRole('button', { name: `Ask ${AGENT} to draw the flow` })).toBeEnabled();
   });
 
-  test('V-02 a file, a definition and a box each open the editor at their line; the centre can be moved and is kept', async ({
+  test('MP-02 a file, a definition and a box each open the editor at their line; the centre can be moved and is kept', async ({
     app,
     project,
   }) => {
@@ -177,7 +177,7 @@ test.describe('Map: pictures of what a task changed', () => {
     await expect(button(card(app, 'Calls'), 'totalOf()')).toBeVisible();
   });
 
-  test('V-03 the flow is drawn from the practice agent’s answer, and an answer in another shape is called that', async ({
+  test('MP-03 the flow is drawn from the practice agent’s answer, and an answer in another shape is called that', async ({
     app,
     project,
   }) => {
@@ -260,7 +260,7 @@ test.describe('Map: pictures of what a task changed', () => {
     expect(readIn(folder, DEMO_FILE)).toBe(before);
   });
 
-  test('V-04 no window is too narrow: cards stack, a picture turns top to bottom, and a large one is dragged', async ({
+  test('MP-04 no window is too narrow: cards stack, a picture turns top to bottom, and a large one is dragged', async ({
     app,
     project,
   }) => {
@@ -363,7 +363,7 @@ test.describe('Map: pictures of what a task changed', () => {
     await expect(caret(app, 3)).toBeVisible();
   });
 
-  test('V-05 a task that changed nothing says so, and a folder without git says what the map can know there', async ({
+  test('MP-05 a task that changed nothing says so, and a folder without git says what the map can know there', async ({
     app,
     project,
   }) => {

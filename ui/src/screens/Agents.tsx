@@ -113,8 +113,10 @@ export function Agents(): JSX.Element {
       if (event.event === 'rules.changed') void loadRules();
       if (event.event === 'usage.changed' || event.event === 'task.created' || event.event === 'task.archived')
         void load();
-      // A turn that ended may have cost something.
-      if (event.event === 'task.event' && event.data.type === 'turn_end') void load();
+      // A turn that ended may have cost something; the state says who is working, and it changes after
+      // the turn's end is told.
+      if (event.event === 'task.event' && (event.data.type === 'turn_end' || event.data.type === 'state'))
+        void load();
     });
     onCleanup(stop);
   });

@@ -34,7 +34,7 @@ async function openRequest(app: App, message: string) {
 }
 
 test.describe('Review comments on a merge request', () => {
-  test('N-01 N-02 N-03 comments are listed; one or all go to the agent; a reply goes to the host', async ({
+  test('RV-01 RV-02 RV-03 comments are listed; one or all go to the agent; a reply goes to the host', async ({
     app,
     core,
     project,
@@ -90,7 +90,7 @@ test.describe('Review comments on a merge request', () => {
 });
 
 test.describe('A request that merges by itself', () => {
-  test('N-04 N-05 "Merge by itself" waits for the checks; it can be taken back; failed checks stop it', async ({
+  test('RV-04 RV-05 "Merge by itself" waits for the checks; it can be taken back; failed checks stop it', async ({
     app,
     core,
     project,
@@ -137,7 +137,7 @@ test.describe('A request that merges by itself', () => {
 });
 
 test.describe('Lines that two tasks both change', () => {
-  test('N-06 N-07 an overlap with another open task is shown with their line; it can be waved away or sent to the agent', async ({
+  test('RV-06 RV-07 an overlap with another open task is shown with their line; it can be waved away or sent to the agent', async ({
     app,
     project,
   }) => {
@@ -175,7 +175,7 @@ test.describe('Lines that two tasks both change', () => {
 });
 
 test.describe('A commit message from the agent', () => {
-  test('N-08 "Ask … to write it" puts what the agent answers into the message box', async ({ app, project }) => {
+  test('RV-08 "Ask … to write it" puts what the agent answers into the message box', async ({ app, project }) => {
     const shop = await project({ remote: 'bare' });
     await taskWithAChange(app, shop, unique('Describe the limiter'));
     const box = app.git.getByRole('textbox', { name: 'Commit message' });
