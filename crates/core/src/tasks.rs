@@ -929,7 +929,7 @@ impl Manager {
                     "{name} runs in a terminal and takes no pictures. Say it in words, or hand the task to an agent that does."
                 );
             }
-            return self.prompt_seated(row, text, shown).await;
+            return self.prompt_seated(row, text, shown, false).await;
         }
         // An agent that was started afresh knows nothing of the task, unless it picked up its old session.
         let (live, needs_recap) = match self.live_of(task_id) {

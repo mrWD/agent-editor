@@ -177,7 +177,9 @@ pub fn strip_codes(text: &str) -> String {
                     }
                 }
             }
+            // "ESC ( B" and its kind: any number of signs from ' ' to '/', then one sign that closes it.
             _ => {
+                while chars.next_if(|inner| (' '..='/').contains(inner)).is_some() {}
                 chars.next();
             }
         }
@@ -636,6 +638,8 @@ mod tests {
         );
         assert_eq!(strip_codes("\u{1b}]0;title\u{7}ready"), "ready");
         assert_eq!(strip_codes("plain"), "plain");
+        // A choice of character set is three signs long, not two.
+        assert_eq!(strip_codes("\u{1b}(Bready\u{1b}c"), "ready");
     }
 
     #[test]

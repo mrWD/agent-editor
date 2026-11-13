@@ -240,3 +240,63 @@ async fn a_program_that_is_not_there_makes_no_task_and_settings_say_what_such_an
     let tried = asked(&state, "agents.try", json!({ "id": id })).await;
     assert_eq!(tried["ok"], false);
 }
+
+#[tokio::test]
+async fn a_program_that_opens_with_a_question_keeps_its_first_message_when_it_was_started_with_it() {
+    let sandbox = Sandbox::new("terminal-agent-asks");
+    let state = core(&sandbox);
+    let manager = &state.manager;
+    let mut events = manager.subscribe();
+    let project = manager.add_project(sandbox.project().to_str().unwrap(), None).unwrap();
+
+    // Its arguments name the place of the first message, so nothing is typed at its question.
+    let task = manager.create(&project.id, "mock-terminal-asks-told", "Describe the limiter").await.unwrap();
+    let id = task.row.id.clone();
+    let seen = until(&mut events, &id, |event| state_is(event, "idle")).await;
+    // The quiet of a program that waits for an answer is "your turn" as well.
+    assert!(seen.iter().any(|event| is(event, "turn_end")), "{seen:#?}");
+    let asked = screen(&state, &id);
+    assert!(asked.contains("Trust this folder?"), "{asked}");
+    assert!(!asked.contains("You said"), "{asked}");
+
+    // The user answers in the terminal; only then does the program hear the message it was started with.
+    let term_id = state.terminals.find(&id, AGENT).unwrap().term_id;
+    state.terminals.input(term_id, b"y\r").unwrap();
+    manager.typed_into(term_id, b"y\r");
+    until(&mut events, &id, |event| state_is(event, "idle")).await;
+    assert!(screen(&state, &id).contains("You said: Describe the limiter"), "{}", screen(&state, &id));
+
+    // Later messages are typed, as there is no other way in.
+    manager.prompt(&id, "And again".into()).await.unwrap();
+    until(&mut events, &id, |event| state_is(event, "idle")).await;
+    assert!(screen(&state, &id).contains("You said: And again"));
+
+    // After a restart the program is started with what was said before and the new message.
+    manager.stop_agent_and_wait(&id).await.unwrap();
+    until(&mut events, &id, |event| state_is(event, "asleep")).await;
+    manager.prompt(&id, "Still there?".into()).await.unwrap();
+    until(&mut events, &id, |event| state_is(event, "idle")).await;
+    let term_id = state.terminals.find(&id, AGENT).unwrap().term_id;
+    state.terminals.input(term_id, b"y\r").unwrap();
+    manager.typed_into(term_id, b"y\r");
+    until(&mut events, &id, |event| state_is(event, "idle")).await;
+    let said = screen(&state, &id);
+    assert!(said.contains("Now the user says:") && said.contains("Still there?"), "{said}");
+}
+
+#[tokio::test]
+async fn a_message_typed_at_a_programs_own_question_answers_the_question_and_the_task_says_how_it_ended() {
+    let sandbox = Sandbox::new("terminal-agent-asks-typed");
+    let state = core(&sandbox);
+    let manager = &state.manager;
+    let mut events = manager.subscribe();
+    let project = manager.add_project(sandbox.project().to_str().unwrap(), None).unwrap();
+
+    // Without a place for the message in its arguments, the message is typed: here, at the question.
+    let task = manager.create(&project.id, "mock-terminal-asks", "Describe the limiter").await.unwrap();
+    let seen = until(&mut events, &task.row.id, |event| state_is(event, "asleep")).await;
+    let told = seen.iter().find(|event| is(event, "error")).unwrap_or_else(|| panic!("it is said: {seen:#?}"));
+    let message = told["message"].as_str().unwrap();
+    assert!(message.contains("ended by itself with code 1"), "{message}");
+    assert!(message.contains("Not trusted. Bye."), "{message}");
+}

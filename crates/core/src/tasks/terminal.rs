@@ -12,8 +12,13 @@
 //! - it ends when the program has printed nothing for a while. A program that
 //!   waits for an answer to a question of its own is quiet too, and "your
 //!   turn" is the right thing to say then;
-//! - a program that prints again by itself, without anyone typing, is at work
-//!   again: the task says so, and nobody is told when it stops.
+//! - a program that goes on printing by itself, without anyone typing, is at
+//!   work again: the task says so, and nobody is told when it stops.
+//!
+//! Only what can be read counts as printing. A program that draws its screen
+//! moves the cursor and repaints all the time; that alone is neither work nor
+//! the end of quiet. And one line that changes by itself, such as a notice in
+//! a status line, is not work either: work is printing that goes on.
 //!
 //! What a turn changed on disk is the agent's, as with any agent. What the
 //! protocol would carry is missing: no tool calls in the conversation, no
@@ -49,6 +54,12 @@ const START_LIMIT: Duration = Duration::from_secs(30);
 /// What a program prints this soon after the user typed or resized is the
 /// echo of that, not work of its own.
 const ECHO: Duration = Duration::from_secs(1);
+/// A program is at work by itself once it has printed this many times…
+const WORK_PRINTS: usize = 4;
+/// …over at least this long…
+const WORK_SPAN: Duration = Duration::from_secs(1);
+/// …within this long.
+const WORK_WINDOW: Duration = Duration::from_secs(2);
 /// How often the quiet is measured.
 const TICK: Duration = Duration::from_millis(50);
 
@@ -119,6 +130,32 @@ fn as_typed(text: &str, paste: bool) -> Vec<u8> {
     }
 }
 
+/// Where an agent's arguments say its first message goes.
+const MESSAGE: &str = "{message}";
+
+/// Whether the agent takes its first message as it starts, in its arguments.
+/// Such a program may open with a question of its own (whether the folder is
+/// to be trusted, say): a message typed at that moment would answer the
+/// question instead of being heard.
+fn takes_message(agent: &AgentDef) -> bool {
+    agent.args.iter().any(|arg| arg.contains(MESSAGE))
+}
+
+/// The arguments with the message in its place. It is one argument whatever
+/// it holds, for nothing here goes through a shell. It never starts with a
+/// dash, so the program cannot take it for an option of its own.
+fn with_message(args: &[String], message: &str) -> Vec<String> {
+    let clean: String =
+        message.chars().map(|letter| if letter.is_control() && letter != '\n' { ' ' } else { letter }).collect();
+    let clean = clean.trim();
+    args.iter()
+        .map(|arg| {
+            let filled = arg.replace(MESSAGE, clean);
+            if arg.starts_with(MESSAGE) && filled.starts_with('-') { format!(" {filled}") } else { filled }
+        })
+        .collect()
+}
+
 /// Whether the program now wants pasted text marked, going by what it just
 /// printed. `before` is the end of what it printed earlier: a request may be
 /// cut in two.
@@ -133,9 +170,20 @@ fn paste_wish(before: &[u8], bytes: &[u8]) -> Option<bool> {
     }
 }
 
+/// Whether what a program printed can be read: a letter, a digit, a sign.
+/// Moving the cursor, clearing a line and painting blanks is not printing.
+fn says_something(bytes: &[u8]) -> bool {
+    crate::terminals::strip_codes(&String::from_utf8_lossy(bytes))
+        .chars()
+        .any(|letter| !letter.is_whitespace() && !letter.is_control())
+}
+
 /// The last thing a program printed, cut to fit a sentence.
 fn last_words(said: &str) -> Option<String> {
-    let line = said.lines().map(str::trim).rfind(|line| !line.is_empty())?;
+    // A program that draws its screen leaves scraps of drawing behind; only a line with a word in it is quoted.
+    let reads =
+        |line: &&str| line.split_whitespace().any(|word| word.chars().filter(|c| c.is_alphabetic()).count() >= 3);
+    let line = said.lines().map(str::trim).rfind(reads)?;
     let mut words: String = line.chars().take(200).collect();
     if line.chars().count() > 200 {
         words.push('…');
@@ -200,17 +248,24 @@ impl Manager {
     }
 
     /// Starts the agent's program in a terminal in `cwd`. What the terminal
-    /// does is listened to from before the start, so nothing it prints is missed.
+    /// does is listened to from before the start, so nothing it prints is
+    /// missed. With `first`, the program is given that message as it starts,
+    /// in the place its arguments name with `{message}`.
     fn start_seat(
         &self,
         task_id: &str,
         agent: &AgentDef,
         cwd: &Path,
+        first: Option<&str>,
     ) -> Result<(Arc<Seat>, broadcast::Receiver<TermEvent>)> {
         let terminals = self.terminals()?;
         let events = terminals.subscribe();
+        let args = match first {
+            Some(message) => with_message(&agent.args, message),
+            None => agent.args.clone(),
+        };
         let info = terminals
-            .program(task_id, cwd, &agent.program, &agent.args, &agent.env, &agent.name, AGENT)
+            .program(task_id, cwd, &agent.program, &args, &agent.env, &agent.name, AGENT)
             .map_err(|error| anyhow!("{} did not start: {error:#}", agent.name))?;
         let seat = Arc::new(Seat {
             term_id: info.term_id,
@@ -252,7 +307,7 @@ impl Manager {
         tokio::spawn(async move { manager.watch_seat(id, seat, events).await });
     }
 
-    /// Creates a task whose agent runs in a terminal, and types the first message to it.
+    /// Creates a task whose agent runs in a terminal, and gives it the first message.
     pub(super) async fn create_seated(
         self: &Arc<Self>,
         project: Project,
@@ -266,7 +321,14 @@ impl Manager {
             None => title_from(text),
         };
         let (cwd, branch, base_branch) = self.prepare_folder(&project, &id, &title).await?;
-        let (seat, events) = match self.start_seat(&id, &agent, &cwd) {
+        // A program that takes its first message as it starts gets it here, with the project's rules in front.
+        let rules = self.rules_note(&project.id, &agent.id);
+        let at_start = takes_message(&agent);
+        let first = at_start.then(|| match &rules {
+            Some(note) => format!("{note}\n\n{text}"),
+            None => text.to_string(),
+        });
+        let (seat, events) = match self.start_seat(&id, &agent, &cwd, first.as_deref()) {
             Ok(started) => started,
             Err(error) => {
                 // Leave nothing behind for a task that never existed.
@@ -276,6 +338,9 @@ impl Manager {
                 return Err(error);
             }
         };
+        if at_start {
+            *seat.rules_told.lock().unwrap() = rules;
+        }
         let row = TaskRow {
             id: id.clone(),
             project_id: project.id.clone(),
@@ -295,32 +360,26 @@ impl Manager {
             json!(TaskInfo { row: row.clone(), state: TaskState::Idle, config: Some(seat.config()), race: None }),
         );
         self.take_seat(&id, &agent, &seat, events, false);
-        self.prompt_seated(row, text.to_string(), None).await?;
+        self.prompt_seated(row, text.to_string(), None, at_start).await?;
         self.task(&id)
     }
 
-    /// Types a message to the task's program, starting the program first when the task is asleep.
+    /// Gives a message to the task's program, starting the program first when
+    /// the task is asleep. `has_it` says the program was just started with
+    /// this very message, so there is nothing left to type.
     pub(super) async fn prompt_seated(
         self: &Arc<Self>,
         row: TaskRow,
         text: String,
         shown: Option<Value>,
+        has_it: bool,
     ) -> Result<()> {
         let task_id = row.id.as_str();
-        let (seat, fresh) = match self.seat_of(task_id) {
-            Some(seat) => (seat, false),
-            None => {
-                let agent = self.agent(&row.agent_id)?;
-                let (seat, events) = self.start_seat(task_id, &agent, Path::new(&row.cwd))?;
-                self.take_seat(task_id, &agent, &seat, events, true);
-                (seat, true)
-            }
-        };
-        {
+        let running = self.seat_of(task_id);
+        if let Some(seat) = &running {
             // A program that began to print by itself does not keep the user from speaking.
             let turn = seat.turn.lock().unwrap();
-            let busy = seat.state() != TaskState::Idle && turn.as_ref().is_none_or(|turn| turn.said);
-            if busy {
+            if seat.state() != TaskState::Idle && turn.as_ref().is_none_or(|turn| turn.said) {
                 bail!("The agent is still working. Wait for it or stop the turn.");
             }
         }
@@ -336,8 +395,11 @@ impl Manager {
             self.manual.lock().unwrap().remove(task_id).map(|set| set.into_iter().collect()).unwrap_or_default();
 
         // A program started afresh knows nothing of the task: tell it what was said before.
-        let mut sent = match fresh.then(|| self.store.events(task_id).ok().and_then(|events| recap(&events))).flatten()
-        {
+        let before = match running {
+            Some(_) => None,
+            None => self.store.events(task_id).ok().and_then(|events| recap(&events)),
+        };
+        let mut sent = match before {
             Some(before) => format!(
                 "This task continues an earlier conversation. What was said before:\n\n{before}\n\nNow the user says:\n\n{text}"
             ),
@@ -349,16 +411,27 @@ impl Manager {
         if let Some(note) = self.plan_note(task_id) {
             sent = format!("{note}\n\n{sent}");
         }
+        // The project's rules are told once to each program, and again when they change.
         let rules = self.rules_note(&row.project_id, &row.agent_id);
+        let told = running.as_ref().and_then(|seat| seat.rules_told.lock().unwrap().clone());
+        if told != rules
+            && let Some(note) = &rules
         {
-            let mut told = seat.rules_told.lock().unwrap();
-            if *told != rules {
-                if let Some(note) = &rules {
-                    sent = format!("{note}\n\n{sent}");
-                }
-                *told = rules;
-            }
+            sent = format!("{note}\n\n{sent}");
         }
+
+        let (seat, has_it) = match running {
+            Some(seat) => (seat, has_it),
+            None => {
+                let agent = self.agent(&row.agent_id)?;
+                let at_start = takes_message(&agent);
+                let (seat, events) =
+                    self.start_seat(task_id, &agent, Path::new(&row.cwd), at_start.then_some(sent.as_str()))?;
+                self.take_seat(task_id, &agent, &seat, events, true);
+                (seat, at_start)
+            }
+        };
+        *seat.rules_told.lock().unwrap() = rules;
 
         match shown {
             Some(event) => self.emit(task_id, event),
@@ -367,11 +440,15 @@ impl Manager {
         *seat.turn.lock().unwrap() = Some(Turn {
             text: Some(text),
             number: crate::plan::turn_number(),
-            typed_at: None,
+            // A message the program was started with is in its hands already.
+            typed_at: has_it.then(Instant::now),
             said: true,
             cancelled: false,
         });
         self.seat_state(task_id, &seat, TaskState::Running);
+        if has_it {
+            return Ok(());
+        }
 
         let (manager, task_id) = (self.clone(), task_id.to_string());
         tokio::spawn(async move {
@@ -384,9 +461,8 @@ impl Manager {
             let still_there = manager.seat_of(&task_id).is_some_and(|current| Arc::ptr_eq(&current, &seat));
             let Ok(terminals) = manager.terminals() else { return };
             // A program that has ended is told about by whoever watches its terminal.
-            if !still_there
-                || terminals.input(seat.term_id, &as_typed(&sent, seat.paste.load(Ordering::SeqCst))).is_err()
-            {
+            let typed = as_typed(&sent, seat.paste.load(Ordering::SeqCst));
+            if !still_there || terminals.input(seat.term_id, &typed).is_err() {
                 return;
             }
             // Enter comes a moment later: a program that takes pasted text needs to have taken it in.
@@ -468,6 +544,8 @@ impl Manager {
     async fn watch_seat(self: Arc<Self>, task_id: String, seat: Arc<Seat>, mut events: broadcast::Receiver<TermEvent>) {
         let started = Instant::now();
         let mut last_output: Option<Instant> = None;
+        // When it last printed, a few times back: printing that goes on is work.
+        let mut prints: std::collections::VecDeque<Instant> = std::collections::VecDeque::new();
         let mut tail: Vec<u8> = Vec::new();
         let mut tick = tokio::time::interval(TICK);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -476,13 +554,24 @@ impl Manager {
             tokio::select! {
                 event = events.recv() => match event {
                     Ok(TermEvent::Data { term_id, bytes, .. }) if term_id == seat.term_id => {
-                        last_output = Some(Instant::now());
                         if let Some(wanted) = paste_wish(&tail, &bytes) {
                             seat.paste.store(wanted, Ordering::SeqCst);
                         }
                         let keep = bytes.len().min(PASTE_ON.len() - 1);
                         tail = bytes[bytes.len() - keep..].to_vec();
-                        self.printed_by_itself(&task_id, &seat);
+                        if says_something(&bytes) {
+                            let now = Instant::now();
+                            last_output = Some(now);
+                            prints.push_back(now);
+                            while prints.front().is_some_and(|first| now.duration_since(*first) > WORK_WINDOW) {
+                                prints.pop_front();
+                            }
+                            let goes_on = prints.len() >= WORK_PRINTS
+                                && prints.front().is_some_and(|first| now.duration_since(*first) >= WORK_SPAN);
+                            if goes_on {
+                                self.printed_by_itself(&task_id, &seat);
+                            }
+                        }
                     }
                     Ok(TermEvent::Exit { term_id, code, closed, .. }) if term_id == seat.term_id => break Some((code, closed)),
                     Ok(_) => {}
@@ -552,9 +641,9 @@ impl Manager {
         self.emit(&task_id, json!({ "type": "state", "state": TaskState::Asleep }));
     }
 
-    /// The program printed while nobody had given it anything to do: it is at
-    /// work again, by itself. What it prints right after the user typed, or
-    /// after its terminal changed size, is not work.
+    /// The program goes on printing while nobody had given it anything to do:
+    /// it is at work again, by itself. What it prints right after the user
+    /// typed, or after its terminal changed size, is not work.
     fn printed_by_itself(&self, task_id: &str, seat: &Seat) {
         if !seat.ready.load(Ordering::SeqCst) || seat.touched.lock().unwrap().elapsed() < ECHO {
             return;
@@ -630,5 +719,27 @@ mod tests {
     fn the_last_words_are_the_last_line_that_says_something() {
         assert_eq!(last_words("one\ntwo  \n\n   \n").as_deref(), Some("two"));
         assert_eq!(last_words(" \n"), None);
+        // What is left of a drawn screen is not words.
+        assert_eq!(last_words("Not signed in\nB\n>0q\n").as_deref(), Some("Not signed in"));
+    }
+
+    #[test]
+    fn moving_the_cursor_and_painting_blanks_is_not_printing() {
+        // What a program that draws its screen sends while it only waits.
+        assert!(!says_something(b"\x1b[?25l\x1b[H\r\x1b[80C\x1b[23B\x1b[K\x1b[30;1H\x1b[26;3H\x1b[?25h"));
+        assert!(!says_something(b"\x1b(B\x0f\x1b[?2004h   \r\n"));
+        assert!(says_something(b"\x1b[2GREADY\x1b[K"));
+        assert!(says_something("\u{1b}[1m✻\u{1b}[0m".as_bytes()));
+    }
+
+    #[test]
+    fn the_first_message_goes_where_the_arguments_name_it_as_one_argument() {
+        let args = vec!["--model".to_string(), "small".to_string(), "{message}".to_string()];
+        let filled = with_message(&args, "Fix the test; then `rm -rf /`\nand say so.\u{1b}[2J");
+        assert_eq!(filled, ["--model", "small", "Fix the test; then `rm -rf /`\nand say so. [2J"]);
+        // A message that begins like an option is not one.
+        assert_eq!(with_message(&args, "--dangerous")[2], " --dangerous");
+        // An option of the agent's own stays an option, with the message as its value.
+        assert_eq!(with_message(&["--flag".to_string(), "--say={message}".to_string()], "hi"), ["--flag", "--say=hi"]);
     }
 }

@@ -96,6 +96,14 @@ pub fn registry() -> Registry {
         missing,
         in_terminal("mock-terminal", None),
         in_terminal("mock-terminal-paste", Some("AE_MOCK_PASTE")),
+        // One that opens with a question of its own, typed into as it is…
+        in_terminal("mock-terminal-asks", Some("AE_MOCK_ASKS_FIRST")),
+        // …and one that takes its first message as it starts, so the question waits for the user.
+        {
+            let mut agent = in_terminal("mock-terminal-asks-told", Some("AE_MOCK_ASKS_FIRST"));
+            agent.args.push("{message}".into());
+            agent
+        },
         practice("mock", None),
         practice("mock-load", Some("AE_MOCK_LOAD")),
         practice("mock-modes", Some("AE_MOCK_MODES")),
