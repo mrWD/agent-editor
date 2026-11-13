@@ -242,7 +242,8 @@ export class App {
   }
 
   async openBottom(tab: 'Terminal' | 'Run' | 'Problems') {
-    const button = this.bottom.getByRole('button', { name: tab, exact: true });
+    // A tab may carry a count after its name: "Run 1 of 2", "Problems 3".
+    const button = this.bottom.getByRole('button', { name: new RegExp(`^${tab}( \\d|$)`) });
     if ((await button.getAttribute('aria-pressed')) !== 'true') await button.click();
     await expect(button).toHaveAttribute('aria-pressed', 'true');
   }

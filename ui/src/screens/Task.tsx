@@ -19,6 +19,7 @@ import { AgentPane } from '../components/AgentPane';
 import { LspBadge, LspStatus } from '../components/LspStatus';
 import { ProblemsTab } from '../components/ProblemsTab';
 import { RunTab } from '../components/RunTab';
+import { runCount } from '../core/run';
 import { Chip, Icon, modKey } from '../components/bits';
 import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
@@ -505,7 +506,7 @@ function BottomPanel(props: { task: Task; shown: boolean }): JSX.Element {
     window.addEventListener('pointerup', stop);
   };
 
-  const tabButton = (id: BottomTab, label: string) => (
+  const tabButton = (id: BottomTab, label: JSX.Element) => (
     <button type="button" class="bottom-tab" aria-pressed={bottomOpen() && tab() === id} onClick={() => pick(id)}>
       {label}
     </button>
@@ -524,7 +525,22 @@ function BottomPanel(props: { task: Task; shown: boolean }): JSX.Element {
       </Show>
       <div class="bottom-tabs">
         {tabButton('terminal', 'Terminal')}
-        {tabButton('run', 'Run')}
+        {tabButton(
+          'run',
+          <>
+            Run
+            <Show when={runCount(props.task.info.id)}>
+              {(count) => (
+                <>
+                  {' '}
+                  <span class="bottom-count">
+                    {count().up} of {count().of}
+                  </span>
+                </>
+              )}
+            </Show>
+          </>,
+        )}
         {tabButton(
           'problems',
           problemCount(props.task.info.id) > 0 ? `Problems ${problemCount(props.task.info.id)}` : 'Problems',

@@ -101,49 +101,137 @@ exit 1
 `;
 
 const DOCKER = String.raw`#!/bin/sh
-# A stand-in for Docker. No container is started: "running" containers are lines in a file.
+# A stand-in for Docker. No container is started: "running" containers are lines in a file,
+# one file per compose project, and a named volume is a file that remembers its project.
 here="$(cd "$(dirname "$0")" && pwd)"
-echo "$@" | tr '\n' ' ' >> "$here/docker.log"
-echo >> "$here/docker.log"
-mkdir -p "$here/state/docker"
+# One call, one line, written in one go: several calls may be logged at the same moment.
+printf '%s\n' "$(echo "$@" | tr '\n' ' ')" >> "$here/docker.log"
+state="$here/state/docker"
+mkdir -p "$state/volumes"
 
 if [ "$1" = "info" ]; then
-  if [ -f "$here/state/docker/engine-down" ]; then echo "Cannot connect to the Docker daemon" >&2; exit 1; fi
+  if [ -f "$state/engine-down" ]; then echo "Cannot connect to the Docker daemon" >&2; exit 1; fi
   echo "29.0.0"
   exit 0
 fi
 
-project=""; file=""; prev=""; last=""
+project=""; file=""; prev=""; last=""; inside=""
 for word in "$@"; do
   [ "$prev" = "-p" ] && project="$word"
   [ "$prev" = "-f" ] && file="$word"
+  [ "$prev" = "exec" ] && [ -z "$inside" ] && inside="$word"
   prev="$word"; last="$word"
 done
-running="$here/state/docker/$project.running"
+running="$state/$project.running"
+
+# One service of the compose file as it is once "up". The worker stops with code 3 right after its start.
+container() {
+  if [ "$1" = "worker" ]; then
+    printf '{"Service":"worker","State":"exited","ExitCode":3,"Publishers":[]}\n'
+    return
+  fi
+  # The file is JSON written with two spaces a level: a service starts and ends four spaces in.
+  port=$(sed -n "/^    \"$1\": {/,/^    }/p" "$file" | grep -o '"published": *"[0-9]*"' | head -1 | grep -o '[0-9][0-9]*')
+  [ -z "$port" ] && port=0
+  printf '{"Service":"%s","State":"running","ExitCode":0,"Publishers":[{"PublishedPort":%s,"TargetPort":5432}]}\n' "$1" "$port"
+}
+
+# Every running container of every compose project: its project, then its service.
+all_running() {
+  for one in "$state"/*.running; do
+    [ -f "$one" ] || continue
+    of=$(basename "$one" .running)
+    grep '"State":"running"' "$one" | sed 's/.*"Service":"\([^"]*\)".*/\1/' | while read -r service; do
+      echo "$of $service"
+    done
+  done
+}
+
+# What a container "uses": a database more than the rest.
+memory_of() {
+  case "$1" in db) echo "120MiB" ;; cache) echo "18MiB" ;; *) echo "64MiB" ;; esac
+}
+
+without() {
+  if [ -f "$running" ]; then
+    grep -v "\"Service\":\"$1\"" "$running" > "$running.tmp"
+    mv "$running.tmp" "$running"
+  fi
+}
 
 case "$*" in
-  # The test projects write their compose file as JSON, which is also YAML: reading it is printing it.
-  *" config --format json") cat "$file" ;;
+  *" exec "*)
+    # A shell "inside" the container: a plain shell of this machine with the service's name as its prompt.
+    echo "A shell in $project-$inside-1"
+    PS1="$inside# " exec /bin/sh ;;
+  *" config --format json")
+    # What of the task's environment reached Docker, for the tests to read.
+    env | grep '^SHOP_' | sort > "$state/$project.env"
+    # The test projects write their compose file as JSON, which is also YAML: reading it is printing it.
+    # Docker names volumes after the project it is asked about; the test files say __PROJECT__ there.
+    sed "s/__PROJECT__/$project/g" "$file" ;;
   *" ps --all --format json") [ -f "$running" ] && cat "$running"; exit 0 ;;
+  "ps --format json")
+    all_running | while read -r of service; do
+      printf '{"ID":"%s-%s","Names":"%s-%s-1","Labels":"com.docker.compose.project=%s,com.docker.compose.service=%s","State":"running"}\n' "$of" "$service" "$of" "$service" "$of" "$service"
+    done ;;
+  "stats --no-stream --format json")
+    all_running | while read -r of service; do
+      printf '{"ID":"%s-%s","Name":"%s-%s-1","MemUsage":"%s / 7.651GiB"}\n' "$of" "$service" "$of" "$service" "$(memory_of "$service")"
+    done ;;
+  "system df --format json")
+    printf '{"Type":"Images","Size":"2.2GB"}\n{"Type":"Local Volumes","Size":"0B"}\n' ;;
+  "system df -v --format json")
+    list=""
+    for one in "$state"/volumes/*; do
+      [ -f "$one" ] || continue
+      [ -n "$list" ] && list="$list,"
+      list="$list{\"Name\":\"$(basename "$one")\",\"Labels\":\"com.docker.compose.project=$(cat "$one")\",\"Size\":\"84.2MB\"}"
+    done
+    printf '{"Images":[],"Containers":[],"Volumes":[%s]}\n' "$list" ;;
+  "volume rm "*)
+    if [ ! -f "$state/volumes/$3" ]; then echo "Error response from daemon: get $3: no such volume" >&2; exit 1; fi
+    rm -f "$state/volumes/$3" ;;
   *" up -d"*)
-    # The task's own file is the one after -f; the port in it is the one "published".
-    port=$(grep -o '"published": *"[0-9]*"' "$file" | head -1 | grep -o '[0-9][0-9]*')
-    echo " Container $project-db-1  Started"
-    printf '{"Service":"db","State":"running","ExitCode":0,"Publishers":[{"PublishedPort":%s,"TargetPort":5432}]}\n' "$port" > "$running"
-    if grep -q '"worker"' "$file"; then
-      printf '{"Service":"worker","State":"exited","ExitCode":3,"Publishers":[]}\n' >> "$running"
-    fi ;;
+    # The services to start are named after the flags; none named means every service of the file.
+    wanted=""; after=""
+    for word in "$@"; do
+      if [ -n "$after" ]; then
+        case "$word" in -*) ;; *) wanted="$wanted $word" ;; esac
+      fi
+      [ "$word" = "up" ] && after=1
+    done
+    if [ -z "$wanted" ]; then
+      for name in web db cache legacy worker; do
+        grep -q "^    \"$name\": {" "$file" && wanted="$wanted $name"
+      done
+    fi
+    touch "$running"
+    for name in $wanted; do
+      without "$name"
+      container "$name" >> "$running"
+      echo " Container $project-$name-1  Started"
+    done
+    # The named volumes of the file are made with the first start.
+    sed -n '/^  "volumes": {/,/^  }/p' "$file" | grep -o '"name": *"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/' | while read -r volume; do
+      [ -f "$state/volumes/$volume" ] || echo "$project" > "$state/volumes/$volume"
+    done ;;
   *" logs --follow"*)
     echo "$last-1  | database system is ready to accept connections"
     exec sleep 60 ;;
-  *" down"*) rm -f "$running" ;;
-  *" stop "*)
-    if [ -f "$running" ]; then
-      grep -v "\"Service\":\"$last\"" "$running" > "$running.tmp"
-      mv "$running.tmp" "$running"
-    fi ;;
+  *" rm --stop --force --volumes "*) without "$last" ;;
+  *" down"*)
+    rm -f "$running"
+    case "$*" in
+      *"--volumes"*)
+        for one in "$state"/volumes/*; do
+          if [ -f "$one" ] && [ "$(cat "$one")" = "$project" ]; then rm -f "$one"; fi
+        done ;;
+    esac ;;
+  *" stop "*) without "$last" ;;
   *) echo "unexpected call: $*" >&2; exit 2 ;;
 esac
+exit 0
 `;
 
 export const STAND_INS = ['gh', 'glab', 'docker'] as const;

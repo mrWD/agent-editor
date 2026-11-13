@@ -1095,30 +1095,9 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             crate::race::command(state, method, params).await
         }
 
-        "run.state" | "run.start" | "run.stop" | "run.logs" => {
-            let task_id = text_param(params, "taskId")?.to_string();
-            let service = params.get("service").and_then(Value::as_str).map(str::to_string);
-            let (project, root) = state.run_place(&task_id)?;
-            let runner = state.runner.clone();
-            let method = method.to_string();
-            let manager = manager.clone();
-            tokio::task::spawn_blocking(move || {
-                match method.as_str() {
-                    "run.start" => runner.start(&task_id, &project, &root, service.as_deref())?,
-                    "run.stop" => runner.stop(&task_id, &project, &root, service.as_deref())?,
-                    "run.logs" => {
-                        let service = service.ok_or_else(|| anyhow!("Missing parameter: service"))?;
-                        return Ok(json!({ "termId": runner.logs(&task_id, &project, &root, &service)? }));
-                    }
-                    _ => {}
-                }
-                if method != "run.state" {
-                    manager.broadcast_run_changed(&task_id);
-                }
-                Ok(json!(runner.state(&task_id, &project, &root)))
-            })
-            .await?
-        }
+        "run.state" | "run.start" | "run.restart" | "run.stop" | "run.logs" | "run.shell" | "run.profile"
+        | "run.saveProfile" | "run.removeProfile" | "env.get" | "env.set" | "deps.install" | "db.reset"
+        | "resources.get" | "resources.cleanUp" => crate::runner::command(state, method, params).await,
 
         "lsp.start" | "lsp.send" | "lsp.setFormatOnSave" => state.lsp.command(method, params).await,
         "preview.state" | "preview.open" | "preview.close" | "preview.remember" => {

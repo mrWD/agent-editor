@@ -4878,3 +4878,312 @@ button.picked-source:hover {
   flex-direction: column;
   gap: 8px;
 }
+
+/* ---------- Run: environment ---------- */
+
+/* The Run tab as the design has it. It builds on the rules under "Run tab" above. */
+.run {
+  gap: 10px;
+}
+.bottom-tab .bottom-count {
+  margin-left: 2px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* The head: the profile, what it was read from, and the buttons for everything */
+.run-head {
+  gap: 6px 10px;
+}
+.run-head .btn {
+  height: 30px;
+  font-size: 13px;
+}
+.run-profile {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding-left: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+  font-size: 13px;
+}
+.run-profile > span {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.run-profile select {
+  max-width: 220px;
+  height: 28px;
+  padding: 0 28px 0 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='%238B93A1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E")
+    no-repeat right 8px center;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  appearance: none;
+  cursor: pointer;
+}
+.run-profile select:disabled {
+  cursor: default;
+}
+.run-profile option {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 400;
+}
+.run-read {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.run-profile-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 14px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.run-profile-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.run-profile-name .field {
+  width: 200px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.run-profile-ticks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  min-width: 0;
+  min-height: 28px;
+}
+.run-profile-ticks > .fine {
+  flex: 1 0 100%;
+}
+
+/* The table of services */
+.run-table-wrap {
+  flex: none;
+  overflow-x: auto;
+}
+.run-services {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.run-services th {
+  padding: 2px 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+}
+.run-services td {
+  padding: 4px 6px;
+}
+.run-services tbody tr {
+  border-top: 1px solid var(--line-soft);
+}
+.run-services tr.failed {
+  background: rgba(255, 122, 122, 0.08);
+}
+.run-services .run-num {
+  text-align: right;
+}
+.run-name {
+  font-weight: 600;
+}
+/* The dot stands after the name in the page, so a row is called by its name first; it is drawn before it. */
+.run-name .run-dot {
+  order: -1;
+}
+/* The state is not a class: "stopped" is also the name of the card that says where you stopped. */
+.run-dot[data-state='running'] {
+  background: var(--green);
+}
+.run-dot[data-state='starting'] {
+  background: var(--text-2);
+}
+.run-dot[data-state='failed'] {
+  background: var(--red);
+}
+.run-services .run-what {
+  display: table-cell;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.run-docker {
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-family: var(--sans);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.run-services .run-address {
+  display: table-cell;
+  font-size: 12px;
+}
+.run-address > * {
+  display: block;
+}
+.run-services .run-bad {
+  color: var(--red);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.run-memory {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.run-services .run-actions {
+  display: table-cell;
+  text-align: right;
+  white-space: nowrap;
+}
+.run-actions .btn.primary {
+  margin-left: 2px;
+  padding: 0 10px;
+}
+.run-log.shell {
+  height: 240px;
+}
+
+/* The cards under the table: environment, dependencies, database, other tasks */
+.run-cards {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.run-card {
+  flex: 1 1 160px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.run-card.wide {
+  flex: 2 1 260px;
+}
+.run-card h3 {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 600;
+}
+.run-card-text {
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.run-card-value {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.run-card > .btn {
+  align-self: flex-start;
+}
+.run-card .btn.tiny {
+  height: auto;
+  min-height: 24px;
+  white-space: normal;
+  text-align: left;
+}
+.run-card-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.run-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.run-other {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 13px;
+}
+.run-other-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-other .fine {
+  white-space: nowrap;
+}
+
+/* The task's environment, value by value */
+.run-env {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+/* Name, field, where the value comes from, and what can be done: in columns, so the rows line up. */
+.run-env-row,
+.run-env-add {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(110px, 1fr) minmax(110px, 1.2fr) minmax(120px, 262px);
+  align-items: center;
+  gap: 4px 8px;
+}
+.run-env-add {
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.run-env-add .btn {
+  grid-column: 4;
+  justify-self: end;
+}
+.run-env-name {
+  min-width: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.run-env .field {
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.run-env-from {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.run-env-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 4px;
+}

@@ -43,7 +43,13 @@ const encoder = new TextEncoder();
  * task and coming back shows the same terminal with what it printed meanwhile.
  * With `attach` it shows the output of one program the Run tab started.
  */
-export function TerminalView(props: { taskId: string; visible: boolean; attach?: number }): JSX.Element {
+export function TerminalView(props: {
+  taskId: string;
+  visible: boolean;
+  attach?: number;
+  /** For a program the user types into, such as a shell in a container: it is told the size of this view. */
+  follow?: boolean;
+}): JSX.Element {
   let host: HTMLDivElement | undefined;
   let term: Xterm | undefined;
   let fit: FitAddon | undefined;
@@ -53,6 +59,8 @@ export function TerminalView(props: { taskId: string; visible: boolean; attach?:
   const [problem, setProblem] = createSignal<string | null>(null);
 
   const size = () => ({ cols: term?.cols ?? 80, rows: term?.rows ?? 24 });
+  /** Whether the program is told the size of this view. A log is not: it keeps the size it was started with. */
+  const follows = () => props.attach === undefined || props.follow === true;
 
   /** Joins the task's terminal, or starts one when there is none. */
   const connect = async () => {
@@ -69,8 +77,8 @@ export function TerminalView(props: { taskId: string; visible: boolean; attach?:
       if (existing) {
         termId = existing.termId;
         await core.request('terminal.attach', { termId });
-        // A program's log keeps the size it was started with; only the shell follows this view.
-        if (props.attach === undefined) await core.request('terminal.resize', { termId, ...size() });
+        // A program's log keeps the size it was started with; only a shell follows this view.
+        if (follows()) await core.request('terminal.resize', { termId, ...size() });
       } else if (props.attach !== undefined) {
         setEnded(true);
         return;
@@ -94,7 +102,7 @@ export function TerminalView(props: { taskId: string; visible: boolean; attach?:
     const before = size();
     fit.fit();
     const after = size();
-    if (termId !== null && props.attach === undefined && (before.cols !== after.cols || before.rows !== after.rows)) {
+    if (termId !== null && follows() && (before.cols !== after.cols || before.rows !== after.rows)) {
       void core.request('terminal.resize', { termId, ...after }).catch(() => {});
     }
   };

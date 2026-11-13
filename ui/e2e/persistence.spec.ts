@@ -148,7 +148,7 @@ test.describe('What survives the core', () => {
     await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
     await app.openBottom('Run');
     await app.bottom.getByRole('button', { name: 'Start all' }).click();
-    const db = app.service('db').getByRole('link', { name: /^localhost:\d+$/ });
+    const db = app.service('db').getByText(/^localhost:\d+$/);
     await expect(db).toBeVisible();
     await expect(app.service('dev').getByRole('link', { name: 'localhost:4567' })).toBeVisible();
     const address = await db.textContent();
@@ -159,7 +159,7 @@ test.describe('What survives the core', () => {
     // The container outlived the core; the dev script was the core's own child and went with it.
     await expect(db).toHaveText(address!);
     await expect(app.service('dev')).toContainText('stopped');
-    await expect(app.bottom).toContainText('1 of 2 up.');
+    await expect(app.bottom.getByRole('button', { name: /^Run / })).toHaveText('Run 1 of 2');
   });
 });
 
