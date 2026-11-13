@@ -210,7 +210,7 @@ export class App {
     const parts = file.split('/');
     const name = parts.pop()!;
     for (const folder of parts) {
-      const row = this.files.getByRole('button', { name: `${folder}/`, exact: true });
+      const row = this.files.getByRole('button', { name: folder, exact: true });
       await expect(row).toBeVisible();
       if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click();
     }

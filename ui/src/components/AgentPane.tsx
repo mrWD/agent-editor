@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from 'solid-js';
+import { sideWidth } from '../core/layout';
 import { go, route, taskHref } from '../app/router';
 import {
   agentOf,
@@ -533,6 +534,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
     <aside
       class="agent-pane"
       classList={{ racing: Boolean(props.task.info.race) }}
+      style={{ 'flex-basis': `${sideWidth('agent')}px` }}
       aria-label={`Conversation with ${name()}`}
     >
       <Show when={props.task.info.race}>

@@ -210,6 +210,23 @@ export const Icon = {
       <path d="M2 2l6 6M8 2l-6 6" />
     </svg>
   ),
+  FilePlus: () => (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} stroke-width="1.4" aria-hidden="true">
+      <path d="M8 13.5H3.5v-11h5L12 6v1.5" />
+      <path d="M8.4 2.6V6H12M12 10v4M10 12h4" />
+    </svg>
+  ),
+  FolderPlus: () => (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} stroke-width="1.4" aria-hidden="true">
+      <path d="M8.5 13H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1h3L7.5 5H13a1 1 0 0 1 1 1v2" />
+      <path d="M12 10v4M10 12h4" />
+    </svg>
+  ),
+  FoldAll: () => (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} stroke-width="1.4" aria-hidden="true">
+      <path d="M5 2.5l3 3 3-3M5 13.5l3-3 3 3M3 8h10" />
+    </svg>
+  ),
   ChevronUp: () => (
     <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} stroke-width="1.5" aria-hidden="true">
       <path d="M4 10l4-4 4 4" />

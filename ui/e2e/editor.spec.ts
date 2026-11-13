@@ -36,12 +36,12 @@ test.describe('Files and the editor', () => {
     expect(existsSync(path.join(await app.folderOf(taskId), '.git'))).toBe(true);
 
     const rows = app.files.locator('.tree-row');
-    await expect(rows).toHaveText(['src/', '.gitignore', 'compose.yaml', 'logo.bin', 'package.json', 'README.md']);
-    await app.files.getByRole('button', { name: 'src/', exact: true }).click();
+    await expect(rows).toHaveText(['src', '.gitignore', 'compose.yaml', 'logo.bin', 'package.json', 'README.md']);
+    await app.files.getByRole('button', { name: 'src', exact: true }).click();
     await expect(rows).toHaveText([
-      'src/',
-      'limits/',
-      'middleware/',
+      'src',
+      'limits',
+      'middleware',
       'app.ts',
       '.gitignore',
       'compose.yaml',
@@ -252,8 +252,8 @@ test.describe('Who wrote which line, Keep and Undo', () => {
     await app.letAgentEdit('Change the limit');
 
     // The tree and the list of changed files name who changed the file.
-    await app.files.getByRole('button', { name: 'src/', exact: true }).click();
-    await app.files.getByRole('button', { name: 'middleware/', exact: true }).click();
+    await app.files.getByRole('button', { name: 'src', exact: true }).click();
+    await app.files.getByRole('button', { name: 'middleware', exact: true }).click();
     const inTree = app.files.getByRole('button', { name: /^rateLimit\.ts/ });
     await expect(inTree.getByRole('img', { name: 'Changed by Practice agent' })).toBeVisible();
     const changed = app.files.getByRole('button', { name: /^Changed/ });

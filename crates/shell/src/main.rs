@@ -16,10 +16,12 @@ mod links;
 mod menu;
 mod settings;
 mod window;
+mod zoom;
 
 use ae_core::{Desktop, Options, Port};
 use anyhow::{Context, Result, bail};
 use settings::Settings;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, RunEvent, Url};
@@ -35,6 +37,10 @@ pub struct Shell {
     pub address: Url,
     /// Handed to the app's window and to nobody else; see `ae_core::Desktop`.
     pub key: String,
+    /// Where the app keeps what it remembers between starts.
+    pub data_dir: PathBuf,
+    /// How large the interface is drawn; 1.0 is the size as designed. See `zoom`.
+    pub zoom: Mutex<f64>,
 }
 
 /// How long quitting waits for the core to stop its agents and terminals.
@@ -123,16 +129,18 @@ fn start(app: &AppHandle, settings: &Settings) -> Result<()> {
     let core = tauri::async_runtime::block_on(ae_core::start(options))?;
     settings::remember_port(core.data_dir(), core.addr().port());
     let address = Url::parse(&core.url())?;
+    let data_dir = core.data_dir().to_path_buf();
+    let zoom = Mutex::new(zoom::remembered(&data_dir));
 
     // Kept before the window is opened: if opening fails, quitting still finds the core and stops it.
-    app.manage(Shell { core: Mutex::new(Some(core)), address, key });
+    app.manage(Shell { core: Mutex::new(Some(core)), address, key, data_dir, zoom });
     quit_on_signal(app);
     window::open(app)?;
     Ok(())
 }
 
 /// The system's "choose a folder" dialog, in the shape the core asks for it.
-fn folder_dialog(app: &AppHandle) -> Arc<dyn Fn() -> Option<std::path::PathBuf> + Send + Sync> {
+fn folder_dialog(app: &AppHandle) -> Arc<dyn Fn() -> Option<PathBuf> + Send + Sync> {
     let app = app.clone();
     Arc::new(move || {
         let mut dialog = app.dialog().file().set_title("Choose the folder of the project");
