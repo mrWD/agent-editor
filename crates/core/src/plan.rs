@@ -1936,8 +1936,9 @@ mod tests {
 
     #[test]
     fn the_files_of_a_turn_are_those_its_finished_edits_name() {
-        let root = Path::new("/work/shop");
-        let call = |id: &str, kind: &str, status: &str, path: &str| json!({ "type": "update", "update": { "sessionUpdate": "tool_call", "toolCallId": id, "kind": kind, "status": status, "locations": [{ "path": path }] } });
+        let root = std::path::PathBuf::from(crate::paths::here("/work/shop"));
+        let root = root.as_path();
+        let call = |id: &str, kind: &str, status: &str, path: &str| json!({ "type": "update", "update": { "sessionUpdate": "tool_call", "toolCallId": id, "kind": kind, "status": status, "locations": [{ "path": crate::paths::here(path) }] } });
         let update = |id: &str, status: &str| json!({ "type": "update", "update": { "sessionUpdate": "tool_call_update", "toolCallId": id, "status": status } });
         let events = vec![
             json!({ "type": "user_message", "text": "An earlier message" }),
@@ -1952,7 +1953,7 @@ mod tests {
             call("outside", "edit", "completed", "/etc/hosts"),
             // A call that says only later what it is: its diff makes it an edit.
             call("late", "other", "pending", "/work/shop/src/a.ts"),
-            json!({ "type": "update", "update": { "sessionUpdate": "tool_call_update", "toolCallId": "late", "status": "completed", "content": [{ "type": "diff", "path": "/work/shop/src/a.ts" }] } }),
+            json!({ "type": "update", "update": { "sessionUpdate": "tool_call_update", "toolCallId": "late", "status": "completed", "content": [{ "type": "diff", "path": crate::paths::here("/work/shop/src/a.ts") }] } }),
             json!({ "type": "update", "update": { "sessionUpdate": "agent_message_chunk", "content": { "text": "Done. " } } }),
             json!({ "type": "update", "update": { "sessionUpdate": "agent_message_chunk", "content": { "text": "One file changed." } } }),
             json!({ "type": "turn_end", "stopReason": "end_turn" }),

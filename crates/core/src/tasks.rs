@@ -318,7 +318,7 @@ impl Manager {
         if path.is_empty() {
             bail!("Give the folder of the project");
         }
-        let real = Path::new(path).canonicalize().with_context(|| format!("No such folder: {path}"))?;
+        let real = crate::paths::real_path(Path::new(path)).with_context(|| format!("No such folder: {path}"))?;
         if !real.is_dir() {
             bail!("Not a folder: {path}");
         }

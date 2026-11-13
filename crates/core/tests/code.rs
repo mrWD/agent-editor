@@ -376,3 +376,45 @@ async fn a_folder_without_git_says_so() {
     let error = dispatch(&state, "git.state", &json!({ "taskId": task.row.id })).await.unwrap_err().to_string();
     assert!(error.contains("without git"), "{error}");
 }
+
+#[tokio::test]
+async fn a_file_with_windows_line_endings_is_marked_line_by_line_like_any_other() {
+    let sandbox = Sandbox::new("marks-crlf");
+    let state = AppState::new(sandbox.manager());
+    let manager = &state.manager;
+    let repo = git_project(&sandbox);
+    // As git is usually set on Windows: "\n" in the repository, "\r\n" in every working copy.
+    git(&repo, &["config", "core.autocrlf", "true"]);
+    let project = manager.add_project(&repo.to_string_lossy(), None).unwrap();
+    let mut events = manager.subscribe();
+    let task = manager.create(&project.id, "mock", "What does the limiter do?").await.unwrap();
+    let id = task.row.id.clone();
+    until(&mut events, &id, |e| state_is(e, "idle")).await;
+    let cwd = manager.cwd(&id).unwrap().to_string_lossy().into_owned();
+    let text = read(&cwd, DEMO);
+    assert!(text.contains("\r\n"), "the task's own copy was checked out with Windows endings");
+
+    // One line added outside the editor (in another program, say) is one line marked, not the whole file:
+    // the file is compared with its committed text, which git keeps with "\n".
+    let opened = dispatch(&state, "files.read", &json!({ "taskId": id, "path": DEMO })).await.unwrap();
+    assert_eq!(opened["review"]["runs"], json!([]));
+    let mine = format!("// mine\r\n{text}");
+    std::fs::write(Path::new(&cwd).join(DEMO), &mine).unwrap();
+    let seen = dispatch(&state, "files.read", &json!({ "taskId": id, "path": DEMO })).await.unwrap();
+    assert_eq!(seen["review"]["runs"], json!([{ "from": 1, "to": 1, "who": "you" }]));
+
+    // And one more through the editor, at the end.
+    let more = format!("{mine}// and this\r\n");
+    let saved = dispatch(
+        &state,
+        "files.write",
+        &json!({ "taskId": id, "path": DEMO, "text": more, "version": seen["file"]["version"] }),
+    )
+    .await
+    .unwrap();
+    let last = more.matches("\r\n").count();
+    assert_eq!(
+        saved["review"]["runs"],
+        json!([{ "from": 1, "to": 1, "who": "you" }, { "from": last, "to": last, "who": "you" }])
+    );
+}

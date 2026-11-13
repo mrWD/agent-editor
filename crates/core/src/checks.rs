@@ -236,10 +236,16 @@ pub fn problems_in(output: &str, root: &Path) -> Vec<Problem> {
             continue;
         }
 
-        // Most tools: "path:line:col: message" or "path:line: message".
-        let mut parts = line.splitn(4, ':');
-        if let (Some(file), Some(row), Some(third)) = (parts.next(), parts.next(), parts.next())
-            && let (Some(file), Some(row)) = (known_file(root, file), number(row))
+        // Most tools: "path:line:col: message" or "path:line: message". On Windows a path may start with a
+        // drive ("C:\\src\\a.ts:12:5: …"), whose colon belongs to the path.
+        let drive = match line.as_bytes() {
+            [letter, b':', b'\\' | b'/', ..] if letter.is_ascii_alphabetic() => 2,
+            _ => 0,
+        };
+        let mut parts = line[drive..].splitn(4, ':');
+        let file = parts.next().map(|rest| format!("{}{rest}", &line[..drive]));
+        if let (Some(file), Some(row), Some(third)) = (file, parts.next(), parts.next())
+            && let (Some(file), Some(row)) = (known_file(root, &file), number(row))
         {
             let rest = parts.next();
             let (column, message) = match (number(third), rest) {
@@ -707,7 +713,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ae-checks-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
-        dir.canonicalize().unwrap()
+        crate::paths::real_path(&dir).unwrap()
     }
 
     #[test]

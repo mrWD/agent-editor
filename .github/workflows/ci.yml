@@ -33,8 +33,15 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build
         run: cargo build --workspace
+      # The tests write files with "\n" and read them back after git has been at them. Git on the Windows
+      # machines is set to turn that into "\r\n" in every working copy, which is its user's choice and not
+      # what these tests are about; one test of its own (in tests/code.rs) sets it and checks the editor copes.
+      - name: Keep line endings as written
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      # Every test file runs even after one has failed: a first run on a new system should show all of it.
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
 
   ui:
     name: Interface

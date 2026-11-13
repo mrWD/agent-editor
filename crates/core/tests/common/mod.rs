@@ -16,9 +16,15 @@ use tokio::sync::broadcast::Receiver;
 pub fn mock_agent() -> PathBuf {
     static PATH: OnceLock<PathBuf> = OnceLock::new();
     PATH.get_or_init(|| {
-        // The test binary is <target>/<profile>/deps/<name>; the agent belongs one level up.
+        // The agent is built into <target>/<profile>. The test program is somewhere under that folder, and
+        // where exactly changed between versions of cargo (`deps/`, then `build/<package>/<hash>/deps/`),
+        // so the folder is looked for by its name on the way up.
         let exe = std::env::current_exe().expect("test binary path");
-        let dir = exe.parent().and_then(|p| p.parent()).expect("profile directory");
+        let dir = exe
+            .ancestors()
+            .skip(1)
+            .find(|folder| folder.file_name().is_some_and(|name| name == "debug" || name == "release"))
+            .expect("profile directory");
         let path = dir.join(if cfg!(windows) { "ae-mock-agent.exe" } else { "ae-mock-agent" });
         if !path.is_file() {
             // Build it into the very folder these tests were built into. That folder is

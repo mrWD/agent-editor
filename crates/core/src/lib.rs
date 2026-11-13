@@ -22,6 +22,7 @@ pub mod map;
 pub mod marks;
 pub mod mcp;
 pub mod overlaps;
+pub mod paths;
 pub mod pictures;
 pub mod plan;
 pub mod preview;

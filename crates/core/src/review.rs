@@ -117,6 +117,17 @@ fn read_disk(root: &Path, path: &str) -> OnDisk {
 }
 
 /// The text of a file in the last commit. `Ok(None)` when the commit has no such file.
+/// The committed text of a file with the line endings its working copy has.
+///
+/// Git on Windows is usually set to keep `\n` in the repository and write `\r\n` into the working copy. Compared
+/// as they are, every line of such a file would differ from its committed self.
+fn in_the_endings_of(committed: String, working: Option<&str>) -> String {
+    match working {
+        Some(text) if text.contains("\r\n") && !committed.contains("\r\n") => committed.replace('\n', "\r\n"),
+        _ => committed,
+    }
+}
+
 fn committed_text(root: &Path, path: &str) -> Result<Option<String>> {
     let output = Command::new("git")
         .arg("-C")
@@ -198,7 +209,7 @@ impl Manager {
                 let start = match before {
                     Some(text) => text,
                     None if task.branch.is_some() => match committed_text(&root, path) {
-                        Ok(text) => text,
+                        Ok(text) => text.map(|committed| in_the_endings_of(committed, current.as_deref())),
                         Err(_) => return Ok(false),
                     },
                     // Not a git project and nobody knows the earlier text:
@@ -391,7 +402,7 @@ mod tests {
     fn paths_are_made_relative_and_kept_inside() {
         let root = std::env::temp_dir().join(format!("ae-review-{}", std::process::id()));
         std::fs::create_dir_all(root.join("src")).unwrap();
-        let root = root.canonicalize().unwrap();
+        let root = crate::paths::real_path(&root).unwrap();
         let inside = root.join("src").join("a.ts");
 
         assert_eq!(relative_to(&root, &inside.to_string_lossy()).as_deref(), Some("src/a.ts"));

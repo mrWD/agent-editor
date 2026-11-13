@@ -667,7 +667,7 @@ mod tests {
     fn what_happened_since_is_read_from_the_events() {
         let call = |id: &str, status: &str, path: &str, at: u64| {
             json!({ "type": "update", "at": at, "update": { "sessionUpdate": "tool_call_update", "toolCallId": id,
-                    "kind": "edit", "status": status, "locations": [{ "path": path }] } })
+                    "kind": "edit", "status": status, "locations": [{ "path": crate::paths::here(path) }] } })
         };
         let chunk = |text: &str| json!({ "type": "update", "at": 50, "update": { "sessionUpdate": "agent_message_chunk", "content": { "text": text } } });
         let events = vec![
@@ -682,16 +682,16 @@ mod tests {
         ];
         // A call announced before the user left finishes after: what it is about is known from before.
         let earlier = vec![json!({ "type": "update", "update": { "sessionUpdate": "tool_call", "toolCallId": "t2",
-                    "kind": "edit", "status": "pending", "locations": [{ "path": "/work/src/b.ts" }] } })];
+                    "kind": "edit", "status": "pending", "locations": [{ "path": crate::paths::here("/work/src/b.ts") }] } })];
         let mut events = events;
         events[1] = json!({ "type": "update", "at": 20, "update": { "sessionUpdate": "tool_call_update", "toolCallId": "t2", "status": "completed" } });
-        let (lines, last) = happened_since(&earlier, &events, "Codex", "/work");
+        let (lines, last) = happened_since(&earlier, &events, "Codex", &crate::paths::here("/work"));
         let texts: Vec<&str> = lines.iter().map(|line| line["text"].as_str().unwrap()).collect();
         assert_eq!(texts, ["Codex changed 2 files", "Codex finished its turn", "Codex asks: Run npm test"]);
         assert_eq!(lines[0]["paths"], json!(["src/a.ts", "src/b.ts"]));
         assert_eq!(last.as_deref(), Some("Moved the limit into config."));
 
-        let (lines, last) = happened_since(&[], &[], "Codex", "/work");
+        let (lines, last) = happened_since(&[], &[], "Codex", &crate::paths::here("/work"));
         assert!(lines.is_empty() && last.is_none());
     }
 }

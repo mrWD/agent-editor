@@ -129,7 +129,7 @@ pub async fn start(options: Options) -> Result<Core> {
         None => default_data_dir()?,
     };
     std::fs::create_dir_all(&data_dir).with_context(|| format!("Cannot create {}", data_dir.display()))?;
-    let data_dir = data_dir.canonicalize()?;
+    let data_dir = crate::paths::real_path(&data_dir)?;
     tracing::info!("Data is kept in {}", data_dir.display());
 
     let store = Store::open(&data_dir.join("agent-editor.db"))?;
