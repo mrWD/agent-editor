@@ -117,7 +117,7 @@ pub fn compose_project(project_name: &str, task_id: &str) -> String {
     if slug.is_empty() {
         slug.push_str("project");
     }
-    format!("ae-{slug}-{}", &task_id[..task_id.len().min(4)].to_lowercase())
+    format!("ae-{slug}-{}", task_id[..task_id.len().min(4)].to_lowercase())
 }
 
 fn port_is_free(port: u16) -> bool {
