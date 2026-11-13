@@ -13,6 +13,7 @@ jobs:
   core:
     name: Core on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -54,8 +55,15 @@ jobs:
       - run: npm run build
 
   e2e:
-    name: Browser tests
+    # One job for each engine: a hosted machine runs the tests one at a time, and all three engines
+    # in a row take about an hour.
+    name: Browser tests in ${{ matrix.engine }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit, firefox]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -67,15 +75,15 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
         working-directory: ui
-      - run: npx playwright install --with-deps
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
         working-directory: ui
-      # Builds the core and the interface itself, then runs every test on Chromium, WebKit and Firefox.
-      - run: npm run e2e
+      # Builds the core and the interface itself, then runs every test in this job's engine.
+      - run: npm run e2e -- --project=${{ matrix.engine }}
         working-directory: ui
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.engine }}
           path: ui/playwright-report
 
   # The desktop app is a workspace of its own (crates/shell), so the jobs above
@@ -84,6 +92,7 @@ jobs:
   shell:
     name: Desktop app on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
