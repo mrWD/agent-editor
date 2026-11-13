@@ -198,3 +198,30 @@ async fn a_team_that_cannot_be_is_refused() {
     assert!(manager.team_stop(&id).is_err());
     assert_eq!(Value::Null, serde_json::to_value(manager.team(&id)).unwrap());
 }
+
+#[tokio::test]
+async fn a_team_cut_short_by_the_core_stopping_is_at_rest_and_can_go_on() {
+    let sandbox = Sandbox::new("team-crash");
+    let (first, id, _root) = started(&sandbox, "Take the login limit from config").await;
+    // Nobody allows the builder's edit, so the build is running when the core goes away.
+    let mut events = first.subscribe();
+    first.team_start(&id, "mock", "mock", None, None).await.unwrap();
+    until(&mut events, &id, |e| is(e, "permission_request")).await;
+
+    // A second core over the same data, as after a crash.
+    let second = sandbox.manager();
+    second.recover().unwrap();
+    let team = second.team(&id).unwrap();
+    assert!(!team.running);
+    assert_eq!(team.steps[1].state, "stopped");
+    assert_eq!(team.stopped.as_deref(), Some("The editor was closed while the team worked."));
+    first.stop_all().await;
+
+    // Going on builds again from the step that was cut short.
+    let allowing = allow_edits(&second, &id);
+    second.team_continue(&id).unwrap();
+    at_rest(&second, &id).await;
+    allowing.abort();
+    assert_eq!(second.team(&id).unwrap().steps[1].state, "done");
+    second.stop_all().await;
+}

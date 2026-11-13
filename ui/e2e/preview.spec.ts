@@ -33,7 +33,7 @@ test.describe('The Preview of a task', () => {
     await new Promise((resolve) => shop.server.close(resolve));
   });
 
-  test('U-01 without a running app the view says so, starts the dev script and shows the page it serves', async ({
+  test('PV-01 without a running app the view says so, starts the dev script and shows the page it serves', async ({
     app,
     project,
   }) => {
@@ -71,7 +71,7 @@ test.describe('The Preview of a task', () => {
     await app.core.request('run.stop', { taskId });
   });
 
-  test('U-02 the page is shown at each chosen width, scaled to fit, and never scrolls sideways', async ({
+  test('PV-02 the page is shown at each chosen width, scaled to fit, and never scrolls sideways', async ({
     app,
     project,
   }) => {
@@ -109,7 +109,7 @@ test.describe('The Preview of a task', () => {
     expect(await preview.servedIn('Phone 320')).toBe(servedBefore);
   });
 
-  test('U-03 a width of one’s own is added and removed, and the choices are remembered for the task', async ({
+  test('PV-03 a width of one’s own is added and removed, and the choices are remembered for the task', async ({
     app,
     project,
   }) => {
@@ -157,7 +157,7 @@ test.describe('The Preview of a task', () => {
     await expect(preview.chip(414)).toHaveCount(0);
   });
 
-  test('U-04 the theme for all reaches every page, one frame can differ, and "Same as all" brings it back', async ({
+  test('PV-04 the theme for all reaches every page, one frame can differ, and "Same as all" brings it back', async ({
     app,
     project,
   }) => {
@@ -208,7 +208,7 @@ test.describe('The Preview of a task', () => {
     await expect.poll(() => preview.background('Tablet 768')).toBe(DARK);
   });
 
-  test('U-06 picking an element outlines and names it, shows it in the conversation and marks it on every width', async ({
+  test('PV-06 picking an element outlines and names it, shows it in the conversation and marks it on every width', async ({
     app,
     project,
   }) => {
@@ -253,7 +253,7 @@ test.describe('The Preview of a task', () => {
     await expect(preview.drawn('Tablet 768', 'mark-label')).toBeHidden();
   });
 
-  test('U-07 an element that a build plugin marked with its file and line opens there in the editor', async ({
+  test('PV-07 an element that a build plugin marked with its file and line opens there in the editor', async ({
     app,
     project,
   }) => {
@@ -282,7 +282,7 @@ test.describe('The Preview of a task', () => {
     await expect(app.page.getByText(/^Line 9, column \d+$/)).toBeVisible();
   });
 
-  test('U-08 the notes React, Vue and Svelte leave on an element are read; a file nearby is told as nearby', async ({
+  test('PV-08 the notes React, Vue and Svelte leave on an element are read; a file nearby is told as nearby', async ({
     app,
     project,
   }) => {
@@ -314,7 +314,7 @@ test.describe('The Preview of a task', () => {
     await expect(preview.drawn('Tablet 768', 'mark-label')).toHaveText('em#inside');
   });
 
-  test('U-09 the picked element goes to the agent with the next message, in words it can use', async ({
+  test('PV-09 the picked element goes to the agent with the next message, in words it can use', async ({
     app,
     project,
   }) => {
@@ -344,7 +344,7 @@ test.describe('The Preview of a task', () => {
     await expect(app.thoughts.last()).not.toContainText('About an element picked');
   });
 
-  test('U-10 a drawing on the page is kept with a note and sent to the agent as words', async ({ app, project }) => {
+  test('PV-10 a drawing on the page is kept with a note and sent to the agent as words', async ({ app, project }) => {
     const preview = await openPreview(app, (await project()).dir, shop.address);
     await preview.useTool('Draw on the page');
     await expect(preview.view).toContainText('Draw on the page of one width.');
@@ -383,7 +383,7 @@ test.describe('The Preview of a task', () => {
     await expect(preview.drawn('Tablet 768', 'strokes').locator('path')).toHaveCount(0);
   });
 
-  test('U-11 the frames load anew when a file of the task changes, and with the Reload button', async ({
+  test('PV-11 the frames load anew when a file of the task changes, and with the Reload button', async ({
     app,
     project,
   }) => {
@@ -412,7 +412,7 @@ test.describe('The Preview of a task', () => {
     await expect.poll(() => preview.servedIn('Phone 320')).toBeGreaterThan(fourth);
   });
 
-  test('U-12 a page that reloads itself is left to do so', async ({ app, project }) => {
+  test('PV-12 a page that reloads itself is left to do so', async ({ app, project }) => {
     const preview = await openPreview(app, (await project()).dir, shop.address, '/?hot=1');
     await expect(preview.status).toContainText('The page reloads itself when the code changes.');
     await expect(app.conversation.getByRole('region', { name: 'The preview is live' })).toContainText(
@@ -429,7 +429,7 @@ test.describe('The Preview of a task', () => {
     await expect.poll(() => shop.served()).toBeGreaterThan(before);
   });
 
-  test('U-13 an address that is not on this computer is refused in plain words; a project without a dev script says so', async ({
+  test('PV-13 an address that is not on this computer is refused in plain words; a project without a dev script says so', async ({
     app,
     project,
   }) => {
@@ -466,7 +466,7 @@ test.describe('The Preview of a task', () => {
     await expect(preview.view.getByRole('heading', { name: 'Nothing is running' })).toBeVisible();
   });
 
-  test('U-14 a page our script is not in, and an address nothing answers at, are told as they are', async ({
+  test('PV-14 a page our script is not in, and an address nothing answers at, are told as they are', async ({
     app,
     project,
   }) => {
@@ -491,7 +491,7 @@ test.describe('The Preview of a task', () => {
     await expect(preview.pageIn('Phone 320').getByText(`Nothing answers at ${nobody}.`)).toBeVisible();
   });
 
-  test('U-15 the iOS simulator and the Android emulator say that they are not available yet', async ({
+  test('PV-15 the iOS simulator and the Android emulator say that they are not available yet', async ({
     app,
     project,
   }) => {
@@ -514,7 +514,7 @@ test.describe('The Preview of a task', () => {
 test.describe('The Preview on a system set to dark', () => {
   test.use({ colorScheme: 'dark' });
 
-  test('U-05 Light is shown on a dark system, and Dark is the page’s own dark', async ({ app, project }) => {
+  test('PV-05 Light is shown on a dark system, and Dark is the page’s own dark', async ({ app, project }) => {
     const shop = await startPage();
     try {
       const preview = await openPreview(app, (await project()).dir, shop.address);
