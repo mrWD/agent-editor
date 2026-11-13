@@ -640,7 +640,9 @@ async fn serve(relay: &Relay, client: TcpStream) -> io::Result<()> {
                 (Some(_), "settle") => {
                     let height = query.strip_prefix("h=").and_then(|digits| digits.parse::<u32>().ok());
                     if let Some(page) = relay.shots.lock().unwrap().get_mut(word) {
-                        page.window_height = height.or(Some(0));
+                        // The asking itself says the app's page has loaded. A height that was not told is not
+                        // taken for a window too low: only a height that was told can be found wanting.
+                        page.window_height = Some(height.unwrap_or(u32::MAX));
                     }
                     tokio::time::sleep(SETTLE).await;
                     return answer(&mut client_write, "200 OK", "image/gif", TINY_GIF).await;

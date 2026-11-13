@@ -153,8 +153,8 @@ esac
 const BROWSER = String.raw`#!/bin/sh
 # A stand-in for Chrome. No page is drawn: the "screenshot" is a picture that lies ready next to it.
 here="$(cd "$(dirname "$0")" && pwd)"
-echo "$@" | tr '\n' ' ' >> "$here/browser.log"
-echo >> "$here/browser.log"
+# One write for each call: the core runs several of these at once, and two writes of one call could be split by another's.
+printf '%s\n' "$(echo "$*" | tr '\n' ' ')" >> "$here/browser.log"
 # What the core is configured with is not passed on to the programs it starts.
 if env | grep -q '^AE_'; then echo "the settings of the core were passed on" >> "$here/browser.log"; fi
 file=""; height=""; url=""
@@ -178,8 +178,8 @@ const XCRUN = String.raw`#!/bin/sh
 # A stand-in for Xcode's xcrun. No simulator is started: a "simulator" is a line in a file,
 # and its "screen" is one of two pictures that lie ready, in turn.
 here="$(cd "$(dirname "$0")" && pwd)"
-echo "$@" | tr '\n' ' ' >> "$here/xcrun.log"
-echo >> "$here/xcrun.log"
+# One write for each call: the core runs several of these at once, and two writes of one call could be split by another's.
+printf '%s\n' "$(echo "$*" | tr '\n' ' ')" >> "$here/xcrun.log"
 state="$here/state/xcrun"
 state_of() { cat "$state/$1.state" 2>/dev/null || echo Shutdown; }
 
@@ -221,8 +221,8 @@ const ADB = String.raw`#!/bin/sh
 # A stand-in for Android's adb. No emulator is there: an "emulator" is a line in a file,
 # and its "screen" is a picture that lies ready.
 here="$(cd "$(dirname "$0")" && pwd)"
-echo "$@" | tr '\n' ' ' >> "$here/adb.log"
-echo >> "$here/adb.log"
+# One write for each call: the core runs several of these at once, and two writes of one call could be split by another's.
+printf '%s\n' "$(echo "$*" | tr '\n' ' ')" >> "$here/adb.log"
 state="$here/state/adb"
 serial=""
 if [ "$1" = "-s" ]; then serial="$2"; shift 2; fi

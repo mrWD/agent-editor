@@ -36,8 +36,8 @@ const BOOT_LIMIT: Duration = Duration::from_secs(300);
 /// So does the first address after a start: the device's browser starts for the first time. (Measured on a
 /// busy Mac: a simulator that had just been started for the first time took more than 20 seconds over it.)
 const OPEN_LIMIT: Duration = Duration::from_secs(120);
-/// One picture of a screen.
-const SCREEN_LIMIT: Duration = Duration::from_secs(15);
+/// One picture of a screen. A simulator on a busy Mac took 9 to 12 seconds for one (measured by hand).
+const SCREEN_LIMIT: Duration = Duration::from_secs(30);
 
 #[cfg(not(target_os = "macos"))]
 const ONLY_ON_A_MAC: &str = "The iOS simulator runs only on a Mac with Xcode.";
