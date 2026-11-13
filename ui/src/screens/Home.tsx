@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
-import { go, taskHref } from '../app/router';
+import { go, RACE_VIEW, taskHref } from '../app/router';
 import { ago, Chip, money } from '../components/bits';
+import { failedNote, setRaceNotice } from '../core/race';
 import { refreshRequests, requests, stageOfTask } from '../core/requests';
 import { chooseFolder, shellMark } from '../core/shell';
 import {
@@ -14,6 +15,7 @@ import {
   mergeRequest,
   projectFilter,
   projectName,
+  startRace,
   state,
   tasksNewestFirst,
   type FeedItem,
@@ -80,6 +82,19 @@ function NewTask(): JSX.Element {
   });
 
   const chosen = () => state.agents.find((agent) => agent.id === agentId());
+  // A race: the same task goes to several agents at once. Offered only when there is more than one to send it to.
+  const available = () => state.agents.filter((agent) => agent.available);
+  const [racing, setRacing] = createSignal(false);
+  const [ticked, setTicked] = createSignal<string[]>([]);
+  const racers = () => available().filter((agent) => ticked().includes(agent.id));
+  const turnRace = () => {
+    // The agent picked for one task is the first one in; the others are ticked by hand, since some cost money.
+    if (!racing() && racers().length === 0 && chosen()?.available) setTicked([agentId()]);
+    setRacing(!racing());
+    setProblem(null);
+  };
+  const tick = (id: string, on: boolean) => setTicked(on ? [...ticked(), id] : ticked().filter((one) => one !== id));
+  const spends = () => (racing() ? racers().some((agent) => agent.spendsTokens) : Boolean(chosen()?.spendsTokens));
   /** Set when the day's budget is spent: what to tell the user before the second press. */
   const [overBudget, setOverBudget] = createSignal<string | null>(null);
   const addingFolder = () => projectId() === NEW_FOLDER;
@@ -115,15 +130,19 @@ function NewTask(): JSX.Element {
       setProblem('Give the folder of the project, for example /Users/you/code/app.');
       return;
     }
-    if (!chosen()?.available) {
+    if (!racing() && !chosen()?.available) {
       setProblem(chosen()?.note ?? 'Pick an agent that is installed.');
+      return;
+    }
+    if (racing() && (racers().length < 2 || racers().length > 4)) {
+      setProblem(racers().length < 2 ? 'Tick at least two agents for a race.' : 'A race takes four agents at most.');
       return;
     }
     setProblem(null);
     setBusy(true);
     try {
       // Once the day's budget is spent, a task that costs money is started only on a second, knowing press.
-      if (chosen()!.spendsTokens && overBudget() === null) {
+      if (spends() && overBudget() === null) {
         const usage = await usageSummary().catch(() => null);
         const daily = usage?.budget.daily ?? null;
         if (usage && usage.budget.ask && daily !== null && usage.today >= daily) {
@@ -139,6 +158,24 @@ function NewTask(): JSX.Element {
         target = (await addProject(folder().trim())).id;
         setProjectId(target);
         setFolder('');
+      }
+      if (racing()) {
+        const started = await startRace(
+          target,
+          racers().map((agent) => agent.id),
+          what().trim(),
+        );
+        const note = failedNote(started);
+        setWhat('');
+        if (started.race) {
+          setRaceNotice(started.race.id, note);
+          setRacing(false);
+          go(taskHref(started.tasks[0]!.id, RACE_VIEW));
+        } else {
+          // One agent alone is no race: its task is on the lists below, and why the others did not start is said here.
+          setProblem(note);
+        }
+        return;
       }
       const id = await createTask(target, agentId(), what().trim());
       setWhat('');
@@ -191,6 +228,7 @@ function NewTask(): JSX.Element {
         class="select-button"
         aria-label="Agent"
         value={agentId()}
+        style={{ display: racing() ? 'none' : undefined }}
         onChange={(event) => setAgentId(event.currentTarget.value)}
       >
         <For each={state.agents}>
@@ -202,8 +240,36 @@ function NewTask(): JSX.Element {
           )}
         </For>
       </select>
+      <Show when={available().length > 1}>
+        <button
+          type="button"
+          class="btn tall race-toggle"
+          aria-pressed={racing()}
+          title="Send this task to several agents at once, each in its own copy of the code, and pick the best result"
+          onClick={turnRace}
+        >
+          Race
+        </button>
+        <Show when={racing()}>
+          <div class="race-ticks" role="group" aria-label="Agents in the race">
+            <For each={available()}>
+              {(agent) => (
+                <label class="race-tick">
+                  <input
+                    type="checkbox"
+                    checked={ticked().includes(agent.id)}
+                    onChange={(event) => tick(agent.id, event.currentTarget.checked)}
+                  />
+                  <Chip agentId={agent.id} short={agent.short} />
+                  {agent.name}
+                </label>
+              )}
+            </For>
+          </div>
+        </Show>
+      </Show>
       <button type="submit" class="btn primary tall" disabled={busy()}>
-        {busy() ? 'Starting' : overBudget() ? 'Start anyway' : 'Start'}
+        {busy() ? 'Starting' : overBudget() ? 'Start anyway' : racing() ? 'Start the race' : 'Start'}
       </button>
       <Show when={overBudget()}>
         <p class="form-note" role="status">
@@ -215,7 +281,20 @@ function NewTask(): JSX.Element {
           {problem()}
         </p>
       </Show>
-      <Show when={!problem() && chosen()?.spendsTokens}>
+      <Show when={!problem() && racing()}>
+        <p class="form-note">
+          Each agent works in its own copy of the code. You compare what they did and pick one result.
+          <Show when={spends()}>
+            {' '}
+            {racers()
+              .filter((agent) => agent.spendsTokens)
+              .map((agent) => agent.name)
+              .join(', ')}{' '}
+            {racers().filter((agent) => agent.spendsTokens).length === 1 ? 'spends' : 'spend'} tokens on your account.
+          </Show>
+        </p>
+      </Show>
+      <Show when={!problem() && !racing() && chosen()?.spendsTokens}>
         <p class="form-note">
           {chosen()!.name} spends tokens on your account. {chosen()!.note}
         </p>
@@ -255,6 +334,15 @@ function Stage(props: {
                 {task.info.title}
               </a>
               <Show when={task.info.issue}>{(issue) => <span class="tag mono">{issue().key}</span>}</Show>
+              <Show when={task.info.race}>
+                <a
+                  class="tag race-tag"
+                  href={taskHref(task.info.id, RACE_VIEW)}
+                  title="One of several agents racing on the same task. Opens the results side by side."
+                >
+                  Race · {agentOf(task)?.name ?? task.info.agentId}
+                </a>
+              </Show>
               <span class="where-stopped">{props.where ? props.where(task) : whereItStands(task)}</span>
               <a class="btn small" href={taskHref(task.info.id)}>
                 Code
@@ -351,6 +439,9 @@ export function Home(): JSX.Element {
                         <Chip agentId={task.info.agentId} short={agent()?.short ?? '··'} />
                         <span class="what">{agent()?.name ?? 'The agent'} asks before it acts</span>
                         <span class="tag">{projectName(task.info.projectId)}</span>
+                        <Show when={task.info.race}>
+                          <span class="tag">Race</span>
+                        </Show>
                         <span class="age">{ago(task.lastAt)}</span>
                       </div>
                       <div class="need-body">

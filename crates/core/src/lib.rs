@@ -22,6 +22,7 @@ pub mod map;
 pub mod marks;
 pub mod overlaps;
 pub mod plan;
+pub mod race;
 pub mod review;
 pub mod rules;
 pub mod runner;

@@ -33,7 +33,12 @@ export type TaskInfo = {
   state: TaskState;
   /** What the running agent offers to set. Absent while no agent is running. */
   config?: TaskConfig | null;
+  /** The race this task is an entrant of, until one result is picked. */
+  race?: RaceRef | null;
 };
+
+/** A race as its entrants know it: its id and every task it started with, in the order of their agents. */
+export type RaceRef = { id: string; tasks: string[] };
 
 /** One setting an agent offers for a session, such as its model or its mode. */
 export type ConfigOption = {
@@ -385,6 +390,15 @@ export function applyEvent(task: Task, event: any) {
       }
       return;
     }
+    case 'race_review':
+      // The message before this one asked the agent to review another result of the same race.
+      feed.push({
+        kind: 'notice',
+        text: `You asked for a review of ${event.ofName ?? 'another agent'}'s result. Its change is in the message above.`,
+        tone: 'muted',
+        at,
+      });
+      return;
     case 'rewound':
       feed.push({
         kind: 'rewound',
@@ -549,6 +563,14 @@ function onEvent(event: CoreEvent) {
     case 'task.config':
       if (state.tasks[event.data.taskId]) setState('tasks', event.data.taskId, 'info', 'config', event.data.config);
       return;
+    case 'race.changed': {
+      // A race started or was decided: its tasks are entrants from now on, or ordinary tasks again.
+      const race: RaceRef | null = event.data.decided ? null : { id: event.data.raceId, tasks: event.data.tasks };
+      for (const id of event.data.tasks as string[]) {
+        if (state.tasks[id]) setState('tasks', id, 'info', 'race', race);
+      }
+      return;
+    }
     case 'task.archived':
       waitingForHistory.delete(event.data.taskId);
       setState('tasks', event.data.taskId, undefined!);
@@ -595,6 +617,39 @@ export async function createTask(projectId: string, agentId: string, text: strin
     await loadHistory(info.id, info.state);
   }
   return info.id;
+}
+
+/** What the core answers when it was asked to start a race. */
+export type StartedRace = {
+  /** `null` when fewer than two agents started: one task alone is no race. */
+  race: RaceRef | null;
+  tasks: TaskInfo[];
+  /** The agents that did not start, each with the reason. */
+  failed: { agentId: string; agentName: string; message: string }[];
+};
+
+/** Takes in the tasks of a race the core has just started, as `createTask` does for one task. */
+async function takeIn(started: StartedRace): Promise<StartedRace> {
+  for (const info of started.tasks) {
+    if (!state.tasks[info.id]) {
+      addTask(info);
+      await loadHistory(info.id, info.state);
+    } else {
+      // Only the race is news here: the task's state may have moved on since the core answered.
+      setState('tasks', info.id, 'info', 'race', info.race ?? null);
+    }
+  }
+  return started;
+}
+
+/** Sends one task text to several agents at once, each in its own copy of the code. */
+export async function startRace(projectId: string, agentIds: string[], text: string): Promise<StartedRace> {
+  return takeIn(await core.request<StartedRace>('race.start', { projectId, agentIds, text }));
+}
+
+/** Starts a new race with the text and the agents of an earlier one. */
+export async function raceAgain(raceId: string): Promise<StartedRace> {
+  return takeIn(await core.request<StartedRace>('race.again', { raceId }));
 }
 
 export function sendPrompt(taskId: string, text: string) {

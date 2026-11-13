@@ -14,7 +14,7 @@ import {
   type JSX,
 } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import { taskHref, VIEWS, type View } from '../app/router';
+import { RACE_VIEW, taskHref, VIEWS, type View } from '../app/router';
 import { AgentPane } from '../components/AgentPane';
 import { LspBadge, LspStatus } from '../components/LspStatus';
 import { ProblemsTab } from '../components/ProblemsTab';
@@ -60,6 +60,7 @@ import { watchGit, type GitWatch } from '../core/gitstate';
 import { EditorHost, type FileMeta } from '../editor/host';
 import { ChangesView } from './Changes';
 import { ChecksView } from './Checks';
+import { CompareView, RaceHead } from './Compare';
 import { LookBackView } from './LookBack';
 import { SpanView } from './Span';
 import { MapView } from './Map';
@@ -70,6 +71,7 @@ import { LspSession } from '../editor/lsp';
 const TerminalView = lazy(() => import('../components/Terminal').then((module) => ({ default: module.TerminalView })));
 
 const viewNames: Record<View, string> = {
+  compare: 'Compare',
   plan: 'Plan',
   code: 'Code',
   changes: 'Changes',
@@ -1063,12 +1065,16 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
       <Show when={props.view === 'map' && !lookingBack()}>
         <MapView task={props.task} />
       </Show>
+      <Show when={props.view === RACE_VIEW && !lookingBack()}>
+        <CompareView task={props.task} />
+      </Show>
       <Show
         when={
           props.view !== 'code' &&
           props.view !== 'changes' &&
           props.view !== 'checks' &&
           props.view !== 'map' &&
+          props.view !== RACE_VIEW &&
           !lookingBack()
         }
       >
@@ -1094,6 +1100,12 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
   // whatever still reads it at that moment finds a task and not a hole.
   const held = createMemo<Task | undefined>((last) => task() ?? (last?.info.id === props.id ? last : undefined));
   const current = () => held()!;
+  // In the Compare view of a race's entrant the sub bar tells of the race, not of the one task.
+  const comparing = () => props.view === RACE_VIEW && Boolean(task()?.info.race);
+  // Compare belongs to a race. Once a result is picked its task is an ordinary one: its changes are shown instead.
+  createEffect(() => {
+    if (props.view === RACE_VIEW && task() && !task()!.info.race) location.replace(taskHref(props.id, 'changes'));
+  });
 
   // Coming to a task asks what happened since the last visit; going away from it
   // (to another screen, another task, another window) is where the next visit counts from.
@@ -1144,11 +1156,11 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
       }
     >
       <>
-        <div class="subbar">
+        <div class="subbar" classList={{ racing: comparing() }}>
           <span class="project">{projectName(current().info.projectId)}</span>
           <h1 title={current().info.title}>{current().info.title}</h1>
           <nav class="switcher" aria-label="Views of this task">
-            <For each={VIEWS}>
+            <For each={current().info.race ? [RACE_VIEW, ...VIEWS] : VIEWS}>
               {(view) => (
                 <a href={taskHref(props.id, view)} aria-current={view === props.view ? 'page' : undefined}>
                   {viewNames[view]}
@@ -1175,6 +1187,9 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
               )}
             </For>
           </nav>
+          <Show when={comparing()}>
+            <RaceHead task={current()} />
+          </Show>
           <Show when={current().info.issue}>
             {(issue) => (
               <a class="issue-chip" href={issue().url} target="_blank" rel="noreferrer" title={issue().title}>

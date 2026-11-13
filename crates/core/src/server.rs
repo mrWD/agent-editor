@@ -140,7 +140,7 @@ impl AppState {
     }
 
     /// Stops what a task runs and removes its containers and volumes. For a task that is finished for good.
-    async fn stop_everything(&self, task_id: &str) {
+    pub(crate) async fn stop_everything(&self, task_id: &str) {
         self.terminals.close_task(task_id);
         self.manager.stop_checks(Some(task_id));
         self.lsp.stop_task(task_id).await;
@@ -1001,6 +1001,9 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             state.stop_everything(task_id).await;
             manager.clean_up(task_id, true, true).await?;
             Ok(json!({}))
+        }
+        "race.start" | "race.get" | "race.pick" | "race.discard" | "race.again" | "race.review" => {
+            crate::race::command(state, method, params).await
         }
 
         "run.state" | "run.start" | "run.stop" | "run.logs" => {

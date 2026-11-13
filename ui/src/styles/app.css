@@ -3337,3 +3337,310 @@ button.map-step:hover {
 .health-check code {
   font-size: 12.5px;
 }
+
+/* ---------- Race ---------- */
+
+/* Home: sending a task to several agents, and the mark of a task that races. */
+.race-toggle[aria-pressed='true'] {
+  border-color: var(--text);
+  background: var(--pressed);
+}
+.race-ticks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.race-tick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.race-tick input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.race-tag {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+/* The sub bar of an entrant in the Compare view tells of the race; the one task's own marks step aside. */
+.subbar.racing > .issue-chip,
+.subbar.racing > .mono,
+.subbar.racing > .grow,
+.subbar.racing > .state {
+  display: none;
+}
+.race-line {
+  font-size: 13px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+/* What the race is takes the room that is left, and is cut short before anything wraps. */
+.race-what {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* How the race stands and the button stay together at the right, also on a line of their own. */
+.race-end {
+  display: flex;
+  align-items: center;
+  gap: 6px 12px;
+  margin-left: auto;
+}
+.btn.race-again {
+  height: 30px;
+  font-size: 13px;
+}
+
+/* Compare: one card per agent, then the change of the one on screen. */
+.race {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+.race-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 12px;
+}
+.race-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.race-card.shown {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.race-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.race-card-head .who {
+  flex-grow: 1;
+  font-weight: 600;
+}
+.race-card-head .time {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.race-card-head .time.needs {
+  color: var(--accent);
+}
+.race-card .quiet {
+  color: var(--text-3);
+}
+.race-card-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.race-pill,
+.race-pill:hover {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 22px;
+  text-decoration: none;
+}
+.race-pill.good,
+.race-pill.good:hover {
+  background: rgba(91, 208, 138, 0.14);
+  color: var(--green);
+}
+.race-pill.bad,
+.race-pill.bad:hover {
+  background: rgba(255, 122, 122, 0.14);
+  color: var(--red);
+}
+.race-files {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.race-files.quiet {
+  font-family: var(--sans);
+}
+.race-show {
+  align-self: flex-start;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.race-show[aria-pressed='true'] {
+  border-color: var(--text);
+  background: var(--pressed);
+  cursor: default;
+}
+.race-diff {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.race-diff-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.race-diff-head h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15px;
+}
+.race-diff .path {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.race-diff-body {
+  padding: 8px 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.race-diff-body .diff-row {
+  padding: 0 14px;
+}
+.race-diff-body .diff-row .no {
+  flex-basis: var(--race-no, 24px);
+}
+.race-diff-body .diff-note {
+  padding: 4px 14px;
+}
+.race-diff-body .diff-gap {
+  padding: 2px 14px;
+}
+.race-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 14px;
+  line-height: 1.45;
+}
+.race-file:not(:first-child) {
+  margin-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* The conversation pane of an entrant: who the conversation is with, and the card that ends the race. */
+.race-talk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.race-mode,
+.race-mode:hover {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: none;
+}
+.race-agents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.race-talk-label {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.race-agent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 500;
+}
+.race-agent.tone-claude {
+  --race-tint: rgba(184, 161, 255, 0.1);
+}
+.race-agent.tone-codex {
+  --race-tint: rgba(111, 177, 255, 0.1);
+}
+.race-agent.tone-gemini {
+  --race-tint: rgba(86, 212, 196, 0.1);
+}
+.race-agent.tone-plain {
+  --race-tint: rgba(255, 255, 255, 0.05);
+}
+.race-agent[aria-pressed='true'] {
+  width: auto;
+  padding: 0 8px 0 5px;
+  border-color: var(--agent-color);
+  background: var(--race-tint);
+  cursor: default;
+}
+/* "Talking to" says whose conversation this is; the picker that hands a task to another agent would say it twice. */
+.agent-pane.racing .agent-head .agent-name {
+  display: none;
+}
+.race-pick .btn {
+  height: auto;
+  min-height: 34px;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+.race-pick .btn.tall:not(.primary) {
+  padding: 0 12px;
+}
+.race-pick .btn.tall.ghost {
+  padding: 0 10px;
+}
+/* The button that takes a result keeps its colours while it asks a second time; red on amber cannot be read. */
+.race-pick .btn.primary.armed {
+  color: var(--on-accent);
+}

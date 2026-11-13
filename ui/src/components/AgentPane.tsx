@@ -21,6 +21,7 @@ import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
 import { ago, Check, Chip, clock, money, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
+import { PickResult, TalkingTo } from './RacePane';
 import { WhereStopped } from './WhereStopped';
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
@@ -425,7 +426,14 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   );
 
   return (
-    <aside class="agent-pane" aria-label={`Conversation with ${name()}`}>
+    <aside
+      class="agent-pane"
+      classList={{ racing: Boolean(props.task.info.race) }}
+      aria-label={`Conversation with ${name()}`}
+    >
+      <Show when={props.task.info.race}>
+        <TalkingTo task={props.task} />
+      </Show>
       <div class="agent-head">
         <span class="agent-name">
           <Chip agentId={agentId()} short={short()} />
@@ -527,7 +535,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           {(told) => <WhereStopped task={props.task} since={told()} onHide={() => hideSince(taskId())} />}
         </Show>
         <Switch>
-          <Match when={sessionState() === 'waiting_permission'}>
+          <Match when={sessionState() === 'waiting_permission' && !props.task.info.race}>
             <section class="card pinned">
               <h2>{name()} is waiting for your answer</h2>
               <p>It asked before doing something. The question is at the end of the conversation.</p>
@@ -544,7 +552,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               </div>
             </section>
           </Match>
-          <Match when={sessionState() === 'idle' && props.task.feed.length > 0}>
+          <Match when={sessionState() === 'idle' && props.task.feed.length > 0 && !props.task.info.race}>
             <section class="card pinned">
               <h2>Your turn</h2>
               <p>{name()} finished this turn. Say what to do next.</p>
@@ -556,13 +564,17 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               <p>It is told what was said so far, then gets your message.</p>
             </section>
           </Match>
-          <Match when={sessionState() === 'asleep'}>
+          <Match when={sessionState() === 'asleep' && !props.task.info.race}>
             <section class="card pinned">
               <h2>No agent is running</h2>
               <p>Everything said so far is kept. Your next message starts {name()} again and tells it what was said.</p>
             </section>
           </Match>
         </Switch>
+        {/* In a race the next step is to pick a result: that card stands where the cards above would. */}
+        <Show when={props.task.info.race}>
+          <PickResult task={props.task} />
+        </Show>
 
         <div class="feed" ref={feedEl} onScroll={onScroll}>
           <For each={props.task.feed}>{item}</For>

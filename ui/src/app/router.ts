@@ -2,7 +2,9 @@ import { createSignal } from 'solid-js';
 
 /** The six views of one task, in the order of the switcher. */
 export const VIEWS = ['plan', 'code', 'changes', 'preview', 'map', 'checks'] as const;
-export type View = (typeof VIEWS)[number];
+/** A seventh view that only the entrants of a race have: the results side by side. */
+export const RACE_VIEW = 'compare' as const;
+export type View = (typeof VIEWS)[number] | typeof RACE_VIEW;
 
 export type Route =
   | { page: 'home' }
@@ -19,7 +21,7 @@ function parse(hash: string): Route {
       return { page: parts[0] };
     case 'task': {
       if (!parts[1]) return { page: 'home' };
-      const view = VIEWS.includes(parts[2] as View) ? (parts[2] as View) : 'code';
+      const view = [RACE_VIEW, ...VIEWS].includes(parts[2] as View) ? (parts[2] as View) : 'code';
       return { page: 'task', id: parts[1], view };
     }
     default:
