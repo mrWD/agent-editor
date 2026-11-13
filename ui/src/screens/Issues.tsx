@@ -7,6 +7,7 @@ import { stageWord } from '../core/stages';
 import {
   agentOf,
   integrationsStatus,
+  linearAccount,
   listIssues,
   projectName,
   setLinearKey,
@@ -15,8 +16,13 @@ import {
   state,
   type Integrations,
   type Issue,
+  type LinearAccount,
+  type LinearMine,
   type ProjectIssues,
 } from '../core/store';
+
+/** Where Linear makes personal API keys. It opens in the system's browser. */
+const LINEAR_KEYS = 'https://linear.app/settings/account/security';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -30,6 +36,11 @@ type Filter = 'open' | 'free';
  */
 export function Issues(): JSX.Element {
   const [projects, setProjects] = createSignal<ProjectIssues[] | null>(null);
+  const [mine, setMine] = createSignal<LinearMine>(null);
+  const [account, setAccount] = createSignal<LinearAccount | null>(null);
+  const [accountProblem, setAccountProblem] = createSignal<string | null>(null);
+  /** For each of the user's Linear issues, the project its task would start in. */
+  const [placeOf, setPlaceOf] = createSignal<Record<string, string>>({});
   const [services, setServices] = createSignal<Integrations | null>(null);
   const [syncedAt, setSyncedAt] = createSignal<number | null>(null);
   const [syncing, setSyncing] = createSignal(false);
@@ -51,8 +62,22 @@ export function Issues(): JSX.Element {
     try {
       const [listed, status] = await Promise.all([listIssues(), integrationsStatus()]);
       setProjects(listed.projects);
+      setMine(listed.linear);
       setServices(status);
       setSyncedAt(Date.now());
+      // Who the key belongs to, said back so the user sees the right account is connected, and its teams.
+      if (status.linear.hasKey) {
+        try {
+          setAccount(await linearAccount());
+          setAccountProblem(null);
+        } catch (error) {
+          setAccount(null);
+          setAccountProblem(message(error));
+        }
+      } else {
+        setAccount(null);
+        setAccountProblem(null);
+      }
     } catch (error) {
       setProblem(message(error));
     } finally {
@@ -79,16 +104,28 @@ export function Issues(): JSX.Element {
     }
   };
 
-  const start = (projectId: string, issue: Issue) =>
+  const start = (projectId: string, issue: Issue, source?: 'linear') =>
     // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
     act(async () => {
       setStarting(`${projectId}:${issue.key}`);
       try {
-        go(taskHref(await startIssue(projectId, issue.key, chosenAgent())));
+        go(taskHref(await startIssue(projectId, issue.key, chosenAgent(), source)));
       } finally {
         setStarting(null);
       }
     });
+
+  /**
+   * The project a Linear issue of the user's would start in: the one picked here, else the project that takes
+   * its issues from the issue's team ("OPS-12" from team OPS), else the first project.
+   */
+  const placeFor = (key: string): string => {
+    const picked = placeOf()[key];
+    const all = projects() ?? [];
+    if (picked && all.some((project) => project.projectId === picked)) return picked;
+    const team = key.split('-')[0];
+    return all.find((project) => project.linearTeam === team)?.projectId ?? all[0]?.projectId ?? '';
+  };
 
   const saveKey = () =>
     // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
@@ -175,20 +212,42 @@ export function Issues(): JSX.Element {
               <Show when={used('gitlab') && !status().gitlab.signedIn}>
                 <p class="banner warn flush">{status().gitlab.hint}</p>
               </Show>
-              <section class="issues-linear">
+              <section class="issues-linear" aria-label="Linear">
                 <Show
                   when={!status().linear.hasKey}
                   fallback={
                     <>
-                      <span class="grow soft">Linear is connected with a key kept on this computer.</span>
+                      <span class="grow soft">
+                        <Show
+                          when={account()}
+                          fallback={accountProblem() ?? 'Linear is connected with a key kept on this computer.'}
+                        >
+                          {(who) => (
+                            <>
+                              Connected to Linear
+                              {who().name ? ` as ${who().name}` : ''}
+                              {who().workspace ? ` in ${who().workspace}` : ''}. The key is kept on this computer.
+                            </>
+                          )}
+                        </Show>
+                      </span>
                       <button type="button" class="btn small ghost" onClick={() => act(() => setLinearKey(null))}>
                         Forget the key
                       </button>
                     </>
                   }
                 >
-                  <label class="grow" for="linear-key">
-                    Connect Linear: paste a personal API key (Linear, Settings, Security and access)
+                  <div class="issues-linear-how grow">
+                    <strong>Connect Linear</strong> to see the issues assigned to you.{' '}
+                    <span class="soft">
+                      Linear opens in your browser: press “New API key”, copy it and paste it here.
+                    </span>
+                  </div>
+                  <a class="btn small" href={LINEAR_KEYS} target="_blank" rel="noreferrer">
+                    Open Linear
+                  </a>
+                  <label class="sr-only" for="linear-key">
+                    Linear API key
                   </label>
                   <input
                     id="linear-key"
@@ -206,6 +265,83 @@ export function Issues(): JSX.Element {
                 </Show>
               </section>
             </>
+          )}
+        </Show>
+
+        <Show when={mine()}>
+          {(linear) => (
+            <section class="stage" aria-label="Assigned to you in Linear">
+              <div class="stage-head">
+                <h2 class="stage-title">Assigned to you in Linear</h2>
+                <span class="stage-note">
+                  {linear().issues.length === 1 ? '1 open' : `${linear().issues.length} open`} · every team
+                </span>
+              </div>
+              <Show when={linear().problem}>
+                <p class="stage-row plain danger">{linear().problem}</p>
+              </Show>
+              <Show when={!linear().problem && shown(linear().issues).length === 0}>
+                <p class="stage-row plain">
+                  {filter() === 'free' && linear().issues.length > 0
+                    ? 'Every issue assigned to you has a task.'
+                    : 'Nothing is assigned to you.'}
+                </p>
+              </Show>
+              <For each={shown(linear().issues)}>
+                {(issue) => {
+                  const task = () => (issue.taskId ? state.tasks[issue.taskId] : undefined);
+                  return (
+                    <div class="stage-row issue-row">
+                      <a class="issue-key" href={issue.url} target="_blank" rel="noreferrer">
+                        {issue.key}
+                      </a>
+                      <span class="name">{issue.title}</span>
+                      <span class="issue-state">{issue.state}</span>
+                      <Show
+                        when={task()}
+                        fallback={
+                          <>
+                            <select
+                              class="issue-place"
+                              aria-label={`Project for ${issue.key}`}
+                              value={placeFor(issue.key)}
+                              onChange={(event) => setPlaceOf({ ...placeOf(), [issue.key]: event.currentTarget.value })}
+                            >
+                              <For each={projects() ?? []}>
+                                {(project) => (
+                                  <option value={project.projectId}>{projectName(project.projectId)}</option>
+                                )}
+                              </For>
+                            </select>
+                            <button
+                              type="button"
+                              class="btn small"
+                              disabled={starting() !== null || chosenAgent() === '' || placeFor(issue.key) === ''}
+                              onClick={() => void start(placeFor(issue.key), issue, 'linear')}
+                            >
+                              {starting() === `${placeFor(issue.key)}:${issue.key}` ? 'Starting' : 'Start'}
+                            </button>
+                          </>
+                        }
+                      >
+                        {(held) => (
+                          <>
+                            <span class="where-stopped issue-task">
+                              <Chip agentId={held().info.agentId} short={agentOf(held())?.short ?? '··'} flat />
+                              <StageGlyph stage={stageOfTask(held())} />
+                              {stageWord(stageOfTask(held()))} · {projectName(held().info.projectId)}
+                            </span>
+                            <a class="btn small" href={taskHref(held().info.id)}>
+                              Open
+                            </a>
+                          </>
+                        )}
+                      </Show>
+                    </div>
+                  );
+                }}
+              </For>
+            </section>
           )}
         </Show>
 
@@ -239,14 +375,35 @@ export function Issues(): JSX.Element {
                     </button>
                   }
                 >
-                  <input
-                    class="field narrow"
-                    aria-label={`Linear team key for ${projectName(project.projectId)}`}
-                    placeholder="Team key, such as APP"
-                    value={team()}
-                    onInput={(event) => setTeam(event.currentTarget.value)}
-                    onKeyDown={(event) => event.key === 'Enter' && void saveTeam(project.projectId)}
-                  />
+                  <Show
+                    when={account()?.teams.length}
+                    fallback={
+                      <input
+                        class="field narrow"
+                        aria-label={`Linear team key for ${projectName(project.projectId)}`}
+                        placeholder="Team key, such as APP"
+                        value={team()}
+                        onInput={(event) => setTeam(event.currentTarget.value)}
+                        onKeyDown={(event) => event.key === 'Enter' && void saveTeam(project.projectId)}
+                      />
+                    }
+                  >
+                    <select
+                      class="issue-place"
+                      aria-label={`Linear team for ${projectName(project.projectId)}`}
+                      value={team()}
+                      onChange={(event) => setTeam(event.currentTarget.value)}
+                    >
+                      <option value="">The code host</option>
+                      <For each={account()!.teams}>
+                        {(one) => (
+                          <option value={one.key}>
+                            {one.name} ({one.key})
+                          </option>
+                        )}
+                      </For>
+                    </select>
+                  </Show>
                   <button type="button" class="btn tiny" onClick={() => void saveTeam(project.projectId)}>
                     {team().trim() === '' ? 'Use the code host' : 'Save'}
                   </button>

@@ -1197,13 +1197,26 @@ export function setLinearTeam(projectId: string, team: string | null) {
   return core.request('integrations.setLinearTeam', { projectId, team });
 }
 
+/** The Linear issues assigned to whoever the key belongs to; `null` when Linear is not connected. */
+export type LinearMine = { issues: (Issue & { projectId: string | null })[]; problem: string | null } | null;
+
 export function listIssues() {
-  return core.request<{ projects: ProjectIssues[] }>('issues.list');
+  return core.request<{ projects: ProjectIssues[]; linear: LinearMine }>('issues.list');
 }
 
-/** Starts a task for an issue. Returns the new task's id. */
-export async function startIssue(projectId: string, key: string, agentId: string): Promise<string> {
-  const info = await core.request<TaskInfo>('issues.start', { projectId, key, agentId });
+/** Who the Linear key belongs to, in which workspace, and the teams there. */
+export type LinearAccount = { name: string | null; workspace: string | null; teams: { key: string; name: string }[] };
+
+export function linearAccount() {
+  return core.request<LinearAccount>('integrations.linearAccount');
+}
+
+/**
+ * Starts a task for an issue. Returns the new task's id. A Linear issue of the user's own (`source: 'linear'`)
+ * may be started in any project, whatever tracker the project uses.
+ */
+export async function startIssue(projectId: string, key: string, agentId: string, source?: 'linear'): Promise<string> {
+  const info = await core.request<TaskInfo>('issues.start', { projectId, key, agentId, ...(source ? { source } : {}) });
   if (!state.tasks[info.id]) {
     addTask(info);
     await loadHistory(info.id, info.state);

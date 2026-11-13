@@ -409,9 +409,14 @@ pub fn parse_linear_issues(answer: &Value) -> Result<Vec<Issue>> {
     if let Some(errors) = answer.get("errors").and_then(Value::as_array).filter(|list| !list.is_empty()) {
         bail!("Linear refused: {}", text_of(&errors[0], "message"));
     }
+    // A team's issues, the ones assigned to the person whose key it is, or one issue on its own.
+    let one = answer.pointer("/data/issue").filter(|issue| issue.is_object()).map(std::slice::from_ref);
     let nodes = answer
         .pointer("/data/issues/nodes")
+        .or_else(|| answer.pointer("/data/viewer/assignedIssues/nodes"))
         .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .or(one)
         .ok_or_else(|| anyhow!("Linear's answer has no issues in it"))?;
     Ok(nodes
         .iter()
@@ -484,11 +489,16 @@ impl Hosts {
         }
     }
 
-    /// Runs one of the tools and returns what it printed, or its complaint as the error.
-    fn run(&self, kind: HostKind, args: &[&str]) -> Result<String> {
+    /// Runs one of the tools against one server and returns what it printed, or its complaint as the error. Without it `gh` asks github.com and `glab` asks gitlab.com,
+    /// whatever server the project lives on: a company's own GitLab answers "not found" and "not signed in".
+    fn run_at(&self, kind: HostKind, host: Option<&str>, args: &[&str]) -> Result<String> {
         let tool = self.tool(kind);
         let name = if kind == HostKind::GitHub { "gh" } else { "glab" };
-        let output = Command::new(tool)
+        let mut command = Command::new(tool);
+        if let Some(host) = host {
+            command.env(if kind == HostKind::GitHub { "GH_HOST" } else { "GITLAB_HOST" }, host);
+        }
+        let output = command
             .args(args)
             // Never stop to ask; plain text without colours, so it can be read by code.
             .env("GH_PROMPT_DISABLED", "1")
@@ -508,8 +518,9 @@ impl Hosts {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
-    /// Whether the tool for a host is installed and signed in.
-    pub fn tool_state(&self, kind: HostKind) -> ToolState {
+    /// Whether the tool for a host is installed and signed in to every server the projects live on.
+    /// With no project on such a server, signed in anywhere is enough.
+    pub fn tool_state(&self, kind: HostKind, servers: &[String]) -> ToolState {
         let name = if kind == HostKind::GitHub { "gh" } else { "glab" };
         let installed = self.tool(kind).is_file() || which::which(self.tool(kind)).is_ok();
         if !installed {
@@ -519,12 +530,53 @@ impl Hosts {
                 hint: Some(format!("Install the `{name}` command, then run `{name} auth login` in a terminal.")),
             };
         }
-        let signed_in = self.run(kind, &["auth", "status"]).is_ok();
-        ToolState {
-            installed: true,
-            signed_in,
-            hint: (!signed_in).then(|| format!("Run `{name} auth login` in a terminal to sign in to {}.", kind.name())),
+        if servers.is_empty() {
+            let signed_in = self.signed_in(kind, None);
+            return ToolState {
+                installed: true,
+                signed_in,
+                hint: (!signed_in)
+                    .then(|| format!("Run `{name} auth login` in a terminal to sign in to {}.", kind.name())),
+            };
         }
+        let out: Vec<&String> = servers.iter().filter(|server| !self.signed_in(kind, Some(server))).collect();
+        let hint = match out.as_slice() {
+            [] => None,
+            [one] => Some(format!("Run `{name} auth login --hostname {one}` in a terminal to sign in to {one}.")),
+            many => Some(format!(
+                "Sign in to {} with `{name} auth login --hostname <server>` in a terminal.",
+                many.iter().map(|server| server.as_str()).collect::<Vec<_>>().join(" and ")
+            )),
+        };
+        ToolState { installed: true, signed_in: out.is_empty(), hint }
+    }
+
+    /// Whether the tool is signed in to one server, or to any.
+    ///
+    /// `auth status` without a server checks every server the tool has heard of and fails when any one of them
+    /// is not signed in, so someone signed in to their company's GitLab only would read as signed out. Asked
+    /// about the project's own server, the answer is about that server.
+    fn signed_in(&self, kind: HostKind, server: Option<&str>) -> bool {
+        let mut args = vec!["auth", "status"];
+        if let Some(server) = server {
+            args.extend(["--hostname", server]);
+        }
+        let Ok(output) = Command::new(self.tool(kind))
+            .args(&args)
+            .env("NO_COLOR", "1")
+            .env("GH_PROMPT_DISABLED", "1")
+            .env("GLAB_NO_PROMPT", "1")
+            .stdin(std::process::Stdio::null())
+            .output()
+        else {
+            return false;
+        };
+        if output.status.success() {
+            return true;
+        }
+        // Signed in somewhere, with another server failing: for the question "any", that is a yes.
+        let said = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        server.is_none() && said.contains("Logged in to")
     }
 
     /// Whether Docker is installed and its engine is running.
@@ -556,15 +608,17 @@ impl Hosts {
         match remote.kind {
             HostKind::GitHub => {
                 let fields = "number,title,url,state,body,labels,assignees,updatedAt";
-                let json = self.run(
+                let json = self.run_at(
                     HostKind::GitHub,
+                    Some(&remote.host),
                     &["issue", "list", "-R", &remote.slug, "--state", "open", "--limit", "100", "--json", fields],
                 )?;
                 parse_github_issues(&json)
             }
             HostKind::GitLab => {
-                let json = self.run(
+                let json = self.run_at(
                     HostKind::GitLab,
+                    Some(&remote.host),
                     &["issue", "list", "-R", &remote.slug, "--per-page", "100", "--output", "json"],
                 )?;
                 parse_gitlab_issues(&json)
@@ -600,6 +654,49 @@ impl Hosts {
                      nodes { id identifier title url description updatedAt state { name type } \
                      assignee { name } labels { nodes { name } } } } }";
         parse_linear_issues(&self.linear(key, query, json!({ "team": team }))?)
+    }
+
+    /// The open issues assigned to the person whose key it is, in every team, newest change first.
+    pub fn linear_mine(&self, key: &str) -> Result<Vec<Issue>> {
+        let query = "query { viewer { assignedIssues(first: 100, orderBy: updatedAt, filter: { \
+                     state: { type: { nin: [\"completed\", \"canceled\"] } } }) { \
+                     nodes { id identifier title url description updatedAt state { name type } \
+                     assignee { name } labels { nodes { name } } } } } }";
+        parse_linear_issues(&self.linear(key, query, json!({}))?)
+    }
+
+    /// One issue, by the name people call it ("APP-214").
+    pub fn linear_issue(&self, key: &str, identifier: &str) -> Result<Issue> {
+        let query = "query($id: String!) { issue(id: $id) { id identifier title url description updatedAt \
+                     state { name type } assignee { name } labels { nodes { name } } } }";
+        parse_linear_issues(&self.linear(key, query, json!({ "id": identifier }))?)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("Linear has no issue {identifier}"))
+    }
+
+    /// Who the key belongs to and in which workspace, and the teams there, for the screen to offer.
+    pub fn linear_account(&self, key: &str) -> Result<Value> {
+        let answer = self.linear(
+            key,
+            "query { viewer { name email } organization { name } teams(first: 100) { nodes { key name } } }",
+            json!({}),
+        )?;
+        if let Some(error) = answer.pointer("/errors/0/message").and_then(Value::as_str) {
+            bail!("Linear refused: {error}");
+        }
+        let teams: Vec<Value> = answer
+            .pointer("/data/teams/nodes")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|team| json!({ "key": text_of(team, "key"), "name": text_of(team, "name") }))
+            .collect();
+        Ok(json!({
+            "name": answer.pointer("/data/viewer/name").and_then(Value::as_str),
+            "workspace": answer.pointer("/data/organization/name").and_then(Value::as_str),
+            "teams": teams,
+        }))
     }
 
     /// Moves a Linear issue to the team's first state of a kind: "started" or "completed".
@@ -640,14 +737,22 @@ impl Hosts {
         match remote.kind {
             HostKind::GitHub => {
                 let fields = "number,title,url,state,isDraft,mergeable,reviewDecision,statusCheckRollup";
-                match self.run(HostKind::GitHub, &["pr", "view", branch, "-R", &remote.slug, "--json", fields]) {
+                match self.run_at(
+                    HostKind::GitHub,
+                    Some(&remote.host),
+                    &["pr", "view", branch, "-R", &remote.slug, "--json", fields],
+                ) {
                     Ok(json) => parse_github_request(&json).map(Some),
                     Err(error) if error.to_string().contains("no pull requests found") => Ok(None),
                     Err(error) => Err(error),
                 }
             }
             HostKind::GitLab => {
-                match self.run(HostKind::GitLab, &["mr", "view", branch, "-R", &remote.slug, "--output", "json"]) {
+                match self.run_at(
+                    HostKind::GitLab,
+                    Some(&remote.host),
+                    &["mr", "view", branch, "-R", &remote.slug, "--output", "json"],
+                ) {
                     Ok(json) => parse_gitlab_request(&json).map(Some),
                     Err(error) => {
                         let text = error.to_string().to_lowercase();
@@ -676,8 +781,9 @@ impl Hosts {
     ) -> Result<Request> {
         match remote.kind {
             HostKind::GitHub => {
-                self.run(
+                self.run_at(
                     HostKind::GitHub,
+                    Some(&remote.host),
                     &[
                         "pr",
                         "create",
@@ -695,8 +801,9 @@ impl Hosts {
                 )?;
             }
             HostKind::GitLab => {
-                self.run(
+                self.run_at(
                     HostKind::GitLab,
+                    Some(&remote.host),
                     &[
                         "mr",
                         "create",
@@ -725,8 +832,9 @@ impl Hosts {
         match remote.kind {
             HostKind::GitHub => {
                 let (owner, name) = remote.slug.split_once('/').ok_or_else(|| anyhow!("Odd repository name"))?;
-                let json = self.run(
+                let json = self.run_at(
                     HostKind::GitHub,
+                    Some(&remote.host),
                     &[
                         "api",
                         "graphql",
@@ -749,7 +857,11 @@ impl Hosts {
                     "projects/{}/merge_requests/{number}/discussions?per_page=100",
                     gitlab_project(&remote.slug)
                 );
-                parse_gitlab_comments(&self.run(HostKind::GitLab, &["api", "--hostname", &remote.host, &path])?)
+                parse_gitlab_comments(&self.run_at(
+                    HostKind::GitLab,
+                    Some(&remote.host),
+                    &["api", "--hostname", &remote.host, &path],
+                )?)
             }
         }
     }
@@ -763,14 +875,22 @@ impl Hosts {
         match remote.kind {
             HostKind::GitHub => {
                 let path = format!("repos/{}/pulls/{number}/comments/{comment_id}/replies", remote.slug);
-                self.run(HostKind::GitHub, &["api", "--hostname", &remote.host, "-X", "POST", &path, "-f", &text])?;
+                self.run_at(
+                    HostKind::GitHub,
+                    Some(&remote.host),
+                    &["api", "--hostname", &remote.host, "-X", "POST", &path, "-f", &text],
+                )?;
             }
             HostKind::GitLab => {
                 let path = format!(
                     "projects/{}/merge_requests/{number}/discussions/{comment_id}/notes",
                     gitlab_project(&remote.slug)
                 );
-                self.run(HostKind::GitLab, &["api", "--hostname", &remote.host, "-X", "POST", &path, "-f", &text])?;
+                self.run_at(
+                    HostKind::GitLab,
+                    Some(&remote.host),
+                    &["api", "--hostname", &remote.host, "-X", "POST", &path, "-f", &text],
+                )?;
             }
         }
         Ok(())
@@ -785,7 +905,7 @@ impl Hosts {
                 if delete_branch {
                     args.push("--delete-branch");
                 }
-                self.run(HostKind::GitHub, &args)?;
+                self.run_at(HostKind::GitHub, Some(&remote.host), &args)?;
             }
             HostKind::GitLab => {
                 let mut args = vec!["mr", "merge", &number, "-R", &remote.slug, "--yes"];
@@ -795,7 +915,7 @@ impl Hosts {
                 if delete_branch {
                     args.push("--remove-source-branch");
                 }
-                self.run(HostKind::GitLab, &args)?;
+                self.run_at(HostKind::GitLab, Some(&remote.host), &args)?;
             }
         }
         Ok(())

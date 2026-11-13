@@ -290,6 +290,33 @@ fn fake_linear() -> FakeLinear {
                 )
             } else if body.contains("issueUpdate") {
                 ("200 OK", json!({ "data": { "issueUpdate": { "success": true } } }))
+            } else if body.contains("organization") {
+                (
+                    "200 OK",
+                    json!({ "data": { "viewer": { "name": "Viktor", "email": "v@example.com" },
+                        "organization": { "name": "Shop Inc" },
+                        "teams": { "nodes": [{ "key": "APP", "name": "App" }, { "key": "OPS", "name": "Operations" }] } } }),
+                )
+            } else if body.contains("assignedIssues") {
+                (
+                    "200 OK",
+                    json!({ "data": { "viewer": { "assignedIssues": { "nodes": [{
+                    "id": "uuid-12590", "identifier": "OPS-12590", "title": "Skills with empty names",
+                    "url": "https://linear.app/x/issue/OPS-12590", "description": "Hide them from the filter.",
+                    "updatedAt": "2026-11-13T09:00:00.000Z", "state": { "name": "Todo", "type": "unstarted" },
+                    "assignee": { "name": "Viktor" }, "labels": { "nodes": [] }
+                }] } } } }),
+                )
+            } else if body.contains("issue(id") {
+                (
+                    "200 OK",
+                    json!({ "data": { "issue": {
+                    "id": "uuid-12590", "identifier": "OPS-12590", "title": "Skills with empty names",
+                    "url": "https://linear.app/x/issue/OPS-12590", "description": "Hide them from the filter.",
+                    "updatedAt": "2026-11-13T09:00:00.000Z", "state": { "name": "Todo", "type": "unstarted" },
+                    "assignee": { "name": "Viktor" }, "labels": { "nodes": [] }
+                } } }),
+                )
             } else {
                 (
                     "200 OK",
@@ -414,4 +441,131 @@ async fn a_new_issue_with_the_label_starts_a_task_once() {
     // The same issue never starts a second task.
     manager.automations_tick(20 * MINUTE).await;
     assert_eq!(manager.list().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_company_gitlab_is_asked_about_itself_and_not_about_gitlab_com() {
+    let sandbox = Sandbox::new("gitlab-own-server");
+    let tools = sandbox.0.join("tools");
+    // Signed in to the company's server only. Like the real `glab`, a plain `auth status` fails because
+    // gitlab.com is not signed in, and every call without GITLAB_HOST goes to gitlab.com, which does not
+    // know the project.
+    let glab = fake_tool(
+        &tools,
+        "glab",
+        r#"here="$(dirname "$0")"
+echo "GITLAB_HOST=$GITLAB_HOST $@" >> "$here/calls.log"
+case "$1 $2" in
+  "auth status")
+    if [ "$3 $4" = "--hostname gitlab.company.com" ]; then
+      echo "gitlab.company.com: Logged in to gitlab.company.com as viktor" >&2; exit 0
+    fi
+    echo "gitlab.company.com: Logged in to gitlab.company.com as viktor" >&2
+    echo "gitlab.com: No token found" >&2; exit 1 ;;
+  "issue list")
+    if [ "$GITLAB_HOST" != "gitlab.company.com" ]; then echo "ERROR 404 Not Found." >&2; exit 1; fi
+    echo '[{"iid":7,"title":"Skills with empty names","web_url":"https://gitlab.company.com/application-development/webapp/backend/-/issues/7","state":"opened","description":"","labels":[],"assignees":[],"updated_at":"2026-11-12T19:05:30Z"}]' ;;
+  *) echo "unexpected call: $*" >&2; exit 2 ;;
+esac
+"#,
+    );
+    let missing = PathBuf::from("/nonexistent/ae-test/tool");
+    let hosts = Hosts::with(missing.clone(), glab, missing, "http://127.0.0.1:9/graphql".into());
+    let state = AppState::new(sandbox.manager_with(hosts));
+    let manager = &state.manager;
+    let repo = git_project(&sandbox);
+    // A group inside a group inside a group, on the company's own server.
+    git(&repo, &["remote", "add", "origin", "git@gitlab.company.com:application-development/webapp/backend.git"]);
+    manager.add_project(&repo.to_string_lossy(), None).unwrap();
+
+    let status = dispatch(&state, "integrations.status", &json!({})).await.unwrap();
+    assert_eq!(status["gitlab"], json!({ "installed": true, "signedIn": true, "hint": null }));
+
+    let listed = dispatch(&state, "issues.list", &json!({})).await.unwrap();
+    let mine = &listed["projects"][0];
+    assert_eq!(mine["problem"], Value::Null, "{mine}");
+    assert_eq!(mine["label"], "GitLab application-development/webapp/backend");
+    assert_eq!(mine["issues"][0]["key"], "#7");
+    assert!(
+        calls(&tools).contains("GITLAB_HOST=gitlab.company.com issue list -R application-development/webapp/backend")
+    );
+}
+
+#[tokio::test]
+async fn a_server_that_is_not_signed_in_is_named_with_the_command_for_it() {
+    let sandbox = Sandbox::new("gitlab-signed-out");
+    let tools = sandbox.0.join("tools");
+    let glab = fake_tool(&tools, "glab", "echo \"$3 $4: not logged in\" >&2; exit 1\n");
+    let missing = PathBuf::from("/nonexistent/ae-test/tool");
+    let hosts = Hosts::with(missing.clone(), glab, missing, "http://127.0.0.1:9/graphql".into());
+    let state = AppState::new(sandbox.manager_with(hosts));
+    let repo = git_project(&sandbox);
+    git(&repo, &["remote", "add", "origin", "https://gitlab.company.com/group/shop.git"]);
+    state.manager.add_project(&repo.to_string_lossy(), None).unwrap();
+    let status = dispatch(&state, "integrations.status", &json!({})).await.unwrap();
+    assert_eq!(status["gitlab"]["signedIn"], false);
+    assert_eq!(
+        status["gitlab"]["hint"],
+        "Run `glab auth login --hostname gitlab.company.com` in a terminal to sign in to gitlab.company.com."
+    );
+}
+
+#[tokio::test]
+async fn issues_assigned_to_the_user_in_linear_show_without_a_team_and_start_in_any_project() {
+    let sandbox = Sandbox::new("linear-mine");
+    let linear = fake_linear();
+    let missing = PathBuf::from("/nonexistent/ae-test/tool");
+    let hosts = Hosts::with(missing.clone(), missing.clone(), missing, linear.url.clone());
+    let state = AppState::new(sandbox.manager_with(hosts));
+    let manager = &state.manager;
+    // A project on a code host the core cannot reach, and no Linear team set for it.
+    let project = manager.add_project(&git_project(&sandbox).to_string_lossy(), None).unwrap();
+
+    // Without a key nothing is asked of Linear.
+    let listed = dispatch(&state, "issues.list", &json!({})).await.unwrap();
+    assert_eq!(listed["linear"], Value::Null);
+
+    dispatch(&state, "integrations.setLinearKey", &json!({ "key": "lin_test_key" })).await.unwrap();
+    // Who the key is, and the teams to choose from.
+    let account = dispatch(&state, "integrations.linearAccount", &json!({})).await.unwrap();
+    assert_eq!((account["name"].as_str(), account["workspace"].as_str()), (Some("Viktor"), Some("Shop Inc")));
+    assert_eq!(account["teams"], json!([{ "key": "APP", "name": "App" }, { "key": "OPS", "name": "Operations" }]));
+
+    // The user's own issues are there at once, though no project uses Linear.
+    let listed = dispatch(&state, "issues.list", &json!({})).await.unwrap();
+    assert_eq!(listed["linear"]["problem"], Value::Null);
+    let mine = &listed["linear"]["issues"][0];
+    assert_eq!((mine["key"].as_str(), mine["taskId"].clone()), (Some("OPS-12590"), Value::Null));
+
+    // One of them becomes a task in the project; the issue moves along in its own team.
+    let mut events = manager.subscribe();
+    let task = dispatch(
+        &state,
+        "issues.start",
+        &json!({ "projectId": project.id, "key": "OPS-12590", "agentId": "mock", "source": "linear" }),
+    )
+    .await
+    .unwrap();
+    let id = task["id"].as_str().unwrap().to_string();
+    assert_eq!(task["issue"]["source"], "linear");
+    assert_eq!(task["title"], "Skills with empty names");
+    let seen = until(&mut events, &id, |e| is(e, "tracker")).await;
+    assert_eq!(seen.last().unwrap()["text"], "The issue is now “In Progress” in Linear.");
+    assert!(
+        linear.asked.lock().unwrap().iter().any(|(_, body)| body.contains("workflowStates") && body.contains("OPS"))
+    );
+
+    // Listed again, the issue names its task; a second task for it is refused.
+    let listed = dispatch(&state, "issues.list", &json!({})).await.unwrap();
+    assert_eq!(listed["linear"]["issues"][0]["taskId"], id.as_str());
+    assert_eq!(listed["linear"]["issues"][0]["projectId"], project.id.as_str());
+    let again = dispatch(
+        &state,
+        "issues.start",
+        &json!({ "projectId": project.id, "key": "OPS-12590", "agentId": "mock", "source": "linear" }),
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(again.contains("already open"), "{again}");
 }

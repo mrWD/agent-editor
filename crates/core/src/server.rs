@@ -831,18 +831,27 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         }
         "issues.list" => {
             let manager = manager.clone();
-            let projects = tokio::task::spawn_blocking(move || manager.all_issues()).await??;
-            Ok(json!({ "projects": projects }))
+            let (projects, linear) = tokio::task::spawn_blocking(move || {
+                let projects = manager.all_issues();
+                (projects, manager.linear_mine())
+            })
+            .await?;
+            Ok(json!({ "projects": projects?, "linear": linear }))
         }
         "issues.start" => {
-            let task = manager
-                .start_issue(
-                    text_param(params, "projectId")?,
-                    text_param(params, "key")?,
-                    text_param(params, "agentId")?,
-                )
-                .await?;
+            let (project, key, agent) =
+                (text_param(params, "projectId")?, text_param(params, "key")?, text_param(params, "agentId")?);
+            // A Linear issue of the user's own may be started in any project, whatever tracker it uses.
+            let task = if params.get("source").and_then(Value::as_str) == Some("linear") {
+                manager.start_linear_issue(project, key, agent).await?
+            } else {
+                manager.start_issue(project, key, agent).await?
+            };
             Ok(json!(task))
+        }
+        "integrations.linearAccount" => {
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.linear_account()).await?
         }
 
         "mr.get" => {

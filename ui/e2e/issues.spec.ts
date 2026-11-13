@@ -104,8 +104,18 @@ test.describe('Issues', () => {
     const section = sectionOf(app, shop);
     await expect(section).toContainText('No tracker: its remote is not on GitHub or GitLab, and no Linear team is set');
     await expect(section).toContainText('Nothing to list.');
-    await expect(app.page.getByText('Connect Linear: paste a personal API key')).toBeVisible();
+    // Linear says how to connect it where it is: a link that opens Linear's page of keys, and a box for the key.
+    const linear = app.page.getByRole('region', { name: 'Linear' });
+    await expect(linear).toContainText('Connect Linear to see the issues assigned to you.');
+    await expect(linear.getByRole('link', { name: 'Open Linear' })).toHaveAttribute(
+      'href',
+      'https://linear.app/settings/account/security',
+    );
+    await expect(linear.getByRole('link', { name: 'Open Linear' })).toHaveAttribute('target', '_blank');
+    await expect(linear.getByLabel('Linear API key')).toBeVisible();
     await expect(app.page.getByRole('button', { name: 'Connect', exact: true })).toBeDisabled();
+    // Without a key there is no list of one's own Linear issues.
+    await expect(app.page.getByRole('region', { name: 'Assigned to you in Linear' })).toHaveCount(0);
 
     await section.getByRole('button', { name: 'Use a Linear team' }).click();
     const team = section.getByRole('textbox', { name: `Linear team key for ${shop.name}` });

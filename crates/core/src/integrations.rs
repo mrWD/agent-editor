@@ -113,9 +113,19 @@ impl Manager {
 
     /// Which services can be used right now, and what to do about those that cannot.
     pub fn integrations(&self) -> Value {
+        // The servers the projects live on: a company's own GitLab is asked about itself, not gitlab.com.
+        let mut servers: [Vec<String>; 2] = [vec![], vec![]];
+        for project in self.store().projects().unwrap_or_default() {
+            if let Some(remote) = crate::hosts::remote_of(std::path::Path::new(&project.path)) {
+                let list = &mut servers[usize::from(remote.kind == HostKind::GitLab)];
+                if !list.contains(&remote.host) {
+                    list.push(remote.host);
+                }
+            }
+        }
         json!({
-            "github": self.hosts.tool_state(HostKind::GitHub),
-            "gitlab": self.hosts.tool_state(HostKind::GitLab),
+            "github": self.hosts.tool_state(HostKind::GitHub, &servers[0]),
+            "gitlab": self.hosts.tool_state(HostKind::GitLab, &servers[1]),
             "linear": { "hasKey": self.linear_key().is_some() },
             "docker": self.hosts.docker_state(),
         })
@@ -270,20 +280,85 @@ impl Manager {
         };
         let task = self.create_for(project_id, agent_id, &first_message(&issue), Some(attached)).await?;
 
-        // In Linear a started task means a started issue. A failure here must not undo the task.
-        if source == "linear" {
-            let manager = self.clone();
-            let (project, issue_id, task_id) = (project_id.to_string(), issue.id.clone(), task.row.id.clone());
-            tokio::task::spawn_blocking(move || manager.move_linear_issue(&task_id, &project, &issue_id, "started"));
+        self.linear_started(&task, project_id);
+        Ok(task)
+    }
+
+    /// In Linear a started task means a started issue. A failure here must not undo the task.
+    fn linear_started(self: &Arc<Self>, task: &TaskInfo, project_id: &str) {
+        let Some(issue) = task.row.issue.clone().filter(|issue| issue.source == "linear") else { return };
+        let manager = self.clone();
+        let (project, task_id) = (project_id.to_string(), task.row.id.clone());
+        tokio::task::spawn_blocking(move || manager.move_linear_issue(&task_id, &project, &issue, "started"));
+    }
+
+    /// The open Linear issues assigned to whoever the key belongs to, in every team, each with the task working
+    /// on it. They need no project set up: a task for one starts in whichever project the user picks.
+    pub fn linear_mine(&self) -> Value {
+        let Some(key) = self.linear_key() else { return Value::Null };
+        let tasks = self.store().tasks().unwrap_or_default();
+        match self.hosts.linear_mine(&key) {
+            Ok(issues) => {
+                let rows: Vec<Value> = issues
+                    .into_iter()
+                    .map(|issue| {
+                        let task = tasks.iter().find(|task| {
+                            task.issue.as_ref().is_some_and(|mine| mine.source == "linear" && mine.key == issue.key)
+                        });
+                        let mut row = json!(issue);
+                        row["taskId"] = json!(task.map(|task| task.id.clone()));
+                        row["projectId"] = json!(task.map(|task| task.project_id.clone()));
+                        row
+                    })
+                    .collect();
+                json!({ "issues": rows, "problem": null })
+            }
+            Err(error) => json!({ "issues": [], "problem": format!("{error:#}") }),
         }
+    }
+
+    /// Who the Linear key belongs to, and the teams of that workspace.
+    pub fn linear_account(&self) -> Result<Value> {
+        let key = self.linear_key().ok_or_else(|| anyhow!("Linear is not connected yet"))?;
+        self.hosts.linear_account(&key)
+    }
+
+    /// Starts a task in a project for a Linear issue, whatever tracker the project itself uses.
+    pub async fn start_linear_issue(self: &Arc<Self>, project_id: &str, key: &str, agent_id: &str) -> Result<TaskInfo> {
+        self.store().project(project_id)?;
+        let already = self
+            .store()
+            .tasks()?
+            .into_iter()
+            .any(|task| task.issue.as_ref().is_some_and(|issue| issue.source == "linear" && issue.key == key));
+        if already {
+            bail!("A task for {key} is already open");
+        }
+        let token = self.linear_key().ok_or_else(|| anyhow!("Linear is not connected yet"))?;
+        let (hosts, wanted) = (self.hosts.clone(), key.to_string());
+        let issue = tokio::task::spawn_blocking(move || hosts.linear_issue(&token, &wanted)).await??;
+        let attached = TaskIssue {
+            key: issue.key.clone(),
+            id: issue.id.clone(),
+            url: issue.url.clone(),
+            title: issue.title.clone(),
+            source: "linear".into(),
+        };
+        let task = self.create_for(project_id, agent_id, &first_message(&issue), Some(attached)).await?;
+        self.linear_started(&task, project_id);
         Ok(task)
     }
 
     /// Moves a task's Linear issue and says so in the conversation. Failures are said there too.
-    fn move_linear_issue(&self, task_id: &str, project_id: &str, issue_id: &str, kind: &str) {
-        let (Some(key), Some(team)) = (self.linear_key(), self.linear_team(project_id)) else {
+    /// The team is the project's, or else the one the issue's name starts with ("APP-214" is team APP's).
+    fn move_linear_issue(&self, task_id: &str, project_id: &str, issue: &TaskIssue, kind: &str) {
+        let team = self
+            .linear_team(project_id)
+            .or_else(|| issue.key.split_once('-').map(|(team, _)| team.to_string()).filter(|team| !team.is_empty()));
+        let (Some(key), Some(team)) = (self.linear_key(), team) else {
             return;
         };
+        let issue_id = issue.id.as_str();
         match self.hosts.linear_move(&key, &team, issue_id, kind) {
             Ok(state) => self.emit(task_id, json!({ "type": "tracker", "text": format!("The issue is now “{state}” in Linear.") })),
             Err(error) => self.emit(
@@ -419,7 +494,7 @@ impl Manager {
             json!({ "type": "git", "action": "merged", "subject": format!("{word} {}", merged.number), "short": "" }),
         );
         if let Some(issue) = task.issue.as_ref().filter(|issue| issue.source == "linear") {
-            self.move_linear_issue(task_id, &task.project_id, &issue.id, "completed");
+            self.move_linear_issue(task_id, &task.project_id, issue, "completed");
         }
         self.broadcast("mr.changed", json!({ "taskId": task_id }));
         Ok(merged)
