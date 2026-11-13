@@ -280,7 +280,7 @@ impl Connection {
 
 /// Stops a process together with the processes it started.
 #[cfg(unix)]
-fn kill_family(pid: u32) {
+pub(crate) fn kill_family(pid: u32) {
     // The agent was started as the head of its own group: the group's number is its own.
     // SAFETY: `killpg` only sends a signal; a group that is gone already is not an error to act on.
     unsafe {
@@ -290,7 +290,7 @@ fn kill_family(pid: u32) {
 
 /// Stops a process together with the processes it started.
 #[cfg(windows)]
-fn kill_family(pid: u32) {
+pub(crate) fn kill_family(pid: u32) {
     let _ = std::process::Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .stdin(Stdio::null())

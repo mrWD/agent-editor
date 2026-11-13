@@ -14,6 +14,7 @@ pub mod git;
 pub mod gitops;
 pub mod hosts;
 pub mod integrations;
+pub mod lsp;
 pub mod marks;
 pub mod overlaps;
 pub mod review;

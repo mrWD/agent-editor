@@ -44,6 +44,8 @@ export type HostOptions = {
   onUserEdit: (path: string) => void;
   /** The user pressed the ask key with code selected. */
   onAsk: (path: string, fromLine: number, toLine: number, text: string) => void;
+  /** A file is no longer held. */
+  onClosed?: (path: string) => void;
 };
 
 /**
@@ -162,12 +164,12 @@ export class EditorHost {
   }
 
   /** The state of a file, whether it is on screen or behind. */
-  private stateOf(path: string): EditorState | undefined {
+  stateOf(path: string): EditorState | undefined {
     return path === this.current ? this.view.state : this.states.get(path);
   }
 
   /** Applies a change to a file wherever its state lives, and reports the result. */
-  private change(path: string, spec: TransactionSpec) {
+  change(path: string, spec: TransactionSpec) {
     if (path === this.current) {
       this.view.dispatch(spec);
     } else {
@@ -232,6 +234,7 @@ export class EditorHost {
     this.states.delete(path);
     this.saved.delete(path);
     this.scrolls.delete(path);
+    this.options.onClosed?.(path);
   }
 
   /** The text of a file as it stands in the editor, and a handle to tell later if it changed. */

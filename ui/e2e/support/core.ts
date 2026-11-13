@@ -42,6 +42,8 @@ export type CoreOptions = {
   mockDelayMs?: number;
   /** Start the core with a practice agent that ends at once, to see what a failed start does. */
   brokenAgent?: boolean;
+  /** Let the practice language server stand in for the TypeScript one, which the tests never have. */
+  practiceLspForTs?: boolean;
 };
 
 export type TaskInfo = {
@@ -109,6 +111,7 @@ export class Core {
       NPM_CONFIG_UPDATE_NOTIFIER: 'false',
     };
     if (options.brokenAgent) this.env.AE_MOCK_AGENT = '/usr/bin/false';
+    if (options.practiceLspForTs) this.env.AE_MOCK_LSP_TS = '1';
   }
 
   static async start(options: CoreOptions = {}): Promise<Core> {
