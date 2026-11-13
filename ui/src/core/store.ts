@@ -817,3 +817,43 @@ export function runStop(taskId: string, service?: string) {
 export function runLogs(taskId: string, service: string) {
   return core.request<{ termId: number }>('run.logs', { taskId, service });
 }
+
+// ----- the Map view -----
+
+/** What a map is centred on: a changed file (`symbol` is null) or one changed definition in it. */
+export type MapCenter = { path: string; symbol: string | null; label: string; line: number };
+
+/** Something a file defines. `kind` is a plain word: "function", "const", "class", "route" and so on. */
+export type MapDef = { name: string; kind: string; line: number; changed: boolean };
+
+/** A file of the tree. `language` is null for a kind of file the map does not read: it has no details. */
+export type MapFile = { path: string; changed: boolean; language: string | null; defs: MapDef[]; tests: number };
+
+/** One box of a picture. `layer` counts steps from the centre; before it is negative. */
+export type MapNode = {
+  id: string;
+  label: string;
+  kind: 'file' | 'function' | 'package' | 'other';
+  /** Where a click leads. For a package or a call the map cannot place: the line that names it. */
+  path: string | null;
+  line: number | null;
+  changed: boolean;
+  layer: number;
+  title: string;
+};
+
+export type MapGraph = { nodes: MapNode[]; edges: { from: string; to: string }[]; hidden: number };
+
+export type CodeMap = {
+  center: MapCenter | null;
+  centers: MapCenter[];
+  tree: MapFile[];
+  deps: MapGraph;
+  calls: MapGraph;
+  notes: string[];
+};
+
+/** Reads the map of a task. The core works it out from the files; no agent is asked. */
+export function getMap(taskId: string, center?: { path: string; symbol: string | null } | null) {
+  return core.request<CodeMap>('map.get', { taskId, center: center ?? undefined });
+}

@@ -12,6 +12,7 @@ pub mod git;
 pub mod gitops;
 pub mod hosts;
 pub mod integrations;
+pub mod map;
 pub mod marks;
 pub mod review;
 pub mod runner;

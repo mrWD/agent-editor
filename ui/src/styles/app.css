@@ -2287,3 +2287,329 @@ button.search-link:hover {
   align-items: center;
   gap: 8px;
 }
+
+/* ---------- Map ---------- */
+
+.map-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+/* Drawn as a button; the list that does the work lies over it, unseen. */
+.map-center {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.map-center .mono {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-center svg {
+  flex: none;
+  color: var(--text-3);
+}
+.map-center select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.map-center:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.map-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.map-key {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+.map-key.changed {
+  border: 1px solid var(--green);
+  background: rgba(91, 208, 138, 0.12);
+}
+.map-key.package {
+  border: 1px dashed var(--text-3);
+}
+/* In a narrow card the words of a button wrap; they never push the card wider. */
+.btn.map-ask {
+  height: auto;
+  min-height: 28px;
+  padding: 3px 12px;
+  white-space: normal;
+  text-align: left;
+}
+
+/* The room for a scroll bar is kept even when there is none, so a picture that
+   grows taller does not make its own card narrower and change again. */
+.map-body {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+/* A card is at least as wide as the pictures the design draws, and wraps to a new row before it gets narrower. */
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(504px, 100%), 1fr));
+  gap: 12px;
+}
+.map-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.map-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+.map-card-head h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15px;
+}
+.map-card-head span {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.map-note {
+  max-width: 60ch;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* The tree */
+.map-tree,
+.map-branch {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.map-tree {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.map-branch {
+  margin-left: 5px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line-strong);
+}
+.map-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.map-folder-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.map-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.map-file {
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.map-file:hover {
+  border-color: var(--line-strong);
+}
+.map-file.changed {
+  border-color: var(--green);
+  background: rgba(91, 208, 138, 0.12);
+}
+.map-defs {
+  min-width: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.map-def {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.map-def:hover {
+  color: var(--text);
+}
+.map-def.more {
+  color: var(--text-3);
+}
+
+/* The pictures */
+/* Cut at its edges, and not a place that scrolls: `clip` where the browser knows it. */
+.map-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  overflow: clip;
+}
+.map-stage.movable {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.map-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.map-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.map-lines marker path {
+  fill: var(--text-3);
+  stroke: none;
+}
+.map-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+}
+.map-node span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-node:hover {
+  border-color: var(--text-2);
+}
+.map-node.changed {
+  border-color: var(--green);
+  background: rgba(91, 208, 138, 0.12);
+}
+.map-node.package {
+  border: 1px dashed var(--text-3);
+  background: transparent;
+}
+.map-stage.movable .map-node,
+.map-stage.movable .map-step {
+  cursor: inherit;
+}
+
+/* The flow chart */
+.map-step {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: center;
+}
+button.map-step:hover {
+  border-color: var(--text-2);
+}
+.map-step.changed {
+  border-color: var(--green);
+  background: rgba(91, 208, 138, 0.12);
+  font-weight: 600;
+}
+/* A question is a diamond. The shape is a layer of its own, so the ring of the keyboard's focus is not cut off. */
+.map-step.ask {
+  padding: 4px 44px;
+  border-color: transparent;
+  background: transparent;
+  font-weight: 600;
+}
+.map-diamond {
+  position: absolute;
+  inset: 0;
+  background: var(--pressed);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+.map-step.ask.changed .map-diamond {
+  background: color-mix(in srgb, var(--green) 26%, var(--pressed));
+}
+.map-step-text {
+  position: relative;
+}
+.map-flow-label {
+  position: absolute;
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.map-flow-label.over {
+  transform: translateX(-50%);
+}
+/* Words for screen readers only: where a step leads, which a sighted reader takes from the arrows. */
+.map-unseen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -10,6 +10,9 @@
 //!   really changes one file in the session's folder. The file is the one the
 //!   prompt names, else `src/middleware/rateLimit.ts`, else a new `NOTES.md`;
 //! - if the prompt asks for "markdown": an answer with a heading, a list, code and a link;
+//! - if the prompt asks for a flow (it holds a ```flow block as the pattern to follow): a fixed
+//!   flow in that format, and nothing is edited;
+//! - a prompt that starts with "Explain" is a question, even when it has the word "changed" in it;
 //! - `session/cancel` stops the turn with the stop reason `cancelled`;
 //! - every turn ends with a note on how much of the context is used. It costs nothing.
 //!
@@ -333,7 +336,28 @@ fn last_paragraph(text: &str) -> &str {
 
 fn wants_edit(text: &str) -> bool {
     let last = last_paragraph(text).to_lowercase();
+    // "Explain what changed here." asks about a change; it does not ask for one.
+    if last.starts_with("explain") {
+        return false;
+    }
     ["edit", "change", "write", "fix", "add "].iter().any(|w| last.contains(w))
+}
+
+/// The editor's Map view asks for a flow by showing the format to answer in.
+/// A recap of an earlier conversation may hold such a request too; only the
+/// newest message counts, and the core puts it after "Now the user says:".
+fn wants_flow(text: &str) -> bool {
+    let newest = text.rsplit("Now the user says:").next().unwrap_or(text);
+    newest.contains("```flow")
+}
+
+/// The flow the practice agent always draws: the one on the design's Map screen.
+/// When the session's folder has the demo file, two steps say where in it they happen.
+fn flow_answer(folder: &Path) -> String {
+    let place = if folder.join(DEMO_FILE).is_file() { format!(" @ {DEMO_FILE}:3") } else { String::new() };
+    format!(
+        "Here is the flow.\n\n```flow\nstep a: Request to POST /login\nask b: Over the limit?{place}\nstep* c: Respond 429{place}\nstep d: Check the password\na -> b\nb -> c: yes\nb -> d: no\n```"
+    )
 }
 
 const DEMO_FILE: &str = "src/middleware/rateLimit.ts";
@@ -398,7 +422,8 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         }
     };
 
-    let edit = wants_edit(&text);
+    let flow = wants_flow(&text);
+    let edit = !flow && wants_edit(&text);
     let known = agent.sessions.lock().unwrap().get(&session).cloned();
     let folder = known.as_ref().map(|s| s.folder.clone()).unwrap_or_default();
     let asks = known.as_ref().is_none_or(|s| s.mode != "auto");
@@ -516,7 +541,9 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         agent.pause();
     }
 
-    let answer = if last_paragraph(&text).to_lowercase().contains("markdown") {
+    let answer = if flow {
+        flow_answer(&folder)
+    } else if last_paragraph(&text).to_lowercase().contains("markdown") {
         MARKDOWN_ANSWER.to_string()
     } else if !edit {
         "The limiter allows five attempts a minute and answers 429 after that. Nothing was changed.".to_string()

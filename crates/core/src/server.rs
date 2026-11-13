@@ -509,6 +509,13 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             Ok(json!({}))
         }
 
+        "map.get" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let center = params.get("center").cloned();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.map_of(&task_id, center.as_ref())).await?
+        }
+
         "integrations.status" => {
             let manager = manager.clone();
             Ok(tokio::task::spawn_blocking(move || manager.integrations()).await?)

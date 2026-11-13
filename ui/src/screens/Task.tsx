@@ -49,6 +49,7 @@ import {
 import { watchGit, type GitWatch } from '../core/gitstate';
 import { EditorHost, type FileMeta } from '../editor/host';
 import { ChangesView } from './Changes';
+import { MapView } from './Map';
 import { languageOf } from '../editor/languages';
 
 // The terminal is fetched the first time it is opened.
@@ -786,7 +787,10 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
       <Show when={props.view === 'changes'}>
         <ChangesView task={props.task} git={git} />
       </Show>
-      <Show when={props.view !== 'code' && props.view !== 'changes'}>
+      <Show when={props.view === 'map'}>
+        <MapView task={props.task} />
+      </Show>
+      <Show when={props.view !== 'code' && props.view !== 'changes' && props.view !== 'map'}>
         <section class="center">
           <div class="center-note">
             <h2>{viewNames[props.view]} is not built yet</h2>
