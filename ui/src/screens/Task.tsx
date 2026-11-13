@@ -16,11 +16,13 @@ import {
 import { createStore } from 'solid-js/store';
 import { taskHref, VIEWS, type View } from '../app/router';
 import { AgentPane } from '../components/AgentPane';
+import { ProblemsTab } from '../components/ProblemsTab';
 import { RunTab } from '../components/RunTab';
 import { Chip, Icon, modKey } from '../components/bits';
 import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
 import { core } from '../core/client';
+import { problemCount } from '../core/problems';
 import { arrive, leave } from '../core/visits';
 import {
   agentOf,
@@ -43,6 +45,7 @@ import {
 import {
   bottomHeight,
   bottomOpen,
+  openInEditor,
   openRequest,
   registerSaver,
   saveAll,
@@ -515,7 +518,10 @@ function BottomPanel(props: { task: Task; shown: boolean }): JSX.Element {
       <div class="bottom-tabs">
         {tabButton('terminal', 'Terminal')}
         {tabButton('run', 'Run')}
-        {tabButton('problems', 'Problems')}
+        {tabButton(
+          'problems',
+          problemCount(props.task.info.id) > 0 ? `Problems ${problemCount(props.task.info.id)}` : 'Problems',
+        )}
         <span class="grow" />
         <Show when={bottomOpen()}>
           <button type="button" class="btn tiny" onClick={() => setBottomOpen(false)}>
@@ -537,7 +543,12 @@ function BottomPanel(props: { task: Task; shown: boolean }): JSX.Element {
           </div>
         </Show>
         <Show when={tab() === 'problems'}>
-          <p class="bottom-note">Errors and warnings from the language servers arrive with milestone M5.</p>
+          <div class="bottom-fill scroll">
+            <ProblemsTab
+              taskId={props.task.info.id}
+              onOpen={(path, line, column) => openInEditor(props.task.info.id, path, line, column)}
+            />
+          </div>
         </Show>
       </div>
     </section>

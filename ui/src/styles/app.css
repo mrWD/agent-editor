@@ -2576,3 +2576,62 @@ button.search-link:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ---------- Problems ---------- */
+
+.problems {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 4px 8px;
+}
+.problem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 26px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+.problem:hover {
+  background: var(--panel);
+}
+.problem-mark {
+  flex: none;
+  width: 16px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+.problem-mark.error {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.problem-mark.warning {
+  background: rgba(245, 181, 68, 0.14);
+  color: var(--accent);
+}
+.problem-mark.info {
+  background: var(--raised);
+  color: var(--text-3);
+}
+.problem-text {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
