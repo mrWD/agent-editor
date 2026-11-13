@@ -904,7 +904,18 @@ impl Plan {
         block.by = Some(author.id.clone());
         block.by_name = Some(author.name.clone());
         block.at = Some(author.at);
-        block.files = files.into_iter().take(MAX_FILES).collect();
+        // However many places a turn touched, a block names at most this many files, each with its stretches.
+        let mut seen: Vec<&str> = Vec::new();
+        block.files = files
+            .iter()
+            .filter(|place| {
+                if !seen.contains(&place.path.as_str()) {
+                    seen.push(&place.path);
+                }
+                seen.len() <= MAX_FILES
+            })
+            .cloned()
+            .collect();
         block.proved = proved;
         block.built_from = Some(block.wording());
     }
@@ -1415,7 +1426,9 @@ impl Manager {
             }
         }
         let mut places = Vec::new();
-        for path in files {
+        // The limit is on files, not on places: a block that changed many files names them all, and each one
+        // its own stretches of lines.
+        for path in files.into_iter().take(MAX_FILES) {
             match lines.get(&path).filter(|list| !list.is_empty()) {
                 Some(list) => {
                     for (first, last) in list.iter().take(MAX_STRETCHES) {
@@ -1519,6 +1532,29 @@ mod tests {
 
     fn place(path: &str) -> Place {
         Place { path: path.into(), line: None, to: None }
+    }
+
+    #[test]
+    fn a_block_names_many_files_with_their_stretches_but_not_without_end() {
+        let mut plan = Plan::default();
+        let id = plan.add(Kind::Step, "Answer 429", None, None).unwrap();
+        plan.block_mut(&id).unwrap().state = State::Building;
+        // Three stretches in each of a hundred files: every file is named, up to the limit, with its own lines.
+        let places: Vec<Place> = (0..100)
+            .flat_map(|n| {
+                (0..3).map(move |s| Place {
+                    path: format!("src/f{n}.ts"),
+                    line: Some(s * 10 + 1),
+                    to: Some(s * 10 + 2),
+                })
+            })
+            .collect();
+        plan.build_ended(&id, true, places, vec![], &author());
+        let built = plan.block(&id).unwrap();
+        let named: Vec<&str> = built.files.iter().map(|place| place.path.as_str()).collect();
+        assert_eq!(named.iter().collect::<HashSet<_>>().len(), MAX_FILES);
+        assert_eq!(built.files.len(), MAX_FILES * 3, "each file keeps its own stretches");
+        assert_eq!(built.files[0], Place { path: "src/f0.ts".into(), line: Some(1), to: Some(2) });
     }
 
     #[test]

@@ -18,6 +18,19 @@ drawn screens are in [design/](design/).
 
 You need Rust 1.90 or newer and Node 22 or newer.
 
+**No Rust yet?** `cargo --version` fails with "command not found" when there
+is none, or `rustup` has it but the current shell has not picked it up yet.
+Install it, then open a new terminal window (not just a new tab) so the
+shell sees it:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+**No Node yet?** `node --version` fails the same way. Get it from
+[nodejs.org](https://nodejs.org) or, if you use a version manager such as
+nvm, `nvm install 22`.
+
 ```bash
 cd ui && npm install && npm run build && cd ..
 ```
@@ -45,8 +58,9 @@ of this computer; the window shows what the core serves. Quitting the app stops
 every agent and terminal. On a Mac, closing the window does not quit: the
 agents go on working, and the Dock icon brings the window back.
 
-Besides Rust and Node, Linux needs the libraries Tauri lists (WebKitGTK 4.1 and
-a few more; the `shell` job in `.github/workflows/ci.yml` installs them).
+Besides Rust and Node (see "Run it" above if you have neither yet), Linux
+needs the libraries Tauri lists (WebKitGTK 4.1 and a few more; the `shell`
+job in `.github/workflows/ci.yml` installs them).
 
 ```bash
 cd ui && npm ci && cd ../crates/shell && npm ci
