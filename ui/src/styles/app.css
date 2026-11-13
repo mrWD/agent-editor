@@ -5762,18 +5762,20 @@ button.picked-source:hover {
 /* ---------- An agent that runs in a terminal ---------- */
 
 /* Its terminal stands where the conversation would; what the editor itself knows of the task stays above it. */
+/* It gives way before the message box does: in a low window the box must stay in reach. */
 .agent-terminal {
-  flex: 3 1 0;
-  min-height: 160px;
+  flex: 1 1 0;
+  min-height: 80px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 8px 12px 0;
   border-top: 1px solid var(--line-soft);
 }
+/* It takes the room its words need and no more: the terminal has the rest. */
 .feed.beside {
-  flex: 1 1 0;
-  max-height: 32%;
+  flex: 0 1 auto;
+  max-height: 26%;
 }
 .setting-check {
   display: flex;

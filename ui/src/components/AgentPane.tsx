@@ -694,18 +694,10 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               </div>
             </section>
           </Match>
+          {/* An agent in a terminal says this in the line over its terminal: a card would take the terminal's room. */}
           <Match
-            when={sessionState() === 'idle' && inTerminal() && props.task.feed.length > 0 && !props.task.info.race}
+            when={sessionState() === 'idle' && !inTerminal() && props.task.feed.length > 0 && !props.task.info.race}
           >
-            <section class="card pinned">
-              <h2>Your turn</h2>
-              <p>
-                {name()} has gone quiet. It may be done, or it may be asking you something: look at its terminal, then
-                answer there or say what to do next.
-              </p>
-            </section>
-          </Match>
-          <Match when={sessionState() === 'idle' && props.task.feed.length > 0 && !props.task.info.race}>
             <section class="card pinned">
               <h2>Your turn</h2>
               <p>{name()} finished this turn. Say what to do next.</p>
@@ -743,8 +735,14 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         <Show when={inTerminal() && agentTerminal() !== null ? agentTerminal() : null} keyed>
           {(termId) => (
             <section class="agent-terminal" aria-label={`The terminal of ${name()}`}>
-              <span class="fine">
-                {name()} runs here. What you send below is typed into it; you can also type into it yourself.
+              <span class="fine" role="status">
+                <Show
+                  when={sessionState() === 'idle'}
+                  fallback={`${name()} runs here. What you send below is typed into it; you can also type into it yourself.`}
+                >
+                  <strong>Your turn.</strong> {name()} has gone quiet. It may be done, or it may be asking you
+                  something: answer in its terminal, or say what to do next.
+                </Show>
               </span>
               <Suspense>
                 <TerminalView taskId={taskId()} visible attach={termId} follow />

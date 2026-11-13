@@ -280,9 +280,11 @@ export function Settings(): JSX.Element {
           when={inTerminal()}
           fallback="The command has to speak the Agent Client Protocol on its input and output."
         >
-          The program is started in a terminal in the task's folder, and your messages are typed into it. Its turn is
-          taken to be over when it has printed nothing for a moment. It gets no pictures and none of the editor's own
-          tools, and what it does is shown in its terminal, not as a conversation.
+          The program is started in a terminal in the task's folder, and your messages are typed into it. Write{' '}
+          <code>{'{message}'}</code> among the arguments where the program takes a first message: it is then started
+          with yours, and a question it opens with (whether to trust the folder, say) waits for you instead of being
+          answered by what was typed. Its turn is taken to be over when it has printed nothing for a moment. It gets no
+          pictures and none of the editor's own tools, and what it does is shown in its terminal, not as a conversation.
         </Show>{' '}
         It is used from the agent's next start; an agent that is running goes on as it was started.
       </span>
