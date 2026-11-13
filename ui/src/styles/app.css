@@ -3368,3 +3368,78 @@ button.map-step:hover {
 .rule-row .name {
   flex: 1 1 260px;
 }
+
+/* ---------- Team ---------- */
+
+.team {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 13px;
+}
+.team-role {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.team-role > span {
+  flex: 0 0 64px;
+  color: var(--text-2);
+}
+.team-role .pick {
+  flex: 1 1 0;
+  max-width: none;
+}
+.team .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.team-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  color: var(--text-2);
+}
+.team-step.current {
+  color: var(--text);
+}
+.team-role-name {
+  flex: 0 0 56px;
+  font-weight: 500;
+}
+.team-agent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.team-ask {
+  margin: 4px 0;
+}
+.team-found {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.team-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.team-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0 8px 8px 0;
+  background: var(--panel);
+}

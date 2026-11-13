@@ -71,6 +71,15 @@ export type FeedItem =
       keptAs: string | null;
       at: number;
     }
+  | {
+      /** What one agent of a team handed to the next, carried by the editor. */
+      kind: 'note';
+      role: string;
+      from: string;
+      to: string;
+      text: string;
+      at: number;
+    }
   | { kind: 'git'; action: string; subject: string; short: string; at: number }
   | { kind: 'tracker'; text: string; failed: boolean; at: number }
   | { kind: 'agent'; text: string; at: number }
@@ -262,6 +271,16 @@ export function applyEvent(task: Task, event: any) {
       return;
     case 'user_edit':
       feed.push({ kind: 'edit', path: String(event.path), at });
+      return;
+    case 'team_note':
+      feed.push({
+        kind: 'note',
+        role: String(event.role ?? ''),
+        from: String(event.from ?? ''),
+        to: String(event.to ?? ''),
+        text: String(event.text ?? ''),
+        at,
+      });
       return;
     case 'user_file': {
       const keptAs = typeof event.keptAs === 'string' ? event.keptAs : null;

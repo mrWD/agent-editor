@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Match, on, Show, Switch, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from 'solid-js';
 import { go, route, taskHref } from '../app/router';
 import {
   agentOf,
@@ -17,11 +17,13 @@ import {
   type Task,
 } from '../core/store';
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
+import { teamOf, watchTeam } from '../core/team';
 import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
 import { ago, Check, Chip, clock, money, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
 import { RuleOffer } from './RuleOffer';
+import { TeamPanel } from './TeamPanel';
 import { WhereStopped } from './WhereStopped';
 
 const baseName = (path: string) => path.split('/').pop() ?? path;
@@ -159,6 +161,15 @@ export function AgentPane(props: { task: Task }): JSX.Element {
   };
 
   const lookingBack = () => work().lookBack !== null;
+  const team = () => teamOf(taskId());
+  const [teamOpen, setTeamOpen] = createSignal(false);
+  // The team of the task on screen is kept current for as long as the pane shows it.
+  createEffect(
+    on(taskId, (id) => {
+      setTeamOpen(false);
+      onCleanup(watchTeam(id));
+    }),
+  );
   const since = () => sinceOf(taskId());
 
   // Any other agent that is installed can take the task over.
@@ -292,6 +303,16 @@ export function AgentPane(props: { task: Task }): JSX.Element {
                 Put it back
               </button>
             </Show>
+          </div>
+        )}
+      </Match>
+      <Match when={entry.kind === 'note' && entry}>
+        {(note) => (
+          <div class="team-note">
+            <span class="fine">
+              Note · {note().from} to {note().to}
+            </span>
+            <Markdown text={note().text} onFile={showFile} />
           </div>
         )}
       </Match>
@@ -467,6 +488,15 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             More
           </button>
         </Show>
+        <button
+          type="button"
+          class="btn small ghost"
+          aria-expanded={teamOpen() || Boolean(team())}
+          title="Several agents on this task, one after another: one plans, one builds, one reviews"
+          onClick={() => setTeamOpen(!teamOpen())}
+        >
+          {team() ? (team()!.running ? 'Team at work' : 'Team') : 'Solo'}
+        </button>
         <Show when={props.task.info.branch}>
           <button
             type="button"
@@ -524,6 +554,9 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           </Show>
         }
       >
+        <Show when={teamOpen() || team()}>
+          <TeamPanel task={props.task} onClose={() => setTeamOpen(false)} />
+        </Show>
         <Show when={since()}>
           {(told) => <WhereStopped task={props.task} since={told()} onHide={() => hideSince(taskId())} />}
         </Show>

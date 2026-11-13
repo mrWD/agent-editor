@@ -30,6 +30,7 @@ pub mod server;
 pub mod startup;
 pub mod store;
 pub mod tasks;
+pub mod team;
 pub mod terminals;
 pub mod usage;
 

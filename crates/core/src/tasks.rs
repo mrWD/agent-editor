@@ -262,6 +262,8 @@ impl Manager {
         }
         // Deleted files are kept for a while, not for ever.
         self.empty_old_trash();
+        // A team that was in the middle of a step is not any more.
+        self.settle_teams();
         Ok(())
     }
 
@@ -803,6 +805,13 @@ impl Manager {
 
     /// Sends a message. Returns once the agent has it; the answer arrives as events.
     pub async fn prompt(self: &Arc<Self>, task_id: &str, text: String) -> Result<()> {
+        self.prompt_as(task_id, text, None).await
+    }
+
+    /// Sends a message to a task's agent. With `shown`, that event is put in
+    /// the conversation in place of "the user said": for messages the editor
+    /// writes itself, such as the hand-over note between two agents of a team.
+    pub(crate) async fn prompt_as(self: &Arc<Self>, task_id: &str, text: String, shown: Option<Value>) -> Result<()> {
         if text.trim().is_empty() {
             bail!("The message is empty");
         }
@@ -860,7 +869,10 @@ impl Manager {
             }
         }
 
-        self.emit(task_id, json!({ "type": "user_message", "text": text, "edited": edited }));
+        match shown {
+            Some(event) => self.emit(task_id, event),
+            None => self.emit(task_id, json!({ "type": "user_message", "text": text, "edited": edited })),
+        }
         self.set_state(task_id, &live, TaskState::Running);
 
         let manager = self.clone();

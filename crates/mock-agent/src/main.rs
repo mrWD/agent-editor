@@ -11,6 +11,7 @@
 //!   prompt names, else `src/middleware/rateLimit.ts`, else a new `NOTES.md`;
 //! - if the prompt asks for "markdown": an answer with a heading, a list, code and a link;
 //! - if the prompt asks for a "commit message": a subject line, an empty line and a reason;
+//! - if the prompt asks to end with a "VERDICT:" line: a short review and that line, and nothing is edited;
 //! - if the prompt asks for a flow (it holds a ```flow block as the pattern to follow): a fixed
 //!   flow in that format, and nothing is edited;
 //! - a prompt that starts with "Explain" is a question, even when it has the word "changed" in it;
@@ -440,7 +441,9 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
     // A request for a commit message is answered with one, and changes no file.
     let wants_message = last_paragraph(&text).to_lowercase().contains("commit message");
     let flow = wants_flow(&text);
-    let edit = !flow && !wants_message && wants_edit(&text);
+    // A reviewer is asked to end with a verdict, and changes nothing.
+    let wants_verdict = last_paragraph(&text).contains("VERDICT:");
+    let edit = !flow && !wants_message && !wants_verdict && wants_edit(&text);
     let known = agent.sessions.lock().unwrap().get(&session).cloned();
     let folder = known.as_ref().map(|s| s.folder.clone()).unwrap_or_default();
     let asks = known.as_ref().is_none_or(|s| s.mode != "auto");
@@ -558,7 +561,14 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         agent.pause();
     }
 
-    let answer = if wants_message {
+    let answer = if wants_verdict {
+        // A task that asks to be "strict" is sent back once; a second look, and everything else, is fine.
+        if text.to_lowercase().contains("strict") && !text.contains("You looked at this change before") {
+            "Line 3 still holds a number that should come from config.\n\nVERDICT: redo".to_string()
+        } else {
+            "The change does what the plan says.\n\nVERDICT: fine".to_string()
+        }
+    } else if wants_message {
         "Limit login attempts to five a minute\n\nThe limit comes from config now, so it can change without a release."
             .to_string()
     } else if flow {

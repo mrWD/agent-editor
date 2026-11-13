@@ -831,6 +831,26 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             tokio::task::spawn_blocking(move || manager.set_auto_merge(&task_id, options)).await??;
             Ok(json!({}))
         }
+        "team.get" => Ok(json!({ "team": manager.team(text_param(params, "taskId")?) })),
+        "team.start" => {
+            let role = |name: &str| params.get(name).and_then(Value::as_str).filter(|id| !id.is_empty());
+            let (Some(plan), Some(build)) = (role("plan"), role("build")) else {
+                bail!("Pick who plans and who builds");
+            };
+            let text = params.get("text").and_then(Value::as_str);
+            let team = manager.team_start(text_param(params, "taskId")?, plan, build, role("review"), text).await?;
+            Ok(json!({ "team": team }))
+        }
+        "team.pause" => {
+            let on = params.get("on").and_then(Value::as_bool).unwrap_or(true);
+            Ok(json!({ "team": manager.team_pause(text_param(params, "taskId")?, on)? }))
+        }
+        "team.continue" => Ok(json!({ "team": manager.team_continue(text_param(params, "taskId")?)? })),
+        "team.answer" => {
+            let back = params.get("back").and_then(Value::as_bool).unwrap_or(false);
+            Ok(json!({ "team": manager.team_answer(text_param(params, "taskId")?, back)? }))
+        }
+        "team.stop" => Ok(json!({ "team": manager.team_stop(text_param(params, "taskId")?)? })),
         "rules.list" => manager.all_rules(),
         "rules.add" => {
             let agents: Vec<String> = params
