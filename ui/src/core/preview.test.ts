@@ -8,6 +8,7 @@ import {
   describePicked,
   describePointed,
   deviceButton,
+  deviceKeys,
   deviceLine,
   deviceName,
   deviceWords,
@@ -24,6 +25,7 @@ import {
   MIN_ROW_SCALE,
   parseWidth,
   readDevices,
+  touchOn,
   readElement,
   readSettings,
   readShots,
@@ -520,5 +522,43 @@ describe('simulators and emulators', () => {
   it('names each kind and the window where one taps', () => {
     expect(deviceWords('ios')).toEqual({ one: 'simulator', many: 'iOS simulators', window: 'the Simulator window' });
     expect(deviceWords('android').window).toBe("the emulator's own window");
+  });
+});
+
+describe('a press on the picture of a device', () => {
+  // The picture stands at 100, 50 on the page and is drawn 200 wide and 400 high.
+  const box = { left: 100, top: 50, width: 200, height: 400 };
+
+  it('is a tap where it was made, as parts of the screen', () => {
+    expect(touchOn(box, { x: 200, y: 150 }, { x: 200, y: 150 })).toEqual({ what: 'tap', x: 0.5, y: 0.25 });
+    // A hand is never quite still: a few pixels are still a tap, and it lands where the press began.
+    expect(touchOn(box, { x: 200, y: 150 }, { x: 205, y: 154 })).toEqual({ what: 'tap', x: 0.5, y: 0.25 });
+  });
+
+  it('is a swipe when the pointer moved, from where it began to where it ended', () => {
+    expect(touchOn(box, { x: 200, y: 350 }, { x: 200, y: 150 })).toEqual({
+      what: 'swipe',
+      x: 0.5,
+      y: 0.75,
+      x2: 0.5,
+      y2: 0.25,
+    });
+    // A drag that ends outside the picture ends at its edge.
+    expect(touchOn(box, { x: 150, y: 250 }, { x: 900, y: -40 })).toEqual({
+      what: 'swipe',
+      x: 0.25,
+      y: 0.5,
+      x2: 1,
+      y2: 0,
+    });
+  });
+
+  it('is nothing on a picture that has no size yet', () => {
+    expect(touchOn({ left: 0, top: 0, width: 0, height: 0 }, { x: 1, y: 1 }, { x: 1, y: 1 })).toBeNull();
+  });
+
+  it('comes with the buttons the device has: an iPhone has only Home', () => {
+    expect(deviceKeys('ios').map((one) => one.label)).toEqual(['Home']);
+    expect(deviceKeys('android').map((one) => one.key)).toEqual(['back', 'home', 'recent']);
   });
 });

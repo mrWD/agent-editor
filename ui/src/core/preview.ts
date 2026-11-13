@@ -555,6 +555,49 @@ export function deviceButton(device: Device): { label: string; can: boolean } {
   return { label: 'Starting', can: false };
 }
 
+/** What is passed on to a device: a touch on its picture, typed text, one of its buttons. */
+export type DeviceTouch =
+  | { what: 'tap'; x: number; y: number }
+  | { what: 'swipe'; x: number; y: number; x2: number; y2: number }
+  | { what: 'text'; text: string }
+  | { what: 'key'; key: DeviceKey };
+
+export type DeviceKey = 'home' | 'back' | 'recent' | 'enter' | 'delete';
+
+/** The buttons a device of each kind has. An iPhone has no Back and no Recent: both are swipes there. */
+export function deviceKeys(kind: DeviceKind): { key: DeviceKey; label: string }[] {
+  const home = { key: 'home' as const, label: 'Home' };
+  return kind === 'ios' ? [home] : [{ key: 'back', label: 'Back' }, home, { key: 'recent', label: 'Recent' }];
+}
+
+/** How far the pointer may move, in the pixels of the page, and the touch is still a tap. */
+const TAP_SLACK = 8;
+
+/**
+ * What a press on the picture of a screen is on the device: a tap where it was
+ * made, or a swipe when the pointer moved. Places are parts of the screen from
+ * 0 to 1, so they hold whatever size the picture is drawn at. `null` for a
+ * picture that has no size yet.
+ */
+export function touchOn(
+  box: { left: number; top: number; width: number; height: number },
+  down: { x: number; y: number },
+  up: { x: number; y: number },
+): DeviceTouch | null {
+  if (box.width <= 0 || box.height <= 0) return null;
+  const part = (at: number, start: number, size: number) => Math.min(1, Math.max(0, (at - start) / size));
+  const round = (value: number) => Math.round(value * 10000) / 10000;
+  const [x, y] = [round(part(down.x, box.left, box.width)), round(part(down.y, box.top, box.height))];
+  if (Math.hypot(up.x - down.x, up.y - down.y) <= TAP_SLACK) return { what: 'tap', x, y };
+  return {
+    what: 'swipe',
+    x,
+    y,
+    x2: round(part(up.x, box.left, box.width)),
+    y2: round(part(up.y, box.top, box.height)),
+  };
+}
+
 /** "iOS 27.0 · running": what stands next to a listed device's name. */
 export function deviceLine(device: Device): string {
   const state = device.state === 'running' ? 'running' : device.state === 'off' ? 'off' : 'starting';

@@ -5792,6 +5792,35 @@ button.picked-source:hover {
   background: var(--line-strong);
   object-fit: contain;
 }
+/* A picture that passes a press on to the device says so with the pointer, and is never dragged away as an image. */
+.device-screen img.touchable {
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* The device's own buttons, the field that types on it, and how it looks. */
+.device-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.device-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.device-type input {
+  width: 200px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground-deep);
+  color: var(--text);
+  font-size: 13px;
+}
 .device-status {
   margin: 0 -16px -16px;
 }

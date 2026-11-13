@@ -6,7 +6,7 @@ import { makeProject, type Project, type ProjectOptions } from './project';
 export { expect };
 export * from './app';
 export * from './project';
-export { pullTemplate, setEmulators, setSimulators, simulatorRuns, standInNote } from './standins';
+export { pullTemplate, setAvds, setEmulators, setSimulators, simulatorRuns, standInNote } from './standins';
 
 type Options = {
   /** Give the test a core of its own: for tests that count everything on Home or restart the core. */

@@ -5,9 +5,10 @@ import { deflateSync } from 'node:zlib';
 /**
  * Stand-ins for the command-line tools the core calls: `gh`, `glab` and `docker`,
  * and for the programs the Preview runs: a browser that takes screenshots, Xcode's
- * `xcrun` and Android's `adb`. They are shell scripts. The first three are in a
- * folder that is first on the core's PATH; the core is told where the other three
- * are (`AE_BROWSER`, `AE_XCRUN`, `AE_ADB`), so the real tools are never reached.
+ * `xcrun`, Android's `adb` and `emulator`, and `idb`, which taps on a simulator.
+ * They are shell scripts. The first three are in a folder that is first on the
+ * core's PATH; the core is told where the others are (`AE_BROWSER`, `AE_XCRUN`,
+ * `AE_ADB`, `AE_EMULATOR`, `AE_IDB`), so the real tools are never reached.
  * Each one writes every call to `<name>.log` next to itself and keeps what it
  * "knows" in files under `state/`.
  */
@@ -317,7 +318,43 @@ case "$1 $2" in
     # Like the real one, it writes the file it is told, even one called "-", and prints no picture.
     if [ $((count % 2)) = 1 ]; then cat "$state/screen-a.png" > "$6"; else cat "$state/screen-b.png" > "$6"; fi
     echo "Wrote screenshot to: $6" >&2 ;;
+  "simctl ui") exit 0 ;;
   "open -a") exit 0 ;;
+  *) echo "unexpected call: $*" >&2; exit 2 ;;
+esac
+`;
+
+const IDB = String.raw`#!/bin/sh
+# A stand-in for idb, which taps and types on a simulator. It takes every touch and writes it down.
+here="$(cd "$(dirname "$0")" && pwd)"
+printf '%s
+' "$(echo "$*" | tr '
+' ' ')" >> "$here/idb.log"
+case "$1" in
+  describe)
+    # The "screens" of the xcrun stand-in are 60 by 130 pixels: three pixels to a point.
+    echo '{"udid":"x","screen_dimensions":{"width":60,"height":130,"density":3.0,"width_points":20,"height_points":43.3333}}' ;;
+  ui) exit 0 ;;
+  *) echo "unexpected call: $*" >&2; exit 2 ;;
+esac
+`;
+
+const EMULATOR = String.raw`#!/bin/sh
+# A stand-in for Android's emulator. It lists the names a test wrote, and "starts" one by adding a
+# line to what the adb stand-in lists: no window, no Android.
+here="$(cd "$(dirname "$0")" && pwd)"
+printf '%s
+' "$(echo "$*" | tr '
+' ' ')" >> "$here/emulator.log"
+adb="$here/state/adb"
+case "$1" in
+  -list-avds)
+    # The real one prints a line of its own news first.
+    echo "INFO    | Storing crashdata in: /tmp/android/emu-crash.db, detection is enabled for process: 4242"
+    cat "$here/state/emulator/avds.txt" 2>/dev/null; exit 0 ;;
+  -avd)
+    echo "emulator-5556          device product:sdk_gphone64 model:sdk_gphone64 transport_id:7" >> "$adb/devices.txt"
+    echo "$2" > "$adb/emulator-5556.name" ;;
   *) echo "unexpected call: $*" >&2; exit 2 ;;
 esac
 `;
@@ -339,7 +376,13 @@ case "$1 $2" in
     [ -f "$state/devices.txt" ] && cat "$state/devices.txt"
     echo ;;
   "emu avd") cat "$state/$serial.name" 2>/dev/null || exit 1; echo OK ;;
-  "shell getprop") echo 15 ;;
+  "shell getprop") if [ "$3" = sys.boot_completed ]; then echo 1; else echo 15; fi ;;
+  "shell input") exit 0 ;;
+  "shell cmd") exit 0 ;;
+  "emu kill")
+    grep -v "^$serial " "$state/devices.txt" > "$state/devices.tmp"
+    mv "$state/devices.tmp" "$state/devices.txt"
+    echo "OK: killing emulator, bye bye" ;;
   "reverse --list") cat "$state/$serial.reverse" 2>/dev/null; exit 0 ;;
   "reverse --remove")
     grep -v " $3 " "$state/$serial.reverse" > "$state/$serial.reverse.tmp"
@@ -357,7 +400,7 @@ esac
 
 export const STAND_INS = ['gh', 'glab', 'docker'] as const;
 /** The stand-ins the core is pointed at one by one, instead of finding them on its PATH. */
-export const NAMED_STAND_INS = ['browser', 'xcrun', 'adb'] as const;
+export const NAMED_STAND_INS = ['browser', 'xcrun', 'adb', 'emulator', 'idb'] as const;
 export type StandIn = (typeof STAND_INS)[number] | (typeof NAMED_STAND_INS)[number];
 
 /** A PNG of one colour, made here so that no picture file has to be kept with the tests. */
@@ -426,6 +469,11 @@ export function setEmulators(dir: string, emulators: Emulator[]) {
   for (const one of emulators) writeFileSync(path.join(state, `${one.serial}.name`), `${one.name}\n`);
 }
 
+/** Says which emulators the Device Manager "knows": the `emulator` stand-in lists them, running or not. */
+export function setAvds(dir: string, names: string[]) {
+  writeFileSync(path.join(dir, 'state', 'emulator', 'avds.txt'), names.map((name) => `${name}\n`).join(''));
+}
+
 /** What the stand-in of a device tool keeps in one of its files; empty when the file is not there. */
 export function standInNote(dir: string, tool: 'xcrun' | 'adb', file: string): string {
   const target = path.join(dir, 'state', tool, file);
@@ -434,7 +482,7 @@ export function standInNote(dir: string, tool: 'xcrun' | 'adb', file: string): s
 
 /** Writes the stand-ins into `dir` and makes them runnable. */
 export function writeStandIns(dir: string) {
-  for (const name of ['gh', 'docker', 'browser', 'xcrun', 'adb']) {
+  for (const name of ['gh', 'docker', 'browser', 'xcrun', 'adb', 'emulator']) {
     mkdirSync(path.join(dir, 'state', name), { recursive: true });
   }
   const scripts: Record<StandIn, string> = {
@@ -444,6 +492,8 @@ export function writeStandIns(dir: string) {
     browser: BROWSER,
     xcrun: XCRUN,
     adb: ADB,
+    emulator: EMULATOR,
+    idb: IDB,
   };
   for (const name of [...STAND_INS, ...NAMED_STAND_INS]) {
     const file = path.join(dir, name);
@@ -458,6 +508,7 @@ export function writeStandIns(dir: string) {
   writeFileSync(path.join(dir, 'state', 'xcrun', 'screen-b.png'), png(60, 130, [60, 60, 220]));
   writeFileSync(path.join(dir, 'state', 'adb', 'screen.png'), png(54, 120, [60, 160, 90]));
   setSimulators(dir, []);
+  setAvds(dir, []);
   setEmulators(dir, []);
 }
 
