@@ -218,6 +218,16 @@ impl Store {
         Ok(())
     }
 
+    /// Puts a project into a folder of projects, or takes it out with `None`.
+    pub fn set_project_folder(&self, id: &str, folder: Option<&str>) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute("UPDATE projects SET folder = ?2 WHERE id = ?1", params![id, folder])?;
+        if changed == 0 {
+            bail!("No such project: {id}");
+        }
+        Ok(())
+    }
+
     /// Removes a project. Refused while it still has tasks that are not archived.
     pub fn remove_project(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();

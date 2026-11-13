@@ -1,9 +1,13 @@
 import { createMemo, For, Show, type JSX } from 'solid-js';
 import { route } from '../app/router';
 import { core } from '../core/client';
-import { projectFilter, setProjectFilter, state } from '../core/store';
+import { byFolder } from '../core/rail';
+import { projectFilter, setProjectFilter, state, type Project } from '../core/store';
 import { Icon, modKey } from './bits';
 import { openSearch } from './SearchPalette';
+
+/** Up to this many projects get a button each in the switcher of Home; more go into one list. */
+const BUTTONS = 5;
 
 /** The top row: the sections of the app, the same on every screen. */
 export function Header(): JSX.Element {
@@ -13,6 +17,12 @@ export function Header(): JSX.Element {
   const current = (page: string) => (route().page === page ? 'page' : undefined);
   const taskCount = (projectId: string | null) =>
     Object.values(state.tasks).filter((task) => projectId === null || task.info.projectId === projectId).length;
+
+  const option = (project: Project) => (
+    <option value={project.id} selected={projectFilter() === project.id}>
+      {project.name} ({taskCount(project.id)})
+    </option>
+  );
 
   return (
     <>
@@ -49,17 +59,41 @@ export function Header(): JSX.Element {
             <button type="button" aria-pressed={projectFilter() === null} onClick={() => setProjectFilter(null)}>
               All <span class="mono">{taskCount(null)}</span>
             </button>
-            <For each={state.projects}>
-              {(project) => (
-                <button
-                  type="button"
-                  aria-pressed={projectFilter() === project.id}
-                  onClick={() => setProjectFilter(project.id)}
+            <Show
+              when={state.projects.length <= BUTTONS}
+              fallback={
+                // Too many projects for a button each: one list, by folder, so the header stays one row.
+                <select
+                  aria-label="One project"
+                  classList={{ picked: projectFilter() !== null }}
+                  onChange={(event) => setProjectFilter(event.currentTarget.value || null)}
                 >
-                  {project.name} <span class="mono">{taskCount(project.id)}</span>
-                </button>
-              )}
-            </For>
+                  <option value="" selected={projectFilter() === null}>
+                    One project…
+                  </option>
+                  <For each={byFolder(state.projects).folders}>
+                    {(folder) => (
+                      <optgroup label={folder.name}>
+                        <For each={folder.projects}>{option}</For>
+                      </optgroup>
+                    )}
+                  </For>
+                  <For each={byFolder(state.projects).loose}>{option}</For>
+                </select>
+              }
+            >
+              <For each={state.projects}>
+                {(project) => (
+                  <button
+                    type="button"
+                    aria-pressed={projectFilter() === project.id}
+                    onClick={() => setProjectFilter(project.id)}
+                  >
+                    {project.name} <span class="mono">{taskCount(project.id)}</span>
+                  </button>
+                )}
+              </For>
+            </Show>
           </div>
         </Show>
         <button type="button" class="search-link" onClick={openSearch}>

@@ -23,6 +23,16 @@ import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
 import { ago, Check, Chip, clock, money, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
+import {
+  AttachPictures,
+  dropPictures,
+  MessagePictures,
+  pastePictures,
+  pictureCount,
+  putBack,
+  takePictures,
+  WaitingPictures,
+} from './Pictures';
 import { RuleOffer } from './RuleOffer';
 import { TeamPanel } from './TeamPanel';
 import { PointedChips, PreviewPointed } from './PreviewPointed';
@@ -222,9 +232,14 @@ export function AgentPane(props: { task: Task }): JSX.Element {
     }
   };
 
+  // A sleeping task has no agent to ask; the core says so if the one that wakes takes none.
+  const takesPictures = () => props.task.info.config?.images !== false;
+
   const send = (instead?: string) => {
     const typed = (instead ?? draft()).trim();
-    if (!typed || !canSend() || starting()) return;
+    // A message of pictures alone needs no words.
+    const pictures = instead === undefined ? pictureCount(taskId()) : 0;
+    if ((!typed && pictures === 0) || !canSend() || starting()) return;
     const quote = work().quote;
     // Code picked in the editor goes first, so the agent knows what the message is about.
     const said = quote
@@ -244,7 +259,14 @@ export function AgentPane(props: { task: Task }): JSX.Element {
     void act(async () => {
       // What was typed in the code is saved first, so the agent works on what the user sees.
       await saveAll(id);
-      await sendPrompt(id, text);
+      const shown = pictures > 0 ? takePictures(id) : [];
+      try {
+        await sendPrompt(id, text, shown);
+      } catch (error) {
+        // A message that did not go leaves its pictures in the box.
+        putBack(id, shown);
+        throw error;
+      }
     }).finally(() => setStarting(false));
   };
 
@@ -260,7 +282,10 @@ export function AgentPane(props: { task: Task }): JSX.Element {
       <Match when={entry.kind === 'user' && entry}>
         {(user) => (
           <>
-            <p class="bubble">{user().text}</p>
+            <Show when={user().text !== ''}>
+              <p class="bubble">{user().text}</p>
+            </Show>
+            <MessagePictures taskId={taskId()} images={user().images} />
             <Show when={user().edited.length > 0}>
               <p class="fine sent-with">
                 Sent with a note about your edits to {user().edited.map(baseName).join(', ')}.
@@ -637,6 +662,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             )}
           </Show>
           <PointedChips taskId={taskId()} />
+          <WaitingPictures taskId={taskId()} />
           <textarea
             id={`msg-${props.task.info.id}`}
             rows="2"
@@ -650,6 +676,9 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             value={draft()}
             onInput={(event) => setDraft(event.currentTarget.value)}
             onKeyDown={onKeyDown}
+            onPaste={(event) => pastePictures(taskId, takesPictures)(event)}
+            onDragOver={(event) => event.dataTransfer?.types.includes('Files') && event.preventDefault()}
+            onDrop={(event) => dropPictures(taskId, takesPictures)(event)}
           />
           <Show when={problem()}>
             <p class="notice danger" role="alert">
@@ -675,12 +704,13 @@ export function AgentPane(props: { task: Task }): JSX.Element {
                 />
               )}
             </Show>
+            <AttachPictures taskId={taskId()} allowed={takesPictures()} agentName={name()} />
             <span class="grow" />
             <button
               type="button"
               class="btn strong"
               onClick={() => send()}
-              disabled={!canSend() || starting() || draft().trim() === ''}
+              disabled={!canSend() || starting() || (draft().trim() === '' && pictureCount(taskId()) === 0)}
             >
               Send
             </button>

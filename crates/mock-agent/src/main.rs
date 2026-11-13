@@ -26,7 +26,7 @@
 //! Switches, all through the environment:
 //! - `AE_MOCK_DELAY_MS`: the pause between streamed pieces;
 //! - `AE_MOCK_LOAD=1`: the agent can pick an earlier session up again (`session/load`);
-//! - `AE_MOCK_MODES=1`: the agent only knows modes, the older way to offer a setting;
+//! - `AE_MOCK_MODES=1`: the agent only knows modes, the older way to offer a setting, and takes no pictures;
 //! - `AE_MOCK_COST=0.25`: every turn adds this much to what the session says it cost.
 //!
 //! Started with `--lsp`, the same program is a practice language server instead: see `lsp.rs`.
@@ -248,7 +248,8 @@ fn handle(agent: &Arc<Agent>, message: Value) {
                     "loadSession": agent.can_load,
                     // The editor's own tools are reached by address.
                     "mcpCapabilities": { "http": true, "sse": false },
-                    "promptCapabilities": { "image": false, "audio": false, "embeddedContext": false }
+                    // The agent that only knows modes is the older kind in this too: it takes no pictures.
+                    "promptCapabilities": { "image": !agent.modes_only, "audio": false, "embeddedContext": false }
                 },
                 "agentInfo": { "name": "mock-agent", "title": "Practice agent", "version": env!("CARGO_PKG_VERSION") },
                 "authMethods": []
@@ -360,6 +361,22 @@ fn call_tool(url: &str, name: &str, arguments: Value) -> String {
     }
 }
 
+/// The pictures of a prompt, each told as its kind and its size.
+fn pictures_of(params: &Value) -> Vec<String> {
+    let blocks = params.get("prompt").and_then(Value::as_array).cloned().unwrap_or_default();
+    blocks
+        .iter()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("image"))
+        .map(|block| {
+            let kind = block.get("mimeType").and_then(Value::as_str).unwrap_or("of no known kind");
+            let data = block.get("data").and_then(Value::as_str).unwrap_or_default();
+            // Four letters of base64 are three bytes; the "=" at the end stand for none.
+            let bytes = data.len() / 4 * 3 - data.bytes().rev().take_while(|byte| *byte == b'=').count();
+            format!("{kind}, {bytes} bytes")
+        })
+        .collect()
+}
+
 /// Joins the text blocks of a prompt into one string.
 fn prompt_text(params: &Value) -> String {
     params
@@ -468,7 +485,9 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
     let flow = wants_flow(&text);
     // A reviewer is asked to end with a verdict, and changes nothing.
     let wants_verdict = last_paragraph(&text).contains("VERDICT:");
-    let edit = !flow && !wants_message && !wants_verdict && wants_edit(&text);
+    // A message with pictures is answered by saying what arrived, and changes nothing.
+    let pictures = pictures_of(params);
+    let edit = pictures.is_empty() && !flow && !wants_message && !wants_verdict && wants_edit(&text);
     let known = agent.sessions.lock().unwrap().get(&session).cloned();
     let folder = known.as_ref().map(|s| s.folder.clone()).unwrap_or_default();
     let asks = known.as_ref().is_none_or(|s| s.mode != "auto");
@@ -611,7 +630,10 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         }
     });
 
-    let answer = if let Some(said) = tool_said {
+    let answer = if !pictures.is_empty() {
+        let what = if pictures.len() == 1 { "one picture".to_string() } else { format!("{} pictures", pictures.len()) };
+        format!("I see {what}: {}. Nothing was changed.", pictures.join(", "))
+    } else if let Some(said) = tool_said {
         said
     } else if wants_verdict {
         // A task that asks to be "strict" is sent back once; a second look, and everything else, is fine.

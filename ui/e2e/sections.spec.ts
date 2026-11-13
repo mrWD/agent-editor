@@ -6,6 +6,9 @@ const open = async (app: App, section: 'Agents' | 'Automations') => {
 };
 
 test.describe('Agents: who is doing what', () => {
+  // What an agent is doing depends on every task there is, so this test shares its core with nobody.
+  test.use({ freshCore: true });
+
   test('W-01 every agent is listed with what it is doing; one that is not installed says so', async ({
     app,
     project,

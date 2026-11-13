@@ -47,7 +47,17 @@ export type ConfigOption = {
   options: { value: string; name: string; description?: string | null }[];
 };
 
-export type TaskConfig = { options: ConfigOption[]; commands: { name: string; description?: string }[] };
+export type TaskConfig = {
+  options: ConfigOption[];
+  commands: { name: string; description?: string }[];
+  /** True when the running agent takes pictures in a message. */
+  images?: boolean;
+};
+
+/** A picture of a message, as the conversation names it. Its bytes are asked for by `pictureUrl`. */
+export type PictureName = { id: string; name: string; mimeType: string; size: number };
+/** A picture on its way to the agent: its bytes in base64. */
+export type PictureToSend = { name: string; mimeType: string; data: string };
 
 /** How full the agent's context is and what the session has cost, as the agent reports it. */
 export type Usage = { used: number; size: number; cost: number | null; currency: string };
@@ -59,7 +69,7 @@ export type Diff = { path: string; oldText: string; newText: string };
 
 /** One thing shown in the agent pane, in the order it happened. */
 export type FeedItem =
-  | { kind: 'user'; text: string; edited: string[]; at: number }
+  | { kind: 'user'; text: string; edited: string[]; images: PictureName[]; at: number }
   | { kind: 'edit'; path: string; at: number }
   | {
       /** The user made, renamed or deleted a file in the tree. */
@@ -267,7 +277,13 @@ export function applyEvent(task: Task, event: any) {
       });
       return;
     case 'user_message':
-      feed.push({ kind: 'user', text: event.text, edited: Array.isArray(event.edited) ? event.edited : [], at });
+      feed.push({
+        kind: 'user',
+        text: event.text,
+        edited: Array.isArray(event.edited) ? event.edited : [],
+        images: Array.isArray(event.images) ? (event.images as PictureName[]) : [],
+        at,
+      });
       return;
     case 'user_edit':
       feed.push({ kind: 'edit', path: String(event.path), at });
@@ -625,6 +641,11 @@ export async function addProject(path: string): Promise<Project> {
   return project;
 }
 
+/** Puts a project into a folder of projects; an empty name takes it out. The list is read again by the event. */
+export function setProjectFolder(projectId: string, folder: string): Promise<Project> {
+  return core.request<Project>('projects.setFolder', { projectId, folder });
+}
+
 /** Creates a task, starts its agent and sends the first message. Returns the new task's id. */
 export async function createTask(projectId: string, agentId: string, text: string): Promise<string> {
   const info = await core.request<TaskInfo>('tasks.create', { projectId, agentId, text });
@@ -636,8 +657,13 @@ export async function createTask(projectId: string, agentId: string, text: strin
   return info.id;
 }
 
-export function sendPrompt(taskId: string, text: string) {
-  return core.request('tasks.prompt', { taskId, text });
+export function sendPrompt(taskId: string, text: string, images: PictureToSend[] = []) {
+  return core.request('tasks.prompt', images.length > 0 ? { taskId, text, images } : { taskId, text });
+}
+
+/** Where the core serves a picture that was put into a message. */
+export function pictureUrl(taskId: string, picture: PictureName): string {
+  return `/api/picture/${encodeURIComponent(taskId)}/${encodeURIComponent(picture.id)}`;
 }
 
 export function answerPermission(taskId: string, requestId: string, optionId: string | null) {

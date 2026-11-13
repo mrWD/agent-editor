@@ -32,6 +32,38 @@ test.describe('Home on a core of its own', () => {
     // The same count sits next to "Home" on every screen.
     await expect(app.page.getByRole('link', { name: /^Home/ }).getByLabel('1 need you')).toHaveText('1');
   });
+
+  test('B-05 the project filter in the header shows the tasks of one project', async ({ app, project }) => {
+    const first = await project({ name: 'shop' });
+    const second = await project({ name: 'blog' });
+    const firstTitle = unique('Describe the shop limiter');
+    const secondTitle = unique('Describe the blog limiter');
+    await app.openHome();
+    await app.createTask({ text: firstTitle, folder: first.dir });
+    await app.goHome();
+    await app.createTask({ text: secondTitle, folder: second.dir });
+    await app.goHome();
+
+    const filter = app.page.getByRole('group', { name: 'Show tasks of' });
+    const main = app.page.getByRole('main');
+    await expect(main.getByRole('link', { name: firstTitle })).toBeVisible();
+    await expect(main.getByRole('link', { name: secondTitle })).toBeVisible();
+
+    await filter.getByRole('button', { name: new RegExp(`^${first.name} 1$`) }).click();
+    await expect(main.getByRole('link', { name: firstTitle })).toBeVisible();
+    await expect(main.getByRole('link', { name: secondTitle })).toBeHidden();
+    await expect(app.page.getByText('1 task in 1 project.')).toBeVisible();
+    // The project picked at the top is also the one a new task goes to.
+    await expect(app.page.getByLabel('Project', { exact: true }).locator('option:checked')).toHaveText(first.name);
+
+    await filter.getByRole('button', { name: new RegExp(`^${second.name} 1$`) }).click();
+    await expect(main.getByRole('link', { name: firstTitle })).toBeHidden();
+    await expect(main.getByRole('link', { name: secondTitle })).toBeVisible();
+
+    await filter.getByRole('button', { name: /^All \d+$/ }).click();
+    await expect(main.getByRole('link', { name: firstTitle })).toBeVisible();
+    await expect(main.getByRole('link', { name: secondTitle })).toBeVisible();
+  });
 });
 
 test.describe('Home', () => {
@@ -103,38 +135,6 @@ test.describe('Home', () => {
     await app.page.getByRole('textbox', { name: 'New task' }).fill('   ');
     await app.page.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(app.page.getByRole('alert')).toHaveText('Describe the task first.');
-  });
-
-  test('B-05 the project filter in the header shows the tasks of one project', async ({ app, project }) => {
-    const first = await project({ name: 'shop' });
-    const second = await project({ name: 'blog' });
-    const firstTitle = unique('Describe the shop limiter');
-    const secondTitle = unique('Describe the blog limiter');
-    await app.openHome();
-    await app.createTask({ text: firstTitle, folder: first.dir });
-    await app.goHome();
-    await app.createTask({ text: secondTitle, folder: second.dir });
-    await app.goHome();
-
-    const filter = app.page.getByRole('group', { name: 'Show tasks of' });
-    const main = app.page.getByRole('main');
-    await expect(main.getByRole('link', { name: firstTitle })).toBeVisible();
-    await expect(main.getByRole('link', { name: secondTitle })).toBeVisible();
-
-    await filter.getByRole('button', { name: new RegExp(`^${first.name} 1$`) }).click();
-    await expect(main.getByRole('link', { name: firstTitle })).toBeVisible();
-    await expect(main.getByRole('link', { name: secondTitle })).toBeHidden();
-    await expect(app.page.getByText('1 task in 1 project.')).toBeVisible();
-    // The project picked at the top is also the one a new task goes to.
-    await expect(app.page.getByLabel('Project', { exact: true }).locator('option:checked')).toHaveText(first.name);
-
-    await filter.getByRole('button', { name: new RegExp(`^${second.name} 1$`) }).click();
-    await expect(main.getByRole('link', { name: firstTitle })).toBeHidden();
-    await expect(main.getByRole('link', { name: secondTitle })).toBeVisible();
-
-    await filter.getByRole('button', { name: /^All \d+$/ }).click();
-    await expect(main.getByRole('link', { name: firstTitle })).toBeVisible();
-    await expect(main.getByRole('link', { name: secondTitle })).toBeVisible();
   });
 
   test('E-02 the question of an agent is answered from Home: allowed and refused', async ({ app, project }) => {

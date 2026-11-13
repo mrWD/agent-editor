@@ -3761,3 +3761,408 @@ button.picked-source:hover {
   text-overflow: ellipsis;
   max-width: 100%;
 }
+
+/* ---------- Projects: folders, the folded rest, finding ---------- */
+
+.rail {
+  position: relative;
+}
+/* A project that does not fit on the line: still measured, never seen or reached. */
+.rail-project.away {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+.rail-folder {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.rail-folder-name {
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.rail-folder-name:hover {
+  color: var(--text);
+}
+.rail-folded,
+.rail-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rail-folded:hover,
+.rail-folded.open,
+.rail-more:hover,
+.rail-more.open {
+  background: var(--raised);
+}
+.rail-folded .n {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.rail-folded .rail-count,
+.rail-more .rail-count {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+.rail-card-head h4 {
+  flex-grow: 1;
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 14px;
+}
+.rail-card-project {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0 6px;
+  font-size: 13px;
+}
+.rail-card-project .title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-card-project .note,
+.rail-card-row .where {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.dock-grip {
+  display: flex;
+  justify-content: center;
+  padding: 3px 0 0;
+  cursor: row-resize;
+  touch-action: none;
+}
+.dock-grip span {
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line-dashed);
+}
+.dock-grip:hover span,
+.dock-grip:focus-visible span {
+  background: var(--text-3);
+}
+.dock-head label {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.dock-head input[type='search'] {
+  box-sizing: border-box;
+  width: 200px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--text);
+  font-size: 13px;
+}
+.dock-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.dock-filter button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.dock-filter button[aria-pressed='true'] {
+  background: var(--pressed);
+  color: var(--text);
+}
+.dock-filter .n {
+  font-family: var(--mono);
+  color: var(--text);
+}
+.dock-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dock-body > .rail-card-more {
+  padding: 10px 16px;
+}
+.dock-body .dock-grid {
+  overflow-y: visible;
+}
+.dock-folder-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 0 12px 0 4px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--ground);
+}
+.dock-folder:first-child .dock-folder-head {
+  border-top: 0;
+}
+.dock-folder-head h3 {
+  margin: 0;
+}
+.dock-folder-head h3 button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 13px;
+}
+.dock-folder-head h3 button:hover {
+  background: var(--raised);
+}
+.dock-folder-head .summary {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.dock-folder-head .rail-counts {
+  padding: 0;
+}
+.dock-folded-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin-left: 8px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+.dock-folded-task:hover {
+  background: var(--pressed);
+}
+.dock-folded-task .where {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.dock-folded-task .note {
+  font-size: 12px;
+  color: var(--accent);
+}
+.dock-move-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  opacity: 0.55;
+}
+.dock-project:hover .dock-move-button,
+.dock-move-button:focus-visible {
+  opacity: 1;
+}
+.dock-move-button:hover {
+  background: var(--pressed);
+  color: var(--text);
+}
+.dock-move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+  font-size: 13px;
+}
+.dock-move label {
+  color: var(--text-2);
+}
+.dock-move label b {
+  color: var(--text);
+  font-weight: 600;
+}
+.dock-move input {
+  box-sizing: border-box;
+  width: 220px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--text);
+  font-size: 13px;
+}
+.dock-move button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.dock-move button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.dock-move-problem {
+  color: var(--red);
+  font-size: 12px;
+}
+.rail-card-project .rail-counts {
+  height: auto;
+  padding: 0;
+}
+.rail-card-label {
+  padding: 8px 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* The project switcher of Home when there are too many projects for a button each. */
+.switcher select {
+  height: 26px;
+  max-width: 220px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+.switcher select.picked {
+  background: var(--pressed);
+  color: var(--text);
+}
+
+/* ---------- Pictures in messages ---------- */
+
+.pictures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pictures.waiting li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 3px 4px 3px 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+  font-size: 12px;
+}
+.pictures.waiting img {
+  width: 32px;
+  height: 32px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: var(--ground-deep);
+}
+.pictures.waiting .name {
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pictures.waiting .size {
+  color: var(--text-3);
+}
+.pictures.waiting button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1;
+}
+.pictures.waiting button:hover {
+  background: var(--pressed);
+  color: var(--text);
+}
+.pictures.sent {
+  justify-content: flex-end;
+  margin: 4px 0 2px;
+}
+.pictures.sent a {
+  display: block;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--ground-deep);
+}
+.pictures.sent img {
+  display: block;
+  max-width: 180px;
+  max-height: 120px;
+  min-width: 32px;
+  min-height: 32px;
+  object-fit: contain;
+}
+.btn.attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

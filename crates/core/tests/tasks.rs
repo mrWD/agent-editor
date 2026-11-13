@@ -281,3 +281,25 @@ fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
     }
     found
 }
+
+#[tokio::test]
+async fn a_project_is_put_into_a_folder_of_projects_and_taken_out() {
+    let sandbox = Sandbox::new("project-folder");
+    let manager = sandbox.manager();
+    let project = manager.add_project(&sandbox.project().to_string_lossy(), None).unwrap();
+    assert_eq!(project.folder, None);
+
+    let mut told = manager.subscribe();
+    let moved = manager.set_project_folder(&project.id, Some("  Client work ")).unwrap();
+    assert_eq!(moved.folder.as_deref(), Some("Client work"));
+    assert_eq!(told.recv().await.unwrap()["event"], "projects.changed");
+    // The folder is kept: a second core over the same data reads it.
+    assert_eq!(sandbox.manager().projects().unwrap()[0].folder.as_deref(), Some("Client work"));
+
+    // An empty name takes the project out; a name too long and a project that is not there are refused.
+    assert_eq!(manager.set_project_folder(&project.id, Some("  ")).unwrap().folder, None);
+    assert_eq!(manager.set_project_folder(&project.id, Some("Products")).unwrap().folder.as_deref(), Some("Products"));
+    assert_eq!(manager.set_project_folder(&project.id, None).unwrap().folder, None);
+    assert!(manager.set_project_folder(&project.id, Some(&"x".repeat(41))).unwrap_err().to_string().contains("40"));
+    assert!(manager.set_project_folder("nobody", Some("Products")).is_err());
+}

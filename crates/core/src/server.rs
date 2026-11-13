@@ -186,6 +186,7 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .route("/api/health", get(health))
         .route("/ws", get(upgrade))
         .route("/mcp/{key}", axum::routing::post(mcp))
+        .route("/api/picture/{task}/{id}", get(picture))
         .with_state(state);
     match ui_dir {
         Some(dir) => {
@@ -250,6 +251,29 @@ async fn mcp(
         Some(answer) => Json(answer).into_response(),
         // A message that wants no answer is only taken note of.
         None => axum::http::StatusCode::ACCEPTED.into_response(),
+    }
+}
+
+/// A picture the user put into a message, for the conversation to show.
+async fn picture(
+    State(state): State<AppState>,
+    axum::extract::Path((task, id)): axum::extract::Path<(String, String)>,
+) -> axum::response::Response {
+    let Some((path, kind)) = state.manager.picture(&task, &id) else {
+        return (axum::http::StatusCode::NOT_FOUND, "No such picture").into_response();
+    };
+    match tokio::fs::read(path).await {
+        Ok(bytes) => (
+            [
+                (axum::http::header::CONTENT_TYPE, kind),
+                // A kept picture never changes; it is nobody's but this browser's.
+                (axum::http::header::CACHE_CONTROL, "private, max-age=31536000, immutable"),
+                (axum::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        Err(_) => (axum::http::StatusCode::NOT_FOUND, "No such picture").into_response(),
     }
 }
 
@@ -522,6 +546,10 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             let name = params.get("name").and_then(Value::as_str).map(str::to_string);
             Ok(json!(manager.add_project(text_param(params, "path")?, name)?))
         }
+        "projects.setFolder" => {
+            let folder = params.get("folder").and_then(Value::as_str);
+            Ok(json!(manager.set_project_folder(text_param(params, "projectId")?, folder)?))
+        }
         "projects.remove" => {
             manager.remove_project(text_param(params, "projectId")?)?;
             Ok(json!({}))
@@ -539,8 +567,10 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             Ok(json!({ "events": events }))
         }
         "tasks.prompt" => {
-            let text = text_param(params, "text")?.to_string();
-            manager.prompt(text_param(params, "taskId")?, text).await?;
+            // A message of pictures alone has no words.
+            let text = params.get("text").and_then(Value::as_str).unwrap_or_default().to_string();
+            let pictures = crate::pictures::Picture::list_from(params)?;
+            manager.prompt_with_pictures(text_param(params, "taskId")?, text, pictures).await?;
             Ok(json!({}))
         }
         "tasks.permission" => {

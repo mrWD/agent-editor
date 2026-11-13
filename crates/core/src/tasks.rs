@@ -80,12 +80,18 @@ struct Live {
     /// The project's rules as this session was last told them. They are told
     /// again only when they have changed.
     rules_told: Mutex<Option<String>>,
+    /// True when the agent said it takes images in a message.
+    takes_images: bool,
 }
 
 impl Live {
     /// What the agent offers to set and the commands it knows, for the interface.
     fn config(&self) -> Value {
-        json!({ "options": self.options.lock().unwrap().clone(), "commands": self.commands.lock().unwrap().clone() })
+        json!({
+            "options": self.options.lock().unwrap().clone(),
+            "commands": self.commands.lock().unwrap().clone(),
+            "images": self.takes_images
+        })
     }
 
     /// Takes in an update about settings or commands. Returns false for any other update.
@@ -180,6 +186,8 @@ pub struct Manager {
     pub(crate) mcp_base: Mutex<Option<String>>,
     /// The keys agents call the editor's tools with, each with the task it was made for.
     pub(crate) mcp_keys: Mutex<HashMap<String, String>>,
+    /// The pictures of the message that is on its way to a task's agent.
+    pictures: Mutex<HashMap<String, Vec<crate::pictures::Picture>>>,
     /// The way out to GitHub, GitLab, Linear and Docker.
     pub(crate) hosts: Hosts,
     /// What was last read from those services, so screens do not ask them on every look.
@@ -220,6 +228,7 @@ impl Manager {
             checks: Default::default(),
             mcp_base: Mutex::new(None),
             mcp_keys: Mutex::new(HashMap::new()),
+            pictures: Mutex::new(HashMap::new()),
             hosts,
             remembered: Default::default(),
             events,
@@ -323,6 +332,18 @@ impl Manager {
         self.store.insert_project(&project)?;
         self.broadcast("projects.changed", json!({}));
         Ok(project)
+    }
+
+    /// Puts a project into a folder of projects. The folder is only a name: it is there while a project carries
+    /// it, and an empty name takes the project out.
+    pub fn set_project_folder(&self, id: &str, folder: Option<&str>) -> Result<Project> {
+        let name = folder.map(str::trim).filter(|name| !name.is_empty());
+        if name.is_some_and(|name| name.chars().count() > 40) {
+            bail!("A folder's name is 40 characters at most.");
+        }
+        self.store.set_project_folder(id, name)?;
+        self.broadcast("projects.changed", json!({}));
+        self.store.project(id)
     }
 
     pub fn remove_project(&self, id: &str) -> Result<()> {
@@ -512,6 +533,10 @@ impl Manager {
             commands: Mutex::new(json!([])),
             has_config_options,
             rules_told: Mutex::new(None),
+            takes_images: init
+                .pointer("/agentCapabilities/promptCapabilities/image")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         });
         for params in &replayed {
             live.note_config(params.get("update").unwrap_or(&Value::Null));
@@ -820,11 +845,29 @@ impl Manager {
         self.prompt_as(task_id, text, None).await
     }
 
+    /// Sends a message with pictures in it. A message of pictures alone needs no words.
+    pub async fn prompt_with_pictures(
+        self: &Arc<Self>,
+        task_id: &str,
+        text: String,
+        pictures: Vec<crate::pictures::Picture>,
+    ) -> Result<()> {
+        if pictures.is_empty() {
+            return self.prompt(task_id, text).await;
+        }
+        self.pictures.lock().unwrap().insert(task_id.to_string(), pictures);
+        let sent = self.prompt_as(task_id, text, None).await;
+        // Whatever happened, the pictures belonged to this message only.
+        self.pictures.lock().unwrap().remove(task_id);
+        sent
+    }
+
     /// Sends a message to a task's agent. With `shown`, that event is put in
     /// the conversation in place of "the user said": for messages the editor
     /// writes itself, such as the hand-over note between two agents of a team.
     pub(crate) async fn prompt_as(self: &Arc<Self>, task_id: &str, text: String, shown: Option<Value>) -> Result<()> {
-        if text.trim().is_empty() {
+        let pictures = self.pictures.lock().unwrap().remove(task_id).unwrap_or_default();
+        if text.trim().is_empty() && pictures.is_empty() {
             bail!("The message is empty");
         }
         let row = self.store.task(task_id)?;
@@ -839,6 +882,12 @@ impl Manager {
         if *live.state.lock().unwrap() != TaskState::Idle {
             bail!("The agent is still working. Wait for it or stop the turn.");
         }
+        if !pictures.is_empty() && !live.takes_images {
+            let name =
+                self.registry().get(&row.agent_id).map(|agent| agent.name.clone()).unwrap_or(row.agent_id.clone());
+            bail!("{name} does not take pictures. Say it in words, or hand the task to an agent that does.");
+        }
+        let pictures = self.keep_pictures(task_id, &pictures)?;
 
         // The code as the user leaves it for this turn: a point to look back at and rewind to.
         {
@@ -883,8 +932,16 @@ impl Manager {
 
         match shown {
             Some(event) => self.emit(task_id, event),
-            None => self.emit(task_id, json!({ "type": "user_message", "text": text, "edited": edited })),
+            None => {
+                let mut said = json!({ "type": "user_message", "text": text, "edited": edited });
+                if !pictures.is_empty() {
+                    said["images"] = pictures.iter().map(crate::pictures::Kept::named).collect();
+                }
+                self.emit(task_id, said)
+            }
         }
+        let mut blocks = vec![json!({ "type": "text", "text": sent })];
+        blocks.extend(pictures.iter().map(crate::pictures::Kept::block));
         self.set_state(task_id, &live, TaskState::Running);
 
         let manager = self.clone();
@@ -896,7 +953,7 @@ impl Manager {
                     "session/prompt",
                     json!({
                         "sessionId": live.acp_session_id,
-                        "prompt": [{ "type": "text", "text": sent }]
+                        "prompt": blocks
                     }),
                 )
                 .await;
@@ -1033,6 +1090,7 @@ impl Manager {
     pub async fn archive(&self, task_id: &str) -> Result<()> {
         self.stop_agent(task_id).await?;
         self.store.archive_task(task_id, now_ms())?;
+        self.drop_pictures(task_id);
         self.broadcast("task.archived", json!({ "taskId": task_id }));
         Ok(())
     }
@@ -1102,7 +1160,15 @@ fn recap(events: &[Value]) -> Option<String> {
             Some("user_message") => {
                 flush(&mut agent, &mut lines);
                 if let Some(text) = event.get("text").and_then(Value::as_str) {
-                    lines.push(format!("User: {}", text.trim()));
+                    // A picture cannot be told again in words; that there was one can.
+                    let shown = match event.get("images").and_then(Value::as_array).map(Vec::len) {
+                        Some(1) => "(with a picture the user showed)".to_string(),
+                        Some(count) if count > 1 => format!("(with {count} pictures the user showed)"),
+                        _ => String::new(),
+                    };
+                    let said: Vec<&str> =
+                        [text.trim(), shown.as_str()].into_iter().filter(|part| !part.is_empty()).collect();
+                    lines.push(format!("User: {}", said.join(" ")));
                 }
             }
             Some("update") if event["update"]["sessionUpdate"] == "agent_message_chunk" => {

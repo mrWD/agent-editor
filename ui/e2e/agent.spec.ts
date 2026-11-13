@@ -123,3 +123,75 @@ test.describe("The agent's settings, its context and what it writes", () => {
     await expect(app.editor).toContainText(DEMO_TEXT.split('\n')[2]!.trim());
   });
 });
+
+/** The smallest PNG there is: one transparent pixel, 70 bytes. */
+const PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+test.describe('Pictures in a message', () => {
+  test('AG-10 AG-11 a picture is added, pasted or left out, goes with the message and is shown in the conversation', async ({
+    app,
+    project,
+    browserName,
+  }) => {
+    const shop = await project();
+    await app.openHome();
+    await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
+    const png = (name: string) => ({ name, mimeType: 'image/png', buffer: Buffer.from(PIXEL, 'base64') });
+    const picker = app.conversation.getByLabel('Pictures to add to your message');
+    const waiting = app.conversation.getByRole('list', { name: 'Pictures that go with your message' });
+    await expect(app.conversation.getByRole('button', { name: 'Picture', exact: true })).toBeEnabled();
+
+    // Two pictures from the file dialog; one is left out again.
+    await picker.setInputFiles([png('login errors.png'), png('second.png')]);
+    await expect(waiting.getByRole('listitem')).toHaveText(['login errors.png70 bytes×', 'second.png70 bytes×']);
+    await waiting.getByRole('button', { name: 'Leave second.png out' }).click();
+    await expect(waiting.getByRole('listitem')).toHaveCount(1);
+    // A file that is no picture is refused in words, and the picture that was there stays.
+    await picker.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+    await expect(app.conversation.getByRole('alert')).toHaveText(
+      'notes.txt is not a picture an agent can take. PNG, JPEG, GIF and WebP are.',
+    );
+    await expect(waiting.getByRole('listitem')).toHaveCount(1);
+
+    // It goes with the message; the agent says what arrived; the conversation shows the picture itself.
+    await app.messageBox.fill('What is wrong on this screen?');
+    await app.sendButton.click();
+    await expect(app.answers.last()).toHaveText('I see one picture: image/png, 70 bytes. Nothing was changed.');
+    await expect(waiting).toBeHidden();
+    await expect(app.conversation.getByRole('alert')).toBeHidden();
+    const sent = app.conversation.getByRole('list', { name: 'Pictures sent with this message' });
+    await expect(sent).toHaveCount(1);
+    const shown = sent.getByRole('img', { name: 'login errors.png' });
+    await expect(shown).toBeVisible();
+    await expect.poll(() => shown.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1);
+    await expect(sent.getByRole('link')).toHaveAttribute('href', /^\/api\/picture\/[0-9a-f-]+\/[0-9a-f-]+\.png$/);
+
+    // A picture pasted into the message box, or dropped onto it, goes into the message too, and needs no words
+    // with it. Firefox gives a made-up paste no files, so there the same picture is dropped.
+    await app.messageBox.evaluate(
+      (box, [data, how]) => {
+        const bytes = Uint8Array.from(atob(data!), (letter) => letter.charCodeAt(0));
+        const carried = new DataTransfer();
+        carried.items.add(new File([bytes], 'pasted.png', { type: 'image/png' }));
+        const event =
+          how === 'drop'
+            ? new DragEvent('drop', { dataTransfer: carried, bubbles: true, cancelable: true })
+            : new ClipboardEvent('paste', { clipboardData: carried, bubbles: true, cancelable: true });
+        box.dispatchEvent(event);
+      },
+      [PIXEL, browserName === 'firefox' ? 'drop' : 'paste'],
+    );
+    await expect(waiting.getByRole('listitem')).toHaveText(['pasted.png70 bytes×']);
+    await expect(app.messageBox).toHaveValue('');
+    await app.sendButton.click();
+    await expect(app.answers).toHaveCount(3);
+    await expect(app.answers.last()).toHaveText('I see one picture: image/png, 70 bytes. Nothing was changed.');
+    await expect(sent).toHaveCount(2);
+    await expect(sent.last().getByRole('img', { name: 'pasted.png' })).toBeVisible();
+
+    // The pictures are there after the page is loaded again: they are kept by the core, not by the window.
+    await app.page.reload();
+    await expect(sent).toHaveCount(2);
+    await expect(sent.first().getByRole('img', { name: 'login errors.png' })).toBeVisible();
+  });
+});
