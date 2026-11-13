@@ -78,8 +78,8 @@ struct Term {
     title: String,
     purpose: String,
     number: Option<u32>,
-    /// The process started here: for a shell, the shell itself.
-    #[cfg_attr(not(unix), allow(dead_code))]
+    /// The process started here: for a shell, the shell itself. Also what the
+    /// system is asked about when the Run tab shows what a program uses.
     pid: Option<u32>,
     /// What was last seen running in front of a shell.
     #[cfg_attr(not(unix), allow(dead_code))]
@@ -89,8 +89,6 @@ struct Term {
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     /// Shared with what is remembered of an ended program, so its last words can still be read.
     kept: Arc<Mutex<Kept>>,
-    /// The program's process, for asking the system what it uses.
-    pid: Option<u32>,
     /// The address the program said it serves on, once it has said so.
     address: Mutex<Option<String>>,
     /// Set when the user stopped it on purpose: then how it ended is not worth remembering.
@@ -381,7 +379,6 @@ impl Terminals {
             master: Mutex::new(pair.master),
             killer: Mutex::new(child.clone_killer()),
             kept: Arc::new(Mutex::new(Kept::default())),
-            pid: child.process_id(),
             address: Mutex::new(None),
             stopped_on_purpose: std::sync::atomic::AtomicBool::new(false),
         });
