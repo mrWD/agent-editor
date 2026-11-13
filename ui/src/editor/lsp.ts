@@ -57,6 +57,8 @@ const HOVER_WITHIN = 2000;
 const DEFINITION_WITHIN = 3000;
 /** A longer file is edited without a server: sending it whole after every pause would cost more than it gives. */
 const LONGEST_FILE = 2_000_000;
+/** How often a file whose server is not installed asks whether it is there now. */
+const ASK_AGAIN_EVERY = 3000;
 /** How long a passing remark stays in the status line. */
 const REMARK_FOR = 8000;
 
@@ -206,6 +208,10 @@ export class LspSession {
   private nextId = 1;
   private saidHere = new Set<string>();
   private noteTimer: ReturnType<typeof setTimeout> | undefined;
+  /** What the note on screen is about, so it can be taken away when that is no longer so. */
+  private noteKey: string | null = null;
+  /** Runs while a file waits for a server that is not installed: the user may install it meanwhile. */
+  private askAgain: ReturnType<typeof setInterval> | undefined;
   private disposed = false;
   /** Whether the connection to the core has been made at least once. */
   private connected = core.status() === 'open';
@@ -240,6 +246,7 @@ export class LspSession {
 
   hideNote() {
     clearTimeout(this.noteTimer);
+    this.noteKey = null;
     this.setNote(null);
   }
 
@@ -310,6 +317,7 @@ export class LspSession {
     this.disposed = true;
     this.stopEvents();
     clearTimeout(this.noteTimer);
+    clearInterval(this.askAgain);
     for (const waiter of this.waiting.values()) clearTimeout(waiter.timer);
     this.waiting.clear();
     for (const server of this.servers.values()) setProblems(this.options.taskId, `lsp:${server.language}`, []);
@@ -365,6 +373,8 @@ export class LspSession {
     }
     if (this.disposed || this.files.get(file.path) !== file || answer.state === 'none') return;
     file.language = answer.language;
+    // The server was missing and is there now: what was said about it is no longer true.
+    if (answer.state !== 'missing' && this.noteKey === `missing:${answer.language}`) this.hideNote();
 
     if (answer.state === 'missing') {
       this.setStatuses(file.path, {
@@ -377,6 +387,7 @@ export class LspSession {
         text: `Errors and completions for ${answer.name} are off: ${answer.command ?? 'its language server'} is not installed. To install it:`,
         command: answer.install,
       });
+      this.askAgainLater();
       return;
     }
     if (answer.state === 'failed') {
@@ -766,8 +777,29 @@ export class LspSession {
 
   // ----- talking to the user -----
 
-  private say(note: LspNote, forMs?: number) {
+  /**
+   * Asks the core again, now and then, for every file whose server is not
+   * installed. Installing it is something the user does elsewhere, in a
+   * terminal; nothing tells the editor when it is done.
+   */
+  private askAgainLater() {
+    if (this.askAgain !== undefined) return;
+    this.askAgain = setInterval(() => {
+      const waiting = [...this.files.values()].filter((file) => this.statuses[file.path]?.state === 'missing');
+      if (this.disposed || waiting.length === 0) {
+        clearInterval(this.askAgain);
+        this.askAgain = undefined;
+        return;
+      }
+      // Nobody is looking: the question can wait until they are.
+      if (document.hidden) return;
+      for (const file of waiting) void this.attach(file);
+    }, ASK_AGAIN_EVERY);
+  }
+
+  private say(note: LspNote, forMs?: number, key: string | null = null) {
     clearTimeout(this.noteTimer);
+    this.noteKey = key;
     this.setNote(note);
     if (forMs) this.noteTimer = setTimeout(() => this.setNote(null), forMs);
   }
@@ -777,7 +809,7 @@ export class LspSession {
     if (this.saidHere.has(key) || (everywhere && alreadyTold(key))) return;
     this.saidHere.add(key);
     if (everywhere) rememberTold(key);
-    this.say(note);
+    this.say(note, undefined, key);
   }
 }
 
