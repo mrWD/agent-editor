@@ -4,6 +4,7 @@ import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, Chip } from '../components/bits';
 import { RequestCard } from '../components/RequestCard';
+import { PipelineCard } from '../components/PipelineCard';
 import { core } from '../core/client';
 import type { GitWatch } from '../core/gitstate';
 import {
@@ -699,6 +700,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
               overlaps={overlaps().length}
               onChanged={() => void props.git.reload()}
             />
+            <PipelineCard task={props.task} />
           </section>
 
           <section class="center">

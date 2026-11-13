@@ -91,6 +91,23 @@ case "$1 $2" in
     file="$here/state/gh/$owner"_"$name/threads-$number.json"
     if [ -f "$file" ]; then cat "$file"; else echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; fi ;;
   "api --hostname") echo '{}' ;;
+  "run list")
+    # The runs of a branch, newest first: what a test wrote, or none.
+    if [ -f "$state/runs.json" ]; then cat "$state/runs.json"; else echo "[]"; fi ;;
+  "run view")
+    if [ -f "$state/jobs-$3.json" ]; then cat "$state/jobs-$3.json"; else echo '{"jobs":[]}'; fi ;;
+  "run rerun")
+    # A run started again is a run in progress, and so are its jobs that had failed.
+    run="$3"; [ "$3" = "--job" ] && run=""
+    for file in "$state/runs.json" "$state"/jobs-*.json; do
+      [ -f "$file" ] || continue
+      sed 's/"status":"completed","conclusion":"failure"/"status":"in_progress","conclusion":""/g' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+    done ;;
+  "run cancel")
+    for file in "$state/runs.json" "$state"/jobs-*.json; do
+      [ -f "$file" ] || continue
+      sed 's/"status":"in_progress","conclusion":""/"status":"completed","conclusion":"cancelled"/g' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+    done ;;
   *) echo "unexpected call: $*" >&2; exit 2 ;;
 esac
 `;

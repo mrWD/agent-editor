@@ -6014,6 +6014,95 @@ button.picked-source:hover {
   padding-left: 18px;
 }
 
+/* ---------- The pipeline of a branch ---------- */
+
+.pipe-run {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--line-soft);
+}
+.pipe-run-head,
+.pipe-stage-head,
+.pipe-job {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.pipe-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 14px;
+}
+.pipe-stage-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+/* "14 went well": words to press, not a button to look at. */
+.pipe-fold {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pipe-fold:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.pipe-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0 0 2px 2px;
+  list-style: none;
+  font-size: 13px;
+}
+.pipe-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  text-decoration: none;
+}
+.pipe-name:hover {
+  text-decoration: underline;
+}
+.pipe-name.strong {
+  font-weight: 500;
+}
+.pipe-job .fine {
+  flex: 1 1 auto;
+}
+/* Where a job stands, as a dot: the colours of good and bad news, the accent for what is going on. */
+.pipe-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-dashed);
+}
+.pipe-dot.passed {
+  background: var(--green);
+}
+.pipe-dot.failed {
+  background: var(--red);
+}
+.pipe-dot.running,
+.pipe-dot.pending {
+  background: var(--accent);
+}
+.pipe-dot.manual {
+  background: transparent;
+  border: 2px solid var(--accent);
+}
+
 /* ---------- The practice agent says what it is ---------- */
 
 .practice-note {
