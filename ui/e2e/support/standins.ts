@@ -1,11 +1,15 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { deflateSync } from 'node:zlib';
 
 /**
- * Stand-ins for the command-line tools the core calls: `gh`, `glab` and `docker`.
- * They are shell scripts in a folder that is first on the core's PATH, so the
- * real tools are never reached. Each one writes every call to `<name>.log`
- * next to itself and keeps what it "knows" in files under `state/`.
+ * Stand-ins for the command-line tools the core calls: `gh`, `glab` and `docker`,
+ * and for the programs the Preview runs: a browser that takes screenshots, Xcode's
+ * `xcrun` and Android's `adb`. They are shell scripts. The first three are in a
+ * folder that is first on the core's PATH; the core is told where the other three
+ * are (`AE_BROWSER`, `AE_XCRUN`, `AE_ADB`), so the real tools are never reached.
+ * Each one writes every call to `<name>.log` next to itself and keeps what it
+ * "knows" in files under `state/`.
  */
 
 /** The pull request `gh pr create` makes when a project has no template of its own. */
@@ -234,20 +238,210 @@ esac
 exit 0
 `;
 
+const BROWSER = String.raw`#!/bin/sh
+# A stand-in for Chrome. No page is drawn: the "screenshot" is a picture that lies ready next to it.
+here="$(cd "$(dirname "$0")" && pwd)"
+# One write for each call: the core runs several of these at once, and two writes of one call could be split by another's.
+printf '%s\n' "$(echo "$*" | tr '\n' ' ')" >> "$here/browser.log"
+# What the core is configured with is not passed on to the programs it starts.
+if env | grep -q '^AE_'; then echo "the settings of the core were passed on" >> "$here/browser.log"; fi
+file=""; height=""; url=""
+for word in "$@"; do
+  case "$word" in
+    --screenshot=*) file=$(printf '%s' "$word" | sed 's/^--screenshot=//') ;;
+    --window-size=*) height=$(printf '%s' "$word" | sed 's/^.*,//') ;;
+    http://*) url="$word" ;;
+  esac
+done
+[ -n "$file" ] || { echo "no --screenshot= was given" >&2; exit 2; }
+# What a browser does: it asks for the page it was sent to and, once the app's page in it has
+# loaded, for the wait that page asks for, saying how high its window is.
+curl -s -o /dev/null "$url"
+[ -f "$here/state/browser/never-loads" ] || curl -s -o /dev/null "$url/settle?h=$height"
+if [ -f "$here/state/browser/fails" ]; then echo "The browser stand-in was told to fail" >&2; exit 1; fi
+cp "$here/state/browser/page.png" "$file"
+`;
+
+const XCRUN = String.raw`#!/bin/sh
+# A stand-in for Xcode's xcrun. No simulator is started: a "simulator" is a line in a file,
+# and its "screen" is one of two pictures that lie ready, in turn.
+here="$(cd "$(dirname "$0")" && pwd)"
+# One write for each call: the core runs several of these at once, and two writes of one call could be split by another's.
+printf '%s\n' "$(echo "$*" | tr '\n' ' ')" >> "$here/xcrun.log"
+state="$here/state/xcrun"
+state_of() { cat "$state/$1.state" 2>/dev/null || echo Shutdown; }
+
+case "$1 $2" in
+  "simctl list")
+    if [ -f "$state/no-simctl" ]; then
+      echo 'xcrun: error: unable to find utility "simctl", not a developer tool or in PATH' >&2; exit 72
+    fi
+    # devices.txt: one simulator on each line, as "udid|name".
+    printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":['
+    sep=""
+    while IFS='|' read -r udid name; do
+      [ -n "$udid" ] || continue
+      printf '%s{"udid":"%s","name":"%s","state":"%s","isAvailable":true}' "$sep" "$udid" "$name" "$(state_of "$udid")"
+      sep=","
+    done < "$state/devices.txt"
+    printf ']}}\n' ;;
+  "simctl bootstatus")
+    [ -f "$state/slow" ] && sleep 1
+    echo Booted > "$state/$3.state" ;;
+  "simctl shutdown") echo Shutdown > "$state/$3.state" ;;
+  "simctl openurl")
+    [ "$(state_of "$3")" = Booted ] || { echo "Unable to lookup in current state: Shutdown" >&2; exit 149; }
+    echo "$4" > "$state/$3.url" ;;
+  "simctl io")
+    [ "$(state_of "$3")" = Booted ] || { echo "Unable to lookup in current state: Shutdown" >&2; exit 149; }
+    count=$(cat "$state/$3.shots" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    echo "$count" > "$state/$3.shots"
+    # Like the real one, it writes the file it is told, even one called "-", and prints no picture.
+    if [ $((count % 2)) = 1 ]; then cat "$state/screen-a.png" > "$6"; else cat "$state/screen-b.png" > "$6"; fi
+    echo "Wrote screenshot to: $6" >&2 ;;
+  "open -a") exit 0 ;;
+  *) echo "unexpected call: $*" >&2; exit 2 ;;
+esac
+`;
+
+const ADB = String.raw`#!/bin/sh
+# A stand-in for Android's adb. No emulator is there: an "emulator" is a line in a file,
+# and its "screen" is a picture that lies ready.
+here="$(cd "$(dirname "$0")" && pwd)"
+# One write for each call: the core runs several of these at once, and two writes of one call could be split by another's.
+printf '%s\n' "$(echo "$*" | tr '\n' ' ')" >> "$here/adb.log"
+state="$here/state/adb"
+serial=""
+if [ "$1" = "-s" ]; then serial="$2"; shift 2; fi
+
+case "$1 $2" in
+  "devices -l")
+    echo "List of devices attached"
+    # devices.txt: the lines as adb prints them.
+    [ -f "$state/devices.txt" ] && cat "$state/devices.txt"
+    echo ;;
+  "emu avd") cat "$state/$serial.name" 2>/dev/null || exit 1; echo OK ;;
+  "shell getprop") echo 15 ;;
+  "reverse --list") cat "$state/$serial.reverse" 2>/dev/null; exit 0 ;;
+  "reverse --remove")
+    grep -v " $3 " "$state/$serial.reverse" > "$state/$serial.reverse.tmp"
+    mv "$state/$serial.reverse.tmp" "$state/$serial.reverse" ;;
+  "reverse tcp:"*) echo "UsbFfs $2 $3" >> "$state/$serial.reverse" ;;
+  "shell am")
+    # The address comes last, still in the quotes the shell of the device would take off.
+    for word in "$@"; do last="$word"; done
+    echo "$last" > "$state/$serial.url"
+    echo "Starting: Intent { act=android.intent.action.VIEW }" ;;
+  "exec-out screencap") cat "$state/screen.png" ;;
+  *) echo "unexpected call: $*" >&2; exit 2 ;;
+esac
+`;
+
 export const STAND_INS = ['gh', 'glab', 'docker'] as const;
-export type StandIn = (typeof STAND_INS)[number];
+/** The stand-ins the core is pointed at one by one, instead of finding them on its PATH. */
+export const NAMED_STAND_INS = ['browser', 'xcrun', 'adb'] as const;
+export type StandIn = (typeof STAND_INS)[number] | (typeof NAMED_STAND_INS)[number];
+
+/** A PNG of one colour, made here so that no picture file has to be kept with the tests. */
+export function png(width: number, height: number, [red, green, blue]: [number, number, number]): Buffer {
+  const table = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const check = (bytes: Buffer) => {
+    let c = 0xffffffff;
+    for (const byte of bytes) c = table[(c ^ byte) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const part = (kind: string, body: Buffer) => {
+    const named = Buffer.concat([Buffer.from(kind, 'latin1'), body]);
+    const [length, sum] = [Buffer.alloc(4), Buffer.alloc(4)];
+    length.writeUInt32BE(body.length);
+    sum.writeUInt32BE(check(named));
+    return Buffer.concat([length, named, sum]);
+  };
+  const head = Buffer.alloc(13);
+  head.writeUInt32BE(width, 0);
+  head.writeUInt32BE(height, 4);
+  // Eight bits for each of red, green and blue.
+  head.set([8, 2, 0, 0, 0], 8);
+  // Each row: a zero that says "as written", then its pixels.
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(width * 3, Buffer.from([red, green, blue]))]);
+  const rows = Buffer.concat(Array.from({ length: height }, () => row));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    part('IHDR', head),
+    part('IDAT', deflateSync(rows)),
+    part('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** A simulator as the tests set it up. */
+export type Simulator = { udid: string; name: string; running?: boolean };
+
+/** Says which simulators the `xcrun` stand-in lists, and which of them run. */
+export function setSimulators(dir: string, simulators: Simulator[]) {
+  const state = path.join(dir, 'state', 'xcrun');
+  writeFileSync(path.join(state, 'devices.txt'), simulators.map((one) => `${one.udid}|${one.name}\n`).join(''));
+  for (const one of simulators) {
+    writeFileSync(path.join(state, `${one.udid}.state`), one.running ? 'Booted\n' : 'Shutdown\n');
+  }
+}
+
+/** Whether a simulator of the `xcrun` stand-in "runs". */
+export function simulatorRuns(dir: string, udid: string): boolean {
+  return readFileSync(path.join(dir, 'state', 'xcrun', `${udid}.state`), 'utf8').trim() === 'Booted';
+}
+
+/** An emulator as the tests set it up. Its serial is what adb calls it: `emulator-5554`. */
+export type Emulator = { serial: string; name: string };
+
+/** Says which devices the `adb` stand-in lists: the emulators, and a phone on a cable, which is not one. */
+export function setEmulators(dir: string, emulators: Emulator[]) {
+  const state = path.join(dir, 'state', 'adb');
+  const lines = emulators.map(
+    (one, index) => `${one.serial}          device product:sdk_gphone64 model:sdk_gphone64 transport_id:${index + 1}\n`,
+  );
+  lines.push('1eaed69e               device usb:1-1 product:phone model:A_phone_on_a_cable transport_id:9\n');
+  writeFileSync(path.join(state, 'devices.txt'), lines.join(''));
+  for (const one of emulators) writeFileSync(path.join(state, `${one.serial}.name`), `${one.name}\n`);
+}
+
+/** What the stand-in of a device tool keeps in one of its files; empty when the file is not there. */
+export function standInNote(dir: string, tool: 'xcrun' | 'adb', file: string): string {
+  const target = path.join(dir, 'state', tool, file);
+  return existsSync(target) ? readFileSync(target, 'utf8').trim() : '';
+}
 
 /** Writes the stand-ins into `dir` and makes them runnable. */
 export function writeStandIns(dir: string) {
-  mkdirSync(path.join(dir, 'state', 'gh'), { recursive: true });
-  mkdirSync(path.join(dir, 'state', 'docker'), { recursive: true });
-  const scripts: Record<StandIn, string> = { gh: GH, glab: GLAB, docker: DOCKER };
-  for (const name of STAND_INS) {
+  for (const name of ['gh', 'docker', 'browser', 'xcrun', 'adb']) {
+    mkdirSync(path.join(dir, 'state', name), { recursive: true });
+  }
+  const scripts: Record<StandIn, string> = {
+    gh: GH,
+    glab: GLAB,
+    docker: DOCKER,
+    browser: BROWSER,
+    xcrun: XCRUN,
+    adb: ADB,
+  };
+  for (const name of [...STAND_INS, ...NAMED_STAND_INS]) {
     const file = path.join(dir, name);
     writeFileSync(file, scripts[name]);
     chmodSync(file, 0o755);
   }
   writeFileSync(path.join(dir, 'state', 'gh', 'template.json'), PULL_READY);
+  // The pictures the stand-ins hand out: a "screenshot" of a page, and the "screens" of the devices.
+  // No simulator and no emulator to begin with: a test says which there are.
+  writeFileSync(path.join(dir, 'state', 'browser', 'page.png'), png(16, 12, [245, 181, 68]));
+  writeFileSync(path.join(dir, 'state', 'xcrun', 'screen-a.png'), png(60, 130, [220, 60, 60]));
+  writeFileSync(path.join(dir, 'state', 'xcrun', 'screen-b.png'), png(60, 130, [60, 60, 220]));
+  writeFileSync(path.join(dir, 'state', 'adb', 'screen.png'), png(54, 120, [60, 160, 90]));
+  setSimulators(dir, []);
+  setEmulators(dir, []);
 }
 
 /** Every call a stand-in got so far, one per entry, as the words it was called with. */

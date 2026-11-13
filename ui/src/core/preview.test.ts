@@ -7,7 +7,10 @@ import {
   describeDrawing,
   describePicked,
   describePointed,
+  deviceButton,
+  deviceLine,
   deviceName,
+  deviceWords,
   elementName,
   FRAME_HEAD,
   frameHeight,
@@ -15,14 +18,23 @@ import {
   GAP,
   joinAddress,
   layoutFrames,
+  listed,
   markLabel,
   MIN_FRAME_HEIGHT,
   MIN_ROW_SCALE,
   parseWidth,
+  readDevices,
   readElement,
   readSettings,
+  readShots,
   readThemeReport,
   scaleLabel,
+  SHOT_IS_FRESH,
+  shotDone,
+  shotName,
+  shotPlan,
+  shotRefusal,
+  shotWords,
   sizeLabel,
   sourceLabel,
   sourcePath,
@@ -395,5 +407,118 @@ describe('what is said about a theme', () => {
       scripts: false,
       unreadable: 0,
     });
+  });
+});
+
+describe('a screenshot of the page', () => {
+  it('is named after its frame, as the mockup names it', () => {
+    expect(shotName(320)).toBe('screenshot, phone 320.png');
+    expect(shotName(1600)).toBe('screenshot, wide 1600.png');
+  });
+
+  it('is of the narrowest frames when the message has no room for all', () => {
+    expect(shotPlan([768, 320], 5)).toEqual({ take: [320, 768], left: [] });
+    expect(shotPlan([1600, 320, 1024, 768, 414, 1200], 5)).toEqual({
+      take: [320, 414, 768, 1024, 1200],
+      left: [1600],
+    });
+    expect(shotPlan([320, 768], 1)).toEqual({ take: [320], left: [768] });
+    expect(shotPlan([320, 768], 0)).toEqual({ take: [], left: [320, 768] });
+    expect(shotPlan([320], -2)).toEqual({ take: [], left: [320] });
+  });
+
+  it('says what it is, and what it is not, before it is taken', () => {
+    expect(SHOT_IS_FRESH).toContain('loaded anew');
+    expect(shotWords([320, 768], 5, 5)).toBe(`A screenshot of phone 320 and tablet 768. ${SHOT_IS_FRESH}`);
+    expect(shotWords([320], 5, 5)).toBe(`A screenshot of phone 320. ${SHOT_IS_FRESH}`);
+    expect(shotWords([320, 768, 1024], 2, 5)).toBe(
+      `A screenshot of phone 320 and tablet 768 only: a message takes 5 pictures at most. ${SHOT_IS_FRESH}`,
+    );
+    expect(shotWords([320, 768], 0, 5)).toBe(
+      'A message takes 5 pictures at most. Leave one out to make room for a screenshot.',
+    );
+  });
+
+  it('says what came of it: which frames, with which browser, what did not fit and what was still loading', () => {
+    expect(shotDone([320], [], [], 'Chrome', 5)).toBe(
+      'A screenshot is in your message: phone 320, loaded anew in Chrome.',
+    );
+    expect(shotDone([320, 768, 1024], [1600], [768], 'Edge', 5)).toBe(
+      '3 screenshots are in your message: phone 320, tablet 768 and laptop 1024, loaded anew in Edge. ' +
+        'wide 1600 did not fit: a message takes 5 pictures at most. ' +
+        'The page was still loading on tablet 768 when its picture was taken.',
+    );
+  });
+
+  it('is refused for the same reasons as any picture, and for want of a browser', () => {
+    const ready = { tool: { browser: 'Chrome', needs: null }, takesPictures: true, agentName: 'Codex' };
+    expect(shotRefusal(ready)).toBeNull();
+    expect(shotRefusal({ ...ready, takesPictures: false })).toBe('Codex does not take pictures');
+    expect(shotRefusal({ ...ready, tool: null })).toBe('Looking for a browser to take screenshots with.');
+    const needs = 'A screenshot needs Chrome, Chromium or Edge on this computer.';
+    expect(shotRefusal({ ...ready, tool: { browser: null, needs } })).toBe(needs);
+    // A core that says nothing about what is needed still gets the sentence.
+    expect(shotRefusal({ ...ready, tool: { browser: null, needs: null } })).toBe(needs);
+  });
+
+  it('reads what the core took with care', () => {
+    expect(
+      readShots([
+        { width: 320, data: 'AAAA', stillLoading: true },
+        { width: 768, data: 'BBBB' },
+      ]),
+    ).toEqual([
+      { width: 320, data: 'AAAA', stillLoading: true },
+      { width: 768, data: 'BBBB', stillLoading: false },
+    ]);
+    expect(readShots([{ width: 320 }, { data: 'AAAA' }, null, 'x'])).toEqual([]);
+    expect(readShots(undefined)).toEqual([]);
+  });
+
+  it('lists names the way a sentence does', () => {
+    expect(listed([])).toBe('');
+    expect(listed(['a'])).toBe('a');
+    expect(listed(['a', 'b'])).toBe('a and b');
+    expect(listed(['a', 'b', 'c'])).toBe('a, b and c');
+  });
+});
+
+describe('simulators and emulators', () => {
+  it('reads the list of the core, and what is needed when there is none', () => {
+    const found = readDevices({
+      needs: null,
+      devices: [
+        { id: 'AAAA', name: 'iPhone 17 Pro', system: 'iOS 27.0', state: 'off' },
+        { id: 'BBBB', name: 'iPad Air', system: 'iOS 27.0', state: 'running' },
+        { id: 'CCCC', state: 'creating' },
+        { name: 'No id' },
+      ],
+    });
+    expect(found.needs).toBeNull();
+    expect(found.devices).toEqual([
+      { id: 'AAAA', name: 'iPhone 17 Pro', system: 'iOS 27.0', state: 'off' },
+      { id: 'BBBB', name: 'iPad Air', system: 'iOS 27.0', state: 'running' },
+      { id: 'CCCC', name: 'CCCC', system: '', state: 'starting' },
+    ]);
+    expect(readDevices({ needs: 'The iOS simulator needs Xcode on this Mac.', devices: [] })).toEqual({
+      needs: 'The iOS simulator needs Xcode on this Mac.',
+      devices: [],
+    });
+    // An answer that says nothing at all never leaves the tab empty.
+    expect(readDevices(null)).toEqual({ needs: 'No device was found.', devices: [] });
+  });
+
+  it('offers to show what runs, to start what is off, and nothing for what is starting', () => {
+    const device = (state: 'running' | 'off' | 'starting') => ({ id: 'A', name: 'A', system: 'iOS 27.0', state });
+    expect(deviceButton(device('running'))).toEqual({ label: 'Show', can: true });
+    expect(deviceButton(device('off'))).toEqual({ label: 'Start and show', can: true });
+    expect(deviceButton(device('starting'))).toEqual({ label: 'Starting', can: false });
+    expect(deviceLine(device('running'))).toBe('iOS 27.0 · running');
+    expect(deviceLine({ ...device('off'), system: '' })).toBe('off');
+  });
+
+  it('names each kind and the window where one taps', () => {
+    expect(deviceWords('ios')).toEqual({ one: 'simulator', many: 'iOS simulators', window: 'the Simulator window' });
+    expect(deviceWords('android').window).toBe("the emulator's own window");
   });
 });
