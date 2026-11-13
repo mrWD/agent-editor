@@ -214,6 +214,9 @@ fn android_sdks() -> Vec<PathBuf> {
         dirs::home_dir().map(|home| home.join("Library/Android/sdk")),
         dirs::home_dir().map(|home| home.join("Android/Sdk")),
         dirs::data_local_dir().map(|data| data.join("Android/Sdk")),
+        // Where Homebrew keeps the command line tools, for a computer without Android Studio.
+        Some(PathBuf::from("/opt/homebrew/share/android-commandlinetools")),
+        Some(PathBuf::from("/usr/local/share/android-commandlinetools")),
     ];
     named.chain(usual.into_iter().flatten()).collect()
 }

@@ -337,7 +337,10 @@ impl Manager {
     /// The pipeline of a task's branch, with what can be done to it on that host.
     pub fn pipeline_of(&self, task_id: &str) -> Result<Value> {
         let (_, _, branch, remote) = self.request_place(task_id)?;
-        let pipeline = self.hosts.pipeline(&remote, &branch, self.request_number(task_id))?;
+        let pipeline = self
+            .hosts
+            .pipeline(&remote, &branch, self.request_number(task_id))
+            .map_err(|error| crate::hosts::said_plainly(&remote, error))?;
         Ok(json!({
             "host": remote.kind.name(),
             "branch": branch,

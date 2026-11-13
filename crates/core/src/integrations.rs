@@ -200,7 +200,9 @@ impl Manager {
                 Some(key) => self.hosts.linear_issues(&key, team),
                 None => Err(anyhow!("Linear is not connected yet. Paste a key above.")),
             },
-            Source::Host(remote) => self.hosts.issues(remote),
+            Source::Host(remote) => {
+                self.hosts.issues(remote).map_err(|error| crate::hosts::said_plainly(remote, error))
+            }
             Source::None => Ok(vec![]),
         };
         let (kind, label) = match &source {
@@ -505,7 +507,8 @@ impl Manager {
             Some((at, request)) if !fresh && at.elapsed() < REQUEST_TTL => request,
             _ => {
                 let asked = Instant::now();
-                let request = self.hosts.request(&remote, &branch)?;
+                let request =
+                    self.hosts.request(&remote, &branch).map_err(|error| crate::hosts::said_plainly(&remote, error))?;
                 self.remember_request(task_id, request.clone(), asked);
                 // What is known may be newer than this answer: that is what is shown.
                 self.remembered.requests.lock().unwrap().get(task_id).map_or(request, |(_, known)| known.clone())
