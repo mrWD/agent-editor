@@ -25,6 +25,10 @@
 //! - `AE_MOCK_LOAD=1`: the agent can pick an earlier session up again (`session/load`);
 //! - `AE_MOCK_MODES=1`: the agent only knows modes, the older way to offer a setting;
 //! - `AE_MOCK_COST=0.25`: every turn adds this much to what the session says it cost.
+//!
+//! Started with `--lsp`, the same program is a practice language server instead: see `lsp.rs`.
+
+mod lsp;
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -183,6 +187,9 @@ impl Agent {
 }
 
 fn main() {
+    if std::env::args().any(|arg| arg == "--lsp") {
+        return lsp::run();
+    }
     let delay_ms = std::env::var("AE_MOCK_DELAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(35);
 
     let agent = Arc::new(Agent {

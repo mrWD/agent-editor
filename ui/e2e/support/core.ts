@@ -46,6 +46,8 @@ export type CoreOptions = {
   practiceCost?: number;
   /** Add a second practice agent, so a task can be handed from one agent to another. */
   twoAgents?: boolean;
+  /** Let the practice language server stand in for the TypeScript one, which the tests never have. */
+  practiceLspForTs?: boolean;
 };
 
 export type TaskInfo = {
@@ -117,6 +119,7 @@ export class Core {
     if (options.brokenAgent) this.env.AE_MOCK_AGENT = '/usr/bin/false';
     if (options.practiceCost) this.env.AE_MOCK_COST = String(options.practiceCost);
     if (options.twoAgents) this.env.AE_MOCK_TWIN = '1';
+    if (options.practiceLspForTs) this.env.AE_MOCK_LSP_TS = '1';
   }
 
   static async start(options: CoreOptions = {}): Promise<Core> {

@@ -16,6 +16,7 @@ import {
 import { createStore } from 'solid-js/store';
 import { taskHref, VIEWS, type View } from '../app/router';
 import { AgentPane } from '../components/AgentPane';
+import { LspBadge, LspStatus } from '../components/LspStatus';
 import { ProblemsTab } from '../components/ProblemsTab';
 import { RunTab } from '../components/RunTab';
 import { Chip, Icon, modKey } from '../components/bits';
@@ -63,6 +64,7 @@ import { LookBackView } from './LookBack';
 import { SpanView } from './Span';
 import { MapView } from './Map';
 import { languageOf } from '../editor/languages';
+import { LspSession } from '../editor/lsp';
 
 // The terminal is fetched the first time it is opened.
 const TerminalView = lazy(() => import('../components/Terminal').then((module) => ({ default: module.TerminalView })));
@@ -569,6 +571,14 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
   const [problem, setProblem] = createSignal<string | null>(null);
   let editorEl: HTMLDivElement | undefined;
   let host: EditorHost | undefined;
+  // What language servers add to the open files. The editor works the same without any.
+  const lsp = new LspSession({
+    taskId,
+    // eslint-disable-next-line solid/reactivity -- a task never moves to another project
+    projectId: props.task.info.projectId,
+    host: () => host,
+    open: (path, line, column) => openInEditor(taskId, path, line, column),
+  });
 
   const byPath = (path: string) => (file: OpenFile) => file.path === path;
   const fileAt = (path: string | null) => (path ? files.find((file) => file.path === path) : undefined);
@@ -603,6 +613,7 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
       const { file, review } = await readFile(taskId, path);
       if (!fileAt(path) || !host) return false;
       host.open(path, file.text, review.runs, languageOf(path));
+      lsp.opened(path);
       setFiles(byPath(path), { loading: false, version: file.version, agentLines: review.agentLines });
       return true;
     } catch (error) {
@@ -613,14 +624,18 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
 
   const save = async (path: string) => {
     const file = fileAt(path);
-    const snapshot = host?.snapshot(path);
+    let snapshot = host?.snapshot(path);
     if (!file || !snapshot || file.saving || file.loading || file.problem) return;
     if (!file.dirty && file.version !== null) return;
     setFiles(byPath(path), { saving: true, saveProblem: null });
     try {
+      // The language server tidies the text first when it can do so quickly; if not, the file is saved as typed.
+      await lsp.format(path);
+      snapshot = host?.snapshot(path) ?? snapshot;
       const result = await writeFile(taskId, path, snapshot.text, file.version);
       setFiles(byPath(path), { version: result.file.version, stale: false });
       host?.markSaved(path, snapshot.doc, result.review.runs);
+      lsp.saved(path);
     } catch (error) {
       const text = message(error);
       setFiles(byPath(path), { saveProblem: text, stale: text.includes('changed on disk') });
@@ -727,7 +742,9 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
       onMeta: (path, meta) => {
         setFiles(byPath(path), meta);
         publish();
+        lsp.changed(path);
       },
+      onClosed: (path) => lsp.closed(path),
       onSave: (path) => void save(path),
       onUserEdit: () => {
         // Two hands in one file make a mess: when the user starts typing, the agent's turn stops.
@@ -791,6 +808,7 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
       stopEvents();
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('beforeunload', onLeave);
+      lsp.dispose();
       host?.destroy();
       host = undefined;
     });
@@ -891,7 +909,14 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
               )}
             </For>
             <span class="grow" />
-            <Show when={shown()}>{(file) => <span class="tab-note">{file().language}</span>}</Show>
+            <Show when={shown()}>
+              {(file) => (
+                <>
+                  <LspBadge lsp={lsp} path={file().path} />
+                  <span class="tab-note">{file().language}</span>
+                </>
+              )}
+            </Show>
           </div>
         </Show>
 
@@ -991,6 +1016,7 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
               <span classList={{ unsaved: file().dirty }}>
                 {file().saving ? 'Saving' : file().dirty ? `Not saved · ${modKey}S saves` : 'Saved'}
               </span>
+              <LspStatus lsp={lsp} path={file().path} />
               <span class="grow" />
               <span>
                 Select code and press <span class="mono soft">{modKey}K</span> to ask {agentName()} about it

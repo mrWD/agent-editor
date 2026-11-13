@@ -10,6 +10,7 @@
 //! messages: one byte that says what it is, the terminal's number as four
 //! bytes, then the bytes themselves.
 
+use crate::lsp::Lsp;
 use crate::marks::Author;
 use crate::runner::Runner;
 use crate::search::Search;
@@ -47,6 +48,8 @@ pub struct AppState {
     pub terminals: Arc<Terminals>,
     pub search: Arc<Search>,
     pub runner: Arc<Runner>,
+    /// The language servers of every task.
+    pub lsp: Arc<Lsp>,
     /// What the desktop app lends to the core. `None` when the core runs on its own.
     pub desktop: Option<Desktop>,
 }
@@ -117,7 +120,8 @@ impl AppState {
         manager.checks.set_scrub(own.clone());
         let terminals = Arc::new(Terminals::without(own));
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
-        Self { manager, terminals, search: Arc::new(Search::new()), runner, desktop: None }
+        let lsp = Arc::new(Lsp::new(manager.clone()));
+        Self { manager, terminals, search: Arc::new(Search::new()), runner, lsp, desktop: None }
     }
 
     /// The desktop app, when the one who asks is the app's own window.
@@ -139,6 +143,7 @@ impl AppState {
     async fn stop_everything(&self, task_id: &str) {
         self.terminals.close_task(task_id);
         self.manager.stop_checks(Some(task_id));
+        self.lsp.stop_task(task_id).await;
         if let Ok((project, root)) = self.run_place(task_id) {
             let runner = self.runner.clone();
             let id = task_id.to_string();
@@ -209,8 +214,10 @@ pub async fn serve_until(
 ) -> Result<()> {
     let manager = state.manager.clone();
     let terminals = state.terminals.clone();
+    let lsp = state.lsp.clone();
     axum::serve(listener, router(state, ui_dir)).with_graceful_shutdown(stop).await?;
     terminals.close_all();
+    lsp.stop_all().await;
     manager.stop_all().await;
     Ok(())
 }
@@ -236,6 +243,8 @@ async fn converse(socket: WebSocket, state: AppState) {
     let mut events = state.manager.subscribe();
     let mut term_events = state.terminals.subscribe();
     let mut attached = Attached::new();
+    // The files this window has open in language servers are closed when it goes away.
+    let window = state.lsp.window();
     // Commands run in lanes: one lane per kind of command and task. Inside a
     // lane they run one after another, so their answers come in the order they
     // were asked (the interface counts on "the last answer is the newest").
@@ -249,7 +258,7 @@ async fn converse(socket: WebSocket, state: AppState) {
             incoming = stream.next() => {
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        let (id, method, params) = match parse(text.as_str()) {
+                        let (id, method, mut params) = match parse(text.as_str()) {
                             Ok(request) => request,
                             Err(refusal) => {
                                 if sink.send(Message::Text(refusal.to_string().into())).await.is_err() {
@@ -258,6 +267,10 @@ async fn converse(socket: WebSocket, state: AppState) {
                                 continue;
                             }
                         };
+                        // A language server is shared by every window, so it is told which one is speaking.
+                        if method.starts_with("lsp.") && let Some(given) = params.as_object_mut() {
+                            given.insert("window".into(), json!(window.id()));
+                        }
                         if !method.starts_with("terminal.") {
                             let lane = lanes.entry(lane_of(&method, &params)).or_insert_with(|| {
                                 let (queue, mut waiting) = tokio::sync::mpsc::unbounded_channel::<(Value, String, Value)>();
@@ -974,6 +987,8 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             })
             .await?
         }
+
+        "lsp.start" | "lsp.send" | "lsp.setFormatOnSave" => state.lsp.command(method, params).await,
 
         "search.files" | "search.text" => {
             let root = manager.cwd(text_param(params, "taskId")?)?;
