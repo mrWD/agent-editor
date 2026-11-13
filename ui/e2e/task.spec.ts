@@ -316,3 +316,27 @@ test.describe('The practice agent says what it is', () => {
     await expect(app.page.getByLabel('Agent', { exact: true })).toHaveValue('own-real-one');
   });
 });
+
+test.describe('What is typed for a task stays with that task', () => {
+  test('C-14 a message typed for one task is not in the box of another, and is there again on coming back', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project();
+    await app.openHome();
+    const first = await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
+    await app.goHome();
+    const second = await app.createTask({ text: unique('Describe the upload'), project: shop.name });
+
+    await app.messageBox.fill('This is for the second task');
+    await app.openTask(first);
+    // The pane stays while the task changes; what was typed does not follow.
+    await expect(app.messageBox).toHaveValue('');
+    await expect(app.sendButton).toBeDisabled();
+    await app.messageBox.fill('And this for the first');
+    await app.openTask(second);
+    await expect(app.messageBox).toHaveValue('This is for the second task');
+    await app.openTask(first);
+    await expect(app.messageBox).toHaveValue('And this for the first');
+  });
+});

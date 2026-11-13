@@ -60,6 +60,11 @@ export function TerminalView(props: {
   onShell?: (info: TermInfo) => void;
   /** For a program the user types into, such as a shell in a container: it is told the size of this view. */
   follow?: boolean;
+  /**
+   * Leave the keyboard where it is when the view appears. For a terminal that stands beside a
+   * message box: appearing while the user types there must not take their keys.
+   */
+  quiet?: boolean;
 }): JSX.Element {
   let host: HTMLDivElement | undefined;
   let term: Xterm | undefined;
@@ -223,7 +228,7 @@ export function TerminalView(props: {
         if (!visible) return;
         requestAnimationFrame(() => {
           settle();
-          term?.focus();
+          if (!props.quiet) term?.focus();
         });
       },
     ),
