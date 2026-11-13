@@ -184,6 +184,28 @@ async fn a_team_can_be_paused_stopped_and_gone_on_with() {
 }
 
 #[tokio::test]
+async fn a_team_gone_on_with_right_after_a_stop_builds_again() {
+    let sandbox = Sandbox::new("team-stop-go");
+    let (manager, id, _root) = started(&sandbox, "Take the login limit from config").await;
+    let mut events = manager.subscribe();
+    manager.team_start(&id, "mock", "mock", None, None).await.unwrap();
+    until(&mut events, &id, |e| is(e, "permission_request")).await;
+
+    // The user does not wait for the stopped turn to be over: the agent is still coming to a stop,
+    // and the task still waits for the answer nobody gave.
+    manager.team_stop(&id).unwrap();
+    let allowing = allow_edits(&manager, &id);
+    manager.team_continue(&id).unwrap();
+    assert!(manager.team(&id).unwrap().running);
+    at_rest(&manager, &id).await;
+    allowing.abort();
+
+    let team = manager.team(&id).unwrap();
+    assert_eq!(states(&manager, &id), pairs(&[("plan", "done"), ("build", "done"), ("checks", "skipped")]));
+    assert_eq!(team.stopped, None, "the end of the stopped turn is not the end of the new one");
+}
+
+#[tokio::test]
 async fn a_team_that_cannot_be_is_refused() {
     let sandbox = Sandbox::new("team-refused");
     let (manager, id, _root) = started(&sandbox, "Take the login limit from config").await;
