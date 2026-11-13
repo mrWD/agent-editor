@@ -443,8 +443,12 @@ textarea::placeholder {
   line-height: 20px;
   text-align: center;
 }
-.stage-row .name {
+/* Only a name that stands in the row itself takes the row's room. Inside a column (a finding's title over its
+   detail) a flex basis is a height, and 250px of it pushed the detail to the bottom of a tall empty card. */
+.stage-row > .name {
   flex: 1 1 250px;
+}
+.stage-row .name {
   color: var(--text);
   font-weight: 500;
   text-decoration: none;

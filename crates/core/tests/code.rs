@@ -226,6 +226,39 @@ async fn output_until(events: &mut tokio::sync::broadcast::Receiver<TermEvent>, 
     printed
 }
 
+/// Types a command into a terminal and waits for what it should print.
+///
+/// A shell that has only just started may drop what is typed before it is ready — PowerShell on Windows
+/// does, and says nothing about it — so the line is typed again until it takes, as a person would.
+async fn type_until(
+    terminals: &Terminals,
+    events: &mut tokio::sync::broadcast::Receiver<TermEvent>,
+    term_id: u32,
+    command: &str,
+    wanted: &str,
+) -> String {
+    let mut printed = String::new();
+    for _ in 0..6 {
+        terminals.input(term_id, command.as_bytes()).unwrap();
+        let wait = async {
+            loop {
+                if let Ok(TermEvent::Data { term_id: from, bytes, .. }) = events.recv().await
+                    && from == term_id
+                {
+                    printed.push_str(&String::from_utf8_lossy(&bytes));
+                    if printed.contains(wanted) {
+                        break;
+                    }
+                }
+            }
+        };
+        if tokio::time::timeout(Duration::from_secs(5), wait).await.is_ok() {
+            return printed;
+        }
+    }
+    panic!("the terminal never printed {wanted:?}; it printed: {printed:?}")
+}
+
 #[tokio::test]
 async fn a_terminal_runs_commands_in_the_tasks_folder() {
     let sandbox = Sandbox::new("terminal");
@@ -240,12 +273,10 @@ async fn a_terminal_runs_commands_in_the_tasks_folder() {
     // The answer is built by the shell, so finding it proves the command ran
     // and is not just the typed text echoed back.
     let command = if cfg!(windows) { "echo ae-$(6*7)-ok\r" } else { "echo ae-$((6*7))-ok\n" };
-    terminals.input(info.term_id, command.as_bytes()).unwrap();
-    output_until(&mut events, info.term_id, "ae-42-ok").await;
+    type_until(&terminals, &mut events, info.term_id, command, "ae-42-ok").await;
 
     let list = if cfg!(windows) { "dir\r" } else { "ls\n" };
-    terminals.input(info.term_id, list.as_bytes()).unwrap();
-    output_until(&mut events, info.term_id, "marker-file.txt").await;
+    type_until(&terminals, &mut events, info.term_id, list, "marker-file.txt").await;
 
     // Someone who joins later still gets what was printed.
     let (kept, total) = terminals.scrollback(info.term_id).unwrap();

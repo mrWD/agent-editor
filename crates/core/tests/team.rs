@@ -202,27 +202,39 @@ async fn a_team_that_cannot_be_is_refused() {
 #[tokio::test]
 async fn a_team_cut_short_by_the_core_stopping_is_at_rest_and_can_go_on() {
     let sandbox = Sandbox::new("team-crash");
-    let (first, id, _root) = started(&sandbox, "Take the login limit from config").await;
-    // Nobody allows the builder's edit, so the build is running when the core goes away.
-    let mut events = first.subscribe();
-    first.team_start(&id, "mock", "mock", None, None).await.unwrap();
+    let (manager, id, _root) = started(&sandbox, "Take the login limit from config").await;
+    // Nobody allows the builder's edit, so the build is still running when the core goes away.
+    let mut events = manager.subscribe();
+    manager.team_start(&id, "mock", "mock", None, None).await.unwrap();
     until(&mut events, &id, |e| is(e, "permission_request")).await;
+    let running = sandbox.store().setting(&format!("task.{id}.team")).unwrap().unwrap();
+    assert!(running.contains("\"running\":true"), "{running}");
+
+    // The core is killed outright: its agent dies with it, and nothing of it writes anything more.
+    // What is on disk still says the team was at work — that is what the next core finds.
+    manager.stop_all().await;
+    until(&mut events, &id, |e| state_is(e, "asleep")).await;
+    sandbox.store().set_setting(&format!("task.{id}.team"), Some(&running)).unwrap();
 
     // A second core over the same data, as after a crash.
-    let second = sandbox.manager();
-    second.recover().unwrap();
-    let team = second.team(&id).unwrap();
+    let next = sandbox.manager();
+    next.recover().unwrap();
+    let team = next.team(&id).unwrap();
     assert!(!team.running);
     assert_eq!(team.steps[1].state, "stopped");
     assert_eq!(team.stopped.as_deref(), Some("The editor was closed while the team worked."));
-    first.stop_all().await;
+    // Recovering again leaves it as it is.
+    next.recover().unwrap();
+    assert_eq!(next.team(&id).unwrap().stopped, team.stopped);
 
     // Going on builds again from the step that was cut short.
-    let allowing = allow_edits(&second, &id);
-    second.team_continue(&id).unwrap();
-    at_rest(&second, &id).await;
+    let allowing = allow_edits(&next, &id);
+    next.team_continue(&id).unwrap();
+    at_rest(&next, &id).await;
     allowing.abort();
-    let team = second.team(&id).unwrap();
-    assert_eq!(team.steps[1].state, "done", "{:?} {:?}", states(&second, &id), team.stopped);
-    second.stop_all().await;
+    let team = next.team(&id).unwrap();
+    if team.steps[1].state != "done" {
+        panic!("{:?} {:?}", states(&next, &id), team.stopped);
+    }
+    next.stop_all().await;
 }

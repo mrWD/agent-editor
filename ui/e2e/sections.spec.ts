@@ -1,6 +1,6 @@
 import { expect, test, unique, type App } from './support/fixtures';
 
-const open = async (app: App, section: 'Agents' | 'Automations') => {
+const open = async (app: App, section: 'Agents' | 'Automations' | 'Health') => {
   await app.page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: section }).click();
   await expect(app.page.getByRole('heading', { level: 1 })).toBeVisible();
 };
@@ -258,5 +258,25 @@ test.describe("The editor's own tools for agents", () => {
       .filter({ hasText: shop.name });
     await expect(row).toContainText('Noticed');
     await expect(row).toContainText(`Noticed by Practice agent while it worked on “${title}”.`);
+  });
+});
+
+test.describe('Rows are as tall as what they say', () => {
+  test('W-14 a finding of Health and an automation take no more room than their words', async ({ app, project }) => {
+    // A project with a test command and no pipeline: Health finds something to say about it.
+    const shop = await project({ scripts: { test: 'node --test' } });
+    await app.addProject(shop.dir);
+    await app.openHome();
+
+    await open(app, 'Health');
+    const finding = app.page.locator('.finding').first();
+    await expect(finding).toBeVisible();
+    // A title over one line of detail, with its buttons beside them: well under a hundred pixels.
+    expect((await finding.boundingBox())!.height).toBeLessThan(100);
+
+    await open(app, 'Automations');
+    const automation = app.page.locator('.auto-item').first();
+    await expect(automation).toBeVisible();
+    expect((await automation.boundingBox())!.height).toBeLessThan(100);
   });
 });
