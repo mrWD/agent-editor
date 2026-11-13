@@ -182,7 +182,12 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   when one fails. Problems lists them. Language servers give completions,
   problems, "go to definition" and formatting on save. The Run tab starts dev
   scripts from `package.json` and services from a compose file, each task in a
-  compose project of its own, with taken ports moved to free ones.
+  compose project of its own, with taken ports moved to free ones. Launch
+  profiles say what starts together; a task has its own values over the
+  project's `.env`, with secrets masked; missing packages are installed first;
+  a database keeps its data in a volume of the task and can be reset; what
+  other tasks run is listed with its memory and can be stopped; Shell opens a
+  terminal inside a running container.
 - **M6, together.** A team: a planner, a builder and a reviewer take one task
   in turn, then the checks run. A race: the same task goes to two or more
   agents, each in a working copy of its own, and one result is kept. The Plan
@@ -194,23 +199,31 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   for the next agent and report what they noticed.
 - **M7, Preview and Map.** Preview shows the running app at several widths at
   once, in light and dark, lets you pick an element or draw on the page, and
-  sends that to the agent in words. Map shows the files the task changed, what
+  sends that to the agent in words. A screenshot of each width goes into the
+  message (it needs Chrome, Chromium or Edge on this computer). The iOS
+  simulator and the Android emulator each have a tab that opens the app there
+  and shows the screen (they need Xcode and the Android tools). Map shows the files the task changed, what
   they define, who needs them and what they call, and draws a flow the agent
   describes.
 - **M8, the sections.** Issues from GitHub, GitLab or a Linear team; "Start"
   turns one into a task. Agents: who is doing what, cost by agent and by task,
   limits, a daily budget, handing a task to another agent. Automations: clean
   up after a merge, run checks, start a task every day at a time. Health: what
-  each project is missing, read from its files.
+  each project is missing, read from its files. Settings: the agents and their
+  commands, an agent of your own, the one a new task starts with, keeping the
+  computer awake while an agent works. Notifications for a question, the end
+  of a turn, failed checks and a request that became ready to merge, told once
+  and only while no window of the editor is in front.
 - **M9, the desktop app.** The core and the interface in one app (Tauri 2) for
   macOS, Windows and Linux: a folder dialog for "Another folder", links that
   open in the system's browser, a window that remembers its size and place, a
   menu, one running copy at a time. Not signed, no auto-update.
 
-Not built: a screenshot in Preview and the iOS and Android tabs there (they say
-so); a settings window; notifications.
+Not built: a way to run, in a terminal, an agent that does not speak ACP.
 
 Not checked: anything on Windows or Linux (the CI is written and has never
 run); GitLab and Linear against the real services; Codex and Gemini; the
 real language servers for Rust, Go and Python (the one for TypeScript and
-JavaScript was tried by hand; the tests use a practice server).
+JavaScript was tried by hand; the tests use a practice server); the
+screenshot with a real browser, the real iOS simulator and Android emulator,
+and a notification of the real system (the tests use stand-ins for each).
