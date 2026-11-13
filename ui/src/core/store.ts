@@ -628,6 +628,8 @@ function onEvent(event: CoreEvent) {
     }
     case 'task.created': {
       const info = event.data as TaskInfo;
+      // Which agent a new task starts with follows the one that was used last: the core knows it anew.
+      void reloadAgents().catch(() => {});
       if (state.tasks[info.id]) return;
       addTask(info);
       void loadHistory(info.id, info.state);
@@ -643,6 +645,9 @@ function onEvent(event: CoreEvent) {
       return;
     case 'task.updated': {
       const info = event.data as TaskInfo;
+      // A task that was handed to another agent changes which agent was used last. Whoever handed it over
+      // in this window has the new agent in the task already, so there is nothing here to compare with.
+      void reloadAgents().catch(() => {});
       if (state.tasks[info.id]) setState('tasks', info.id, 'info', info);
       return;
     }
@@ -666,6 +671,7 @@ function onEvent(event: CoreEvent) {
     case 'task.archived':
       waitingForHistory.delete(event.data.taskId);
       setState('tasks', event.data.taskId, undefined!);
+      void reloadAgents().catch(() => {});
       return;
     case 'projects.changed':
       void reloadProjects();
@@ -1189,7 +1195,13 @@ export function gitRevert(taskId: string, path: string, change?: number) {
 
 /** Whether a command-line tool is there and signed in (for Docker: whether its engine runs). */
 export type ToolState = { installed: boolean; signedIn: boolean; hint: string | null };
-export type Integrations = { github: ToolState; gitlab: ToolState; linear: { hasKey: boolean }; docker: ToolState };
+export type Integrations = {
+  github: ToolState;
+  gitlab: ToolState;
+  /** `readOnly`: Linear has refused to change anything with the key kept here, so issues are not moved. */
+  linear: { hasKey: boolean; readOnly?: boolean };
+  docker: ToolState;
+};
 
 export type Issue = {
   key: string;

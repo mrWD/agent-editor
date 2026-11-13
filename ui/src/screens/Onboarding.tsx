@@ -491,6 +491,10 @@ export function Onboarding(): JSX.Element {
                             >
                               {linearName() ? `Signed in as ${linearName()}.` : 'A key is kept.'} Issues assigned to you
                               start tasks.
+                              <Show when={known().linear.readOnly}>
+                                {' '}
+                                The key may only read, so issues are not moved when a task starts or merges.
+                              </Show>
                             </Show>
                           </span>
                         </div>

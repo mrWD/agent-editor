@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { AGENT_BINARY } from './support/core';
 import { AGENT_LINE, DEMO_FILE, DEMO_TEXT, expect, readIn, test, unique } from './support/fixtures';
 
 const EDITED_TEXT = DEMO_TEXT.replace('  limit: 5,', AGENT_LINE);
@@ -277,5 +278,41 @@ test.describe('Typing while the agent works', () => {
     await expect(app.thoughts.last()).toContainText('Note from the editor');
     await app.turnEnds();
     await expect(app.answers.last()).toContainText('Nothing was changed.');
+  });
+});
+
+test.describe('The practice agent says what it is', () => {
+  // An agent with a model behind it is used here; a core of its own keeps that from the other tests.
+  test.use({ freshCore: true });
+
+  test('C-12 C-13 a task of the practice agent says no model worked on it; one press hands it to a real agent, and the next task starts with that one', async ({
+    app,
+    core,
+    project,
+  }) => {
+    const shop = await project();
+    await app.openHome();
+    await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
+    const note = app.page.getByRole('region', { name: 'About the practice agent' });
+    await expect(note).toContainText('It calls no model');
+    // No agent with a model is installed in the tests: the note says where one is connected.
+    await expect(note).toContainText('Connect an agent with a model behind it in Settings');
+    await expect(note.getByRole('button')).toHaveCount(0);
+
+    // One is connected. An agent of the user's own counts as real: nobody knows what it costs.
+    await core.request('agents.save', { name: 'Real one', short: 'Ro', program: AGENT_BINARY });
+    const hand = note.getByRole('button', { name: 'Hand the task to Real one' });
+    await hand.click();
+    const conversation = app.page.getByRole('complementary', { name: 'Conversation with Real one' });
+    await expect(conversation).toBeVisible();
+    // The task is in real hands now: the note is gone.
+    await expect(note).toHaveCount(0);
+
+    // It answers, so it has been used: the next task starts with it, not with the practice agent.
+    await conversation.getByRole('textbox', { name: 'Message Real one' }).fill('And now?');
+    await conversation.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(conversation.getByText('Real one finished this turn.')).toBeVisible();
+    await app.goHome();
+    await expect(app.page.getByLabel('Agent', { exact: true })).toHaveValue('own-real-one');
   });
 });

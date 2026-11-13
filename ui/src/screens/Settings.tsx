@@ -420,7 +420,7 @@ export function Settings(): JSX.Element {
                     }}
                   >
                     <option value="" selected={known().defaultAgent === null}>
-                      The first agent that is installed
+                      The agent you used last, or the first that is installed
                     </option>
                     <For each={known().agents}>
                       {(agent) => (

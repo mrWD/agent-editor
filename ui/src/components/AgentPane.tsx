@@ -207,6 +207,10 @@ export function AgentPane(props: { task: Task }): JSX.Element {
 
   // Any other agent that is installed can take the task over.
   const others = () => state.agents.filter((one) => one.available && one.id !== agentId());
+  // The practice agent calls no model. With a real agent installed, a task it was given by
+  // mistake is one press away from an agent that can do it.
+  const isPractice = () => agent()?.spendsTokens === false;
+  const realOthers = () => others().filter((one) => one.spendsTokens);
   const hand = (to: string) => {
     if (to === agentId()) return;
     setSetting(true);
@@ -667,6 +671,33 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           </Show>
         }
       >
+        <Show when={isPractice() && !props.task.info.race}>
+          <section class="practice-note" aria-label="About the practice agent">
+            <p>
+              <strong>This is the practice agent.</strong> It calls no model: its answers are written beforehand, and it
+              has not worked on your task.
+            </p>
+            <Show
+              when={realOthers().length > 0}
+              fallback={<p class="fine">Connect an agent with a model behind it in Settings to have a task done.</p>}
+            >
+              <div class="actions">
+                <For each={realOthers().slice(0, 3)}>
+                  {(one) => (
+                    <button
+                      type="button"
+                      class="btn small"
+                      disabled={setting() || !canSend()}
+                      onClick={() => hand(one.id)}
+                    >
+                      Hand the task to {one.name}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </section>
+        </Show>
         <Show when={teamOpen() || team()}>
           <TeamPanel task={props.task} onClose={() => setTeamOpen(false)} />
         </Show>

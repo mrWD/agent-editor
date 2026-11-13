@@ -52,6 +52,10 @@ async function startTask(app: App, name: string, folder: string, text: string) {
 }
 
 test.describe('An agent that runs in a terminal', () => {
+  // Its agents count as real ones, and a real agent that was used is what the next task starts with:
+  // a core of the test's own keeps that from the other tests.
+  test.use({ freshCore: true });
+
   test('TA-01 TA-02 it is added in Settings with a tick, and "Try it" says where its program is', async ({ app }) => {
     const name = await addTerminalAgent(app);
     const row = app.page.getByRole('group', { name, exact: true });

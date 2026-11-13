@@ -6014,6 +6014,23 @@ button.picked-source:hover {
   padding-left: 18px;
 }
 
+/* ---------- The practice agent says what it is ---------- */
+
+.practice-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 181, 68, 0.45);
+  border-radius: 10px;
+  background: rgba(245, 181, 68, 0.08);
+  font-size: 13px;
+}
+.practice-note p {
+  margin: 0;
+}
+
 /* ---------- Hints on the interface: a tour ---------- */
 
 .tour {
