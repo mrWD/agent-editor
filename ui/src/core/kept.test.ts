@@ -1,4 +1,5 @@
 import { createRoot } from 'solid-js';
+import { createStore } from 'solid-js/store';
 import { describe, expect, it } from 'vitest';
 import { createKept, forget, recall, recallCopy, remember, rememberCopy } from './kept';
 
@@ -56,5 +57,18 @@ describe('what a screen read last', () => {
     remember('task-12:map', 'c');
     forget('task-1:');
     expect([recall('task-1:map'), recall('task-1:run'), recall('task-12:map')]).toEqual([null, null, 'c']);
+  });
+
+  it('takes a copy of an answer that carries pieces of the store over', () => {
+    // An answer without the disk keeps what the store knew of it: that piece is the store's own.
+    const [held, setHeld] = createStore<{ use: { others: string[]; disk?: { images: number } } | null }>({
+      use: { others: ['a'], disk: { images: 2 } },
+    });
+    const next = { others: [], disk: held.use?.disk };
+    expect(() => setHeld('use', rememberCopy('test.use', next))).not.toThrow();
+    expect(recall('test.use')).toEqual({ others: [], disk: { images: 2 } });
+    // What is kept is a copy: the store changing later does not change it.
+    setHeld('use', 'disk', 'images', 5);
+    expect(recall('test.use')).toEqual({ others: [], disk: { images: 2 } });
   });
 });

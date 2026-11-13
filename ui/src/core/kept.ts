@@ -1,4 +1,5 @@
 import { createSignal, type Accessor } from 'solid-js';
+import { unwrap } from 'solid-js/store';
 
 /**
  * What a screen read last, kept after the screen is gone.
@@ -30,9 +31,13 @@ export function recallCopy<T>(key: string): T | null {
   return kept === null ? null : structuredClone(kept);
 }
 
-/** Keeps a copy of a value a store is about to take in. */
+/**
+ * Keeps a copy of a value a store is about to take in. The value may hold pieces of the store
+ * itself (what was known before, carried over into a new answer): those are taken out of their
+ * wrapping first, since a wrapped piece cannot be copied.
+ */
 export function rememberCopy<T>(key: string, value: T): T {
-  last.set(key, structuredClone(value));
+  last.set(key, structuredClone(unwrap(value)));
   return value;
 }
 
