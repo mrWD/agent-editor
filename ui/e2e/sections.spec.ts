@@ -358,3 +358,29 @@ test.describe('Coming back to a screen', () => {
     expect(await seenEmpty(app)).toEqual([]);
   });
 });
+
+test.describe('Setting the editor up with an agent', () => {
+  test.use({ freshCore: true });
+
+  test('W-17 the offer is a button on the home screen and never a form that opens by itself', async ({ app }) => {
+    await app.openHome();
+    // An editor with nothing in it yet: the first run has its own dialogs, so this one waits to be asked for.
+    const offer = app.page.getByRole('button', { name: 'Set up with an agent' });
+    const form = app.page.getByRole('form', { name: 'Set up the editor with an agent' });
+    await expect(offer).toBeVisible();
+    await expect(form).toHaveCount(0);
+
+    await offer.click();
+    await expect(form.getByRole('textbox', { name: 'What does your team use?' })).toBeVisible();
+    // Without a project there is only a folder to give, and starting without one says so.
+    await expect(form.getByRole('combobox', { name: 'Project the agent works from' })).toHaveValue('__new__');
+    await form.getByRole('button', { name: 'Start setting up' }).click();
+    await expect(form.getByRole('alert')).toHaveText(
+      'Give the folder of one of your repositories, for example /Users/you/code/app.',
+    );
+    // It can always be put away again.
+    await form.getByRole('button', { name: 'Not now' }).click();
+    await expect(form).toHaveCount(0);
+    await expect(offer).toBeVisible();
+  });
+});

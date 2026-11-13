@@ -8,11 +8,11 @@ const NEW_FOLDER = '__new__';
 /**
  * Lets an agent set the editor up: Claude or Codex reads the editor's setup guide, looks at where things stand,
  * adds projects and picks Linear teams, and says what is left for the user (signing in to glab, gh and Linear).
- * Open by itself while there is nothing in the editor yet; a button otherwise.
+ * A button on the home screen that opens into a form. It never opens by itself: the first run has its own
+ * dialogs, which connect the same things by hand, and whoever skipped those does not want a form instead.
  */
-export function SetUp(props: { firstRun: boolean }): JSX.Element {
+export function SetUp(): JSX.Element {
   const [open, setOpen] = createSignal(false);
-  createEffect(() => setOpen(props.firstRun));
   const [told, setTold] = createSignal('');
   const [projectId, setProjectId] = createSignal('');
   const [folder, setFolder] = createSignal('');
@@ -126,11 +126,9 @@ export function SetUp(props: { firstRun: boolean }): JSX.Element {
             </For>
           </select>
           <span class="grow" />
-          <Show when={!props.firstRun}>
-            <button type="button" class="btn tall ghost" onClick={() => setOpen(false)}>
-              Not now
-            </button>
-          </Show>
+          <button type="button" class="btn tall ghost" onClick={() => setOpen(false)}>
+            Not now
+          </button>
           <button type="submit" class="btn primary tall" disabled={busy()}>
             {busy() ? 'Starting' : 'Start setting up'}
           </button>

@@ -424,7 +424,7 @@ export function Home(): JSX.Element {
           </p>
         </div>
 
-        <SetUp firstRun={state.ready && state.projects.length === 0} />
+        <SetUp />
 
         <NewTask />
 
