@@ -19,6 +19,7 @@ import {
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
 import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
+import { PlanProposals } from '../screens/Plan';
 import { ago, Check, Chip, clock, money, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
 import { WhereStopped } from './WhereStopped';
@@ -526,6 +527,8 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         <Show when={since()}>
           {(told) => <WhereStopped task={props.task} since={told()} onHide={() => hideSince(taskId())} />}
         </Show>
+        {/* A block the agent thinks is missing from the plan waits here for a yes or a no. */}
+        <PlanProposals task={props.task} />
         <Switch>
           <Match when={sessionState() === 'waiting_permission'}>
             <section class="card pinned">

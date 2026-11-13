@@ -64,7 +64,6 @@ export function Health(): JSX.Element {
   };
 
   const fix = (finding: Finding) =>
-     
     act(finding.id, async () => go(taskHref(await createTask(finding.projectId, chosenAgent(), finding.fix))));
 
   return (

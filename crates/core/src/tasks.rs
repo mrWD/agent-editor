@@ -180,6 +180,8 @@ pub struct Manager {
     pub(crate) hosts: Hosts,
     /// What was last read from those services, so screens do not ask them on every look.
     pub(crate) remembered: crate::integrations::Remembered,
+    /// What each task's agent is doing for the task's plan right now.
+    pub(crate) plans: crate::plan::Plans,
     events: broadcast::Sender<Value>,
 }
 
@@ -216,6 +218,7 @@ impl Manager {
             checks: Default::default(),
             hosts,
             remembered: Default::default(),
+            plans: Default::default(),
             events,
         })
     }
@@ -876,6 +879,7 @@ impl Manager {
                     }),
                 )
                 .await;
+            let ended_well = result.as_ref().is_ok_and(|answer| answer["stopReason"] == "end_turn");
             match result {
                 Ok(answer) => {
                     let stop = answer.get("stopReason").cloned().unwrap_or(Value::Null);
@@ -888,6 +892,8 @@ impl Manager {
             // Everything that changed during the turn is the agent's.
             let touched: Vec<String> = live.touched.lock().unwrap().iter().cloned().collect();
             manager.sweep_in_background(&task_id, Author::Agent, touched).await;
+            // The plan hears how the turn ended: a block that was being built is built now, or planned again.
+            manager.plan_turn_ended(&task_id, &text, ended_well).await;
             if *live.state.lock().unwrap() != TaskState::Asleep {
                 manager.set_state(&task_id, &live, TaskState::Idle);
             }

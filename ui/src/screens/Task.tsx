@@ -24,6 +24,7 @@ import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
 import { core } from '../core/client';
 import { checksOf, watchChecks } from '../core/checks';
+import { planOf, watchPlan } from '../core/plan';
 import { problemCount } from '../core/problems';
 import { arrive, leave } from '../core/visits';
 import {
@@ -63,6 +64,7 @@ import { ChecksView } from './Checks';
 import { LookBackView } from './LookBack';
 import { SpanView } from './Span';
 import { MapView } from './Map';
+import { PlanView } from './Plan';
 import { languageOf } from '../editor/languages';
 import { LspSession } from '../editor/lsp';
 
@@ -80,7 +82,6 @@ const viewNames: Record<View, string> = {
 
 /** Which milestone brings each view that is not built yet. Shown instead of a blank pane. */
 const notBuilt: Partial<Record<View, { milestone: string; what: string }>> = {
-  plan: { milestone: 'M6', what: 'The flowchart the task is built from.' },
   preview: { milestone: 'M7', what: 'The running app on several devices at once.' },
   map: { milestone: 'M7', what: 'Diagrams of the code this task touches.' },
 };
@@ -1044,6 +1045,9 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
   // The checks are kept current for as long as the task is on screen: their count is in the switcher.
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task
   onCleanup(watchChecks(props.task.info.id));
+  // The plan too: its count is in the switcher, and what an agent proposes shows in the conversation.
+  // eslint-disable-next-line solid/reactivity -- this component is made anew for each task
+  onCleanup(watchPlan(props.task.info.id));
 
   return (
     <>
@@ -1063,12 +1067,16 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
       <Show when={props.view === 'map' && !lookingBack()}>
         <MapView task={props.task} />
       </Show>
+      <Show when={props.view === 'plan' && !lookingBack()}>
+        <PlanView task={props.task} />
+      </Show>
       <Show
         when={
           props.view !== 'code' &&
           props.view !== 'changes' &&
           props.view !== 'checks' &&
           props.view !== 'map' &&
+          props.view !== 'plan' &&
           !lookingBack()
         }
       >
@@ -1164,6 +1172,11 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
                       title="lines of “Done when” that are done"
                     >
                       {checksOf(props.id)!.done} of {checksOf(props.id)!.total}
+                    </span>
+                  </Show>
+                  <Show when={view === 'plan' && (planOf(props.id)?.counts.total ?? 0) > 0}>
+                    <span class="count plain" title="blocks of the plan that are built">
+                      {planOf(props.id)!.counts.built} of {planOf(props.id)!.counts.total}
                     </span>
                   </Show>
                   <Show when={view === 'changes' && (uncommitted[props.id] ?? 0) > 0}>
