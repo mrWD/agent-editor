@@ -77,6 +77,11 @@ fn first_message(issue: &Issue) -> String {
     }
 }
 
+/// Where it is kept that a task's request merges by itself, with how.
+fn auto_merge_key(task_id: &str) -> String {
+    format!("task.{task_id}.autoMerge")
+}
+
 impl Manager {
     /// Where the Docker program is, for the part of the core that runs projects.
     pub fn docker_path(&self) -> PathBuf {
@@ -351,6 +356,8 @@ impl Manager {
             "host": { "kind": remote.kind, "name": remote.kind.name(), "word": remote.kind.request_word(), "slug": remote.slug },
             "request": request,
             "ready": request.as_ref().is_some_and(Request::ready),
+            // Set when the user asked for the request to merge by itself once everything is green.
+            "auto": self.auto_merge(task_id),
             "defaults": { "title": title, "body": body, "base": gitops::resolve_base(&root, task.base_branch.as_deref()) },
         }))
     }
@@ -410,6 +417,109 @@ impl Manager {
 
     /// The merge request of every open task that has pushed its branch. Hosts are asked
     /// side by side, and only for tasks whose state was not read a moment ago.
+    /// What reviewers wrote about lines of a task's request and nobody has settled yet.
+    pub fn request_comments(&self, task_id: &str) -> Result<Value> {
+        let (_, _, branch, remote) = self.request_place(task_id)?;
+        let Some(request) = self.hosts.request(&remote, &branch)? else {
+            return Ok(json!({ "comments": [] }));
+        };
+        Ok(json!({ "comments": self.hosts.comments(&remote, request.number)? }))
+    }
+
+    /// Answers a reviewer's comment in its thread, in the user's name.
+    pub fn reply_to_comment(&self, task_id: &str, comment_id: &str, body: &str) -> Result<()> {
+        if body.trim().is_empty() {
+            bail!("The reply is empty");
+        }
+        let (_, _, branch, remote) = self.request_place(task_id)?;
+        let word = remote.kind.request_word();
+        let Some(request) = self.hosts.request(&remote, &branch)? else {
+            bail!("This task has no {word} yet");
+        };
+        self.hosts.reply(&remote, request.number, comment_id, body.trim())
+    }
+
+    /// How a task's request is to be merged by itself, if the user asked for that.
+    pub fn auto_merge(&self, task_id: &str) -> Option<Value> {
+        let text = self.store().setting(&auto_merge_key(task_id)).ok().flatten()?;
+        serde_json::from_str(&text).ok()
+    }
+
+    /// Turns "merge by itself when everything is green" on, with what to do
+    /// at the merge (`options`), or off (`None`).
+    pub fn set_auto_merge(&self, task_id: &str, options: Option<Value>) -> Result<()> {
+        let (task, _, _, remote) = self.request_place(task_id)?;
+        let word = remote.kind.request_word();
+        let was = self.auto_merge(task_id).is_some();
+        self.store().set_setting(&auto_merge_key(task_id), options.as_ref().map(Value::to_string).as_deref())?;
+        if options.is_some() != was {
+            let text = if options.is_some() {
+                format!("The {word} will merge by itself when everything is green")
+            } else {
+                format!("The {word} will not merge by itself any more")
+            };
+            self.emit(&task.id, json!({ "type": "tracker", "text": text, "failed": false }));
+        }
+        self.broadcast("mr.changed", json!({ "taskId": task_id }));
+        Ok(())
+    }
+
+    /// The tasks whose request was asked to merge by itself and can merge now,
+    /// each with what to do at the merge. A request that can never merge this
+    /// way any more (it was merged or closed elsewhere, or its checks failed)
+    /// is taken off the list, and the task is told why.
+    pub fn auto_merge_due(&self) -> Vec<(String, Value)> {
+        let mut due = Vec::new();
+        for task in self.store().tasks().unwrap_or_default() {
+            let Some(options) = self.auto_merge(&task.id) else { continue };
+            let root = PathBuf::from(&task.cwd);
+            let (Some(branch), Some(remote)) = (task.branch.clone(), remote_of(&root)) else { continue };
+            // A host that cannot be reached now is asked again in the next round.
+            let Ok(request) = self.hosts.request(&remote, &branch) else { continue };
+            self.remember_request(&task.id, request.clone());
+            let word = remote.kind.request_word();
+            let stop = |why: String| {
+                let _ = self.store().set_setting(&auto_merge_key(&task.id), None);
+                self.emit(&task.id, json!({ "type": "tracker", "text": why, "failed": true }));
+                self.broadcast("mr.changed", json!({ "taskId": task.id }));
+            };
+            match request {
+                None => stop(format!("The {word} is gone, so it will not merge by itself")),
+                Some(request) if request.state != "open" => {
+                    // Merged or closed by someone else: there is nothing left to wait for.
+                    let _ = self.store().set_setting(&auto_merge_key(&task.id), None);
+                    self.broadcast("mr.changed", json!({ "taskId": task.id }));
+                }
+                Some(request) if request.checks.state == "failed" => {
+                    stop(format!("The checks of the {word} failed, so it will not merge by itself"))
+                }
+                Some(request) if request.mergeable == Some(false) => {
+                    stop(format!("The {word} conflicts with its target, so it will not merge by itself"))
+                }
+                Some(request) if request.ready() => due.push((task.id.clone(), options)),
+                Some(_) => {}
+            }
+        }
+        due
+    }
+
+    /// Called when a request that was due did not merge after all.
+    pub fn auto_merge_failed(&self, task_id: &str, why: &str) {
+        let _ = self.store().set_setting(&auto_merge_key(task_id), None);
+        if self.store().task(task_id).is_ok() {
+            self.emit(
+                task_id,
+                json!({ "type": "tracker", "text": format!("It could not merge by itself: {why}"), "failed": true }),
+            );
+            self.broadcast("mr.changed", json!({ "taskId": task_id }));
+        }
+    }
+
+    /// Called when a request merged by itself: nothing is left to wait for.
+    pub fn auto_merge_done(&self, task_id: &str) {
+        let _ = self.store().set_setting(&auto_merge_key(task_id), None);
+    }
+
     pub fn requests_overview(self: &Arc<Self>) -> Result<Vec<Value>> {
         let mut wanted: Vec<(TaskRow, String, Remote)> = Vec::new();
         for task in self.store().tasks()? {

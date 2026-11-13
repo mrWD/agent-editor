@@ -5,6 +5,7 @@ import {
   answerPermission,
   cancelTurn,
   sendPrompt,
+  restoreFile,
   rewindTo,
   setTaskOption,
   spentOn,
@@ -253,6 +254,38 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             <button type="button" class="what link" onClick={() => showFile(edit().path)}>
               {edit().path}
             </button>
+          </div>
+        )}
+      </Match>
+      <Match when={entry.kind === 'file' && entry}>
+        {(did) => (
+          <div class="activity">
+            <Chip agentId="you" short="You" flat />
+            <span class="verb">{did().action === 'restored' ? 'put back' : did().action}</span>
+            <Show
+              when={did().action !== 'deleted' && did().action !== 'renamed'}
+              fallback={<span class="what plain">{did().path}</span>}
+            >
+              <button type="button" class="what link" onClick={() => showFile(did().path)}>
+                {did().path}
+              </button>
+            </Show>
+            <Show when={did().to}>
+              <span class="verb">to</span>
+              <button type="button" class="what link" onClick={() => showFile(did().to!)}>
+                {did().to}
+              </button>
+            </Show>
+            <Show when={did().keptAs}>
+              <button
+                type="button"
+                class="btn tiny"
+                title="The editor kept it. This puts it back where it was."
+                onClick={() => act(() => restoreFile(taskId(), did().keptAs!))}
+              >
+                Put it back
+              </button>
+            </Show>
           </div>
         )}
       </Match>

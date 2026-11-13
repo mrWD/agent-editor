@@ -254,6 +254,8 @@ impl Manager {
                 self.emit(&row.id, json!({ "type": "state", "state": TaskState::Asleep }));
             }
         }
+        // Deleted files are kept for a while, not for ever.
+        self.empty_old_trash();
         Ok(())
     }
 
@@ -899,6 +901,11 @@ impl Manager {
 
     /// Records that the user changed a file by hand: it shows in the
     /// conversation, and the agent is told with the next message.
+    /// Like `note_manual_edit`, for a change that is told to the conversation in its own words.
+    pub(crate) fn note_manual_quietly(&self, task_id: &str, path: &str) {
+        self.manual.lock().unwrap().entry(task_id.to_string()).or_default().insert(path.to_string());
+    }
+
     pub fn note_manual_edit(&self, task_id: &str, path: &str) {
         let first_since_last_turn =
             self.manual.lock().unwrap().entry(task_id.to_string()).or_default().insert(path.to_string());

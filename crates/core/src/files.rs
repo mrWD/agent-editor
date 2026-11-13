@@ -148,6 +148,164 @@ pub fn write_text(root: &Path, relative: &str, text: &str, expected_version: Opt
     })
 }
 
+/// Where a new file or folder goes. Unlike a save, the folders on the way may
+/// not exist yet; the deepest one that does must be inside `root`.
+fn resolve_new(root: &Path, relative: &str) -> Result<PathBuf> {
+    let root = root.canonicalize().with_context(|| format!("No such folder: {}", root.display()))?;
+    let relative = relative.trim().trim_matches(['/', '\\']);
+    if relative.is_empty() {
+        bail!("Give a name");
+    }
+    let mut target = root.clone();
+    for part in relative.split(['/', '\\']) {
+        if part.is_empty() || part == "." || part == ".." {
+            bail!("A name cannot have empty parts, \".\" or \"..\": {relative}");
+        }
+        target.push(part);
+    }
+    // Links on the way must not lead out of the task's folder.
+    let mut existing = target.as_path();
+    while !existing.exists() {
+        existing = existing.parent().context("Give a name")?;
+    }
+    if !existing.canonicalize()?.starts_with(&root) {
+        bail!("That path is outside the task's folder");
+    }
+    Ok(target)
+}
+
+/// Every file under `path` (or `path` itself when it is a file), relative to `root`.
+/// What git keeps for itself is left out.
+fn files_under(root: &Path, path: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut waiting = vec![path.to_path_buf()];
+    while let Some(next) = waiting.pop() {
+        if next.is_dir() && !next.is_symlink() {
+            if next.file_name().is_some_and(|name| name == ".git") {
+                continue;
+            }
+            if let Ok(entries) = std::fs::read_dir(&next) {
+                waiting.extend(entries.flatten().map(|entry| entry.path()));
+            }
+        } else {
+            found.push(relative_path(root, &next));
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Every file of a file or folder of the task, relative to the task's folder.
+pub fn files_of(root: &Path, relative: &str) -> Result<Vec<String>> {
+    let source = resolve(root, relative)?;
+    Ok(files_under(&root.canonicalize()?, &source))
+}
+
+/// Makes an empty file, or a folder, with the folders on the way to it.
+/// Returns its path as the task sees it.
+pub fn create(root: &Path, relative: &str, folder: bool) -> Result<String> {
+    let target = resolve_new(root, relative)?;
+    if target.exists() {
+        bail!("There is already something called {relative}");
+    }
+    if folder {
+        std::fs::create_dir_all(&target)?;
+    } else {
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::OpenOptions::new().write(true).create_new(true).open(&target)?;
+    }
+    Ok(relative_path(&root.canonicalize()?, &target))
+}
+
+/// Moves a file or folder to a new name. Returns the files that moved, as (from, to).
+pub fn rename(root: &Path, from: &str, to: &str) -> Result<Vec<(String, String)>> {
+    let canonical_root = root.canonicalize()?;
+    let source = resolve(root, from)?;
+    if source == canonical_root {
+        bail!("The task's folder itself cannot be renamed");
+    }
+    let target = resolve_new(root, to)?;
+    if target.exists() {
+        bail!("There is already something called {to}");
+    }
+    let before = files_under(&canonical_root, &source);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(&source, &target).with_context(|| format!("Could not rename {from}"))?;
+    let (old, new) = (relative_path(&canonical_root, &source), relative_path(&canonical_root, &target));
+    Ok(before
+        .into_iter()
+        .map(|path| {
+            let moved = format!("{new}{}", &path[old.len()..]);
+            (path, moved)
+        })
+        .collect())
+}
+
+/// Takes a file or folder out of the task and keeps it in `trash`, so it can
+/// be put back. Returns the files that went, and where the thing is kept.
+pub fn remove(root: &Path, relative: &str, trash: &Path) -> Result<(Vec<String>, PathBuf)> {
+    let canonical_root = root.canonicalize()?;
+    let source = resolve(root, relative)?;
+    if source == canonical_root {
+        bail!("The task's folder itself cannot be deleted");
+    }
+    if source.strip_prefix(&canonical_root).is_ok_and(|inside| inside.starts_with(".git")) {
+        bail!("That belongs to git and is left alone");
+    }
+    let files = files_under(&canonical_root, &source);
+    std::fs::create_dir_all(trash)?;
+    let kept = trash.join(source.file_name().context("Give a name")?);
+    move_across(&source, &kept).with_context(|| format!("Could not delete {relative}"))?;
+    Ok((files, kept))
+}
+
+/// Puts back what `remove` took out, if its place is still free.
+pub fn restore(root: &Path, relative: &str, kept: &Path) -> Result<Vec<String>> {
+    let target = resolve_new(root, relative)?;
+    if target.exists() {
+        bail!("There is something called {relative} again, so the deleted one cannot be put back in its place");
+    }
+    if !kept.exists() {
+        bail!("What was deleted is no longer kept");
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    move_across(kept, &target)?;
+    Ok(files_under(&root.canonicalize()?, &target))
+}
+
+/// Renames, or copies and removes when the two places are on different disks.
+fn move_across(from: &Path, to: &Path) -> Result<()> {
+    if std::fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    copy_all(from, to)?;
+    if from.is_dir() {
+        std::fs::remove_dir_all(from)?
+    } else {
+        std::fs::remove_file(from)?
+    }
+    Ok(())
+}
+
+fn copy_all(from: &Path, to: &Path) -> Result<()> {
+    if from.is_dir() && !from.is_symlink() {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            copy_all(&entry.path(), &to.join(entry.file_name()))?;
+        }
+    } else {
+        std::fs::copy(from, to)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

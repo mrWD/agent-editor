@@ -60,6 +60,16 @@ export type Diff = { path: string; oldText: string; newText: string };
 export type FeedItem =
   | { kind: 'user'; text: string; edited: string[]; at: number }
   | { kind: 'edit'; path: string; at: number }
+  | {
+      /** The user made, renamed or deleted a file in the tree. */
+      kind: 'file';
+      action: 'created' | 'renamed' | 'deleted' | 'restored';
+      path: string;
+      to: string | null;
+      /** For a deletion: the name it is kept under, until it is put back. */
+      keptAs: string | null;
+      at: number;
+    }
   | { kind: 'git'; action: string; subject: string; short: string; at: number }
   | { kind: 'tracker'; text: string; failed: boolean; at: number }
   | { kind: 'agent'; text: string; at: number }
@@ -240,6 +250,23 @@ export function applyEvent(task: Task, event: any) {
     case 'user_edit':
       feed.push({ kind: 'edit', path: String(event.path), at });
       return;
+    case 'user_file': {
+      const keptAs = typeof event.keptAs === 'string' ? event.keptAs : null;
+      if (event.action === 'restored') {
+        // The deletion it takes back has nothing left to put back.
+        const deleted = feed.findLast((entry) => entry.kind === 'file' && entry.keptAs === keptAs);
+        if (deleted && deleted.kind === 'file') deleted.keptAs = null;
+      }
+      feed.push({
+        kind: 'file',
+        action: event.action,
+        path: String(event.path),
+        to: typeof event.to === 'string' ? event.to : null,
+        keptAs: event.action === 'deleted' ? keptAs : null,
+        at,
+      });
+      return;
+    }
     case 'tracker':
       feed.push({ kind: 'tracker', text: String(event.text ?? ''), failed: Boolean(event.failed), at });
       return;
@@ -601,6 +628,25 @@ export function readFile(taskId: string, path: string) {
  */
 export function writeFile(taskId: string, path: string, text: string, version: string | null) {
   return core.request<{ file: FileText; review: FileReview }>('files.write', { taskId, path, text, version });
+}
+
+/** Makes an empty file, or a folder, in a task. Returns its path. */
+export async function createFile(taskId: string, path: string, folder: boolean): Promise<string> {
+  return (await core.request<{ path: string }>('files.create', { taskId, path, folder })).path;
+}
+
+/** Renames or moves a file or folder. Returns every file that moved. */
+export function renameFile(taskId: string, from: string, to: string) {
+  return core.request<{ moved: { from: string; to: string }[]; to: string }>('files.rename', { taskId, from, to });
+}
+
+/** Deletes a file or folder. It is kept by the editor and can be put back with `restoreFile`. */
+export function deleteFile(taskId: string, path: string) {
+  return core.request<{ files: string[]; keptAs: string }>('files.delete', { taskId, path });
+}
+
+export function restoreFile(taskId: string, keptAs: string) {
+  return core.request<{ path: string; files: string[] }>('files.restore', { taskId, keptAs });
 }
 
 export function keepFile(taskId: string, path: string) {

@@ -58,7 +58,7 @@ test.describe('Files and the editor', () => {
     await app.openFile(APP_FILE);
     await expect(openFiles).toContainText('TypeScript');
     await expect(openFiles.getByRole('tab')).toHaveText(['README.md', 'app.ts']);
-    await expect(app.files.getByRole('button', { name: 'app.ts' })).toHaveAttribute('aria-current', 'true');
+    await expect(app.files.getByRole('button', { name: /^app\.ts/ })).toHaveAttribute('aria-current', 'true');
     // The words of the language are coloured: each stands in an element of its own.
     await expect(app.editor.locator('span', { hasText: /^export$/ }).first()).toBeVisible();
     await expect(app.page.getByText('Line 1, column 1')).toBeVisible();
@@ -68,7 +68,7 @@ test.describe('Files and the editor', () => {
     await expect(app.editor).toContainText('# Shop');
     await expect(openFiles).toContainText('Markdown');
 
-    await app.files.getByRole('button', { name: 'logo.bin' }).click();
+    await app.files.getByRole('button', { name: /^logo\.bin/ }).click();
     await expect(app.page.getByRole('heading', { name: 'This file cannot be shown' })).toBeVisible();
   });
 

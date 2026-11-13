@@ -36,12 +36,16 @@ import {
   type FileEntry,
   type FileReview,
   type Task,
+  createFile,
+  deleteFile,
+  renameFile,
 } from '../core/store';
 import {
   bottomHeight,
   bottomOpen,
   openRequest,
   registerSaver,
+  saveAll,
   setBottomHeight,
   setBottomOpen,
   setWork,
@@ -108,16 +112,42 @@ function ChangeBadges(props: { review: FileReview | undefined; task: Task }): JS
 
 type Folder = { entries: FileEntry[]; open: boolean; loading: boolean; problem: string | null };
 
-function FileTree(props: { task: Task; current: string | null; onOpen: (path: string) => void }): JSX.Element {
+/** What is being named in the tree: a new file or folder inside `at`, or the entry `at` itself. */
+type Naming = { kind: 'file' | 'folder' | 'rename'; at: string };
+
+const parentOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
+
+function FileTree(props: {
+  task: Task;
+  current: string | null;
+  onOpen: (path: string) => void;
+  /** Files that got a new name, so open tabs can follow them. */
+  onMoved: (moved: { from: string; to: string }[]) => void;
+  /** Files that are gone, so their tabs can close. */
+  onGone: (paths: string[]) => void;
+}): JSX.Element {
+  // eslint-disable-next-line solid/reactivity -- this component is made anew for each task
+  const taskId = props.task.info.id;
   const [folders, setFolders] = createStore<Record<string, Folder>>({});
+  const [naming, setNaming] = createSignal<Naming | null>(null);
+  const [name, setName] = createSignal('');
+  const [problem, setProblem] = createSignal<string | null>(null);
+  const [armed, setArmed] = createSignal<string | null>(null);
+  const [busy, setBusy] = createSignal(false);
+  let nameEl: HTMLInputElement | undefined;
 
   const load = async (path: string, quiet = false) => {
     if (!quiet) setFolders(path, { entries: [], open: true, loading: true, problem: null });
     try {
-      const result = await listFiles(props.task.info.id, path);
+      const result = await listFiles(taskId, path);
       setFolders(path, { entries: result.entries, open: folders[path]?.open ?? true, loading: false, problem: null });
     } catch (error) {
       if (!quiet) setFolders(path, { entries: [], open: true, loading: false, problem: message(error) });
+    }
+  };
+  const reloadAll = () => {
+    for (const [path, folder] of Object.entries(folders)) {
+      if (folder && !folder.loading) void load(path, true);
     }
   };
 
@@ -127,20 +157,114 @@ function FileTree(props: { task: Task; current: string | null; onOpen: (path: st
     else setFolders(path, 'open', !folder.open);
   };
 
-  onMount(() => void load(''));
+  onMount(() => {
+    void load('');
+    // Files made, renamed or deleted in any window show here at once.
+    // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
+    const stop = core.onEvent((event) => {
+      if (event.event === 'files.changed' && event.data.taskId === taskId) reloadAll();
+    });
+    onCleanup(stop);
+  });
 
   // Files may appear and disappear when something changes: read the open folders again.
   const reviewed = (path: string) => props.task.changed.find((file) => file.path === path);
   createEffect(
-    on(
-      () => props.task.changed.map((file) => `${file.path}:${file.exists}`).join('|'),
-      () => {
-        for (const [path, folder] of Object.entries(folders)) {
-          if (folder && !folder.loading) void load(path, true);
+    on(() => props.task.changed.map((file) => `${file.path}:${file.exists}`).join('|'), reloadAll, { defer: true }),
+  );
+
+  const startNaming = (next: Naming, value: string) => {
+    setProblem(null);
+    setArmed(null);
+    setName(value);
+    setNaming(next);
+    // A new entry is typed inside its folder, so the folder has to be open.
+    if (next.kind !== 'rename' && next.at !== '') {
+      if (!folders[next.at]) void load(next.at);
+      else setFolders(next.at, 'open', true);
+    }
+  };
+  const stopNaming = () => {
+    setNaming(null);
+    setProblem(null);
+  };
+
+  const apply = async () => {
+    const what = naming();
+    const typed = name().trim();
+    if (!what || busy()) return;
+    if (typed === '') return stopNaming();
+    setBusy(true);
+    setProblem(null);
+    try {
+      if (what.kind === 'rename') {
+        const to = [parentOf(what.at), typed].filter(Boolean).join('/');
+        if (to !== what.at) {
+          // What was typed in the file goes with it under its new name.
+          await saveAll(taskId);
+          props.onMoved((await renameFile(taskId, what.at, to)).moved);
         }
-      },
-      { defer: true },
-    ),
+      } else {
+        const path = [what.at, typed].filter(Boolean).join('/');
+        const made = await createFile(taskId, path, what.kind === 'folder');
+        if (what.kind === 'file') props.onOpen(made);
+      }
+      setNaming(null);
+      reloadAll();
+    } catch (error) {
+      setProblem(message(error));
+    } finally {
+      setBusy(false);
+      // The box was switched off while the core was asked; the caret goes back so the name can be put right.
+      setTimeout(() => nameEl?.focus(), 0);
+    }
+  };
+
+  // A first press that is not followed by a second one is forgotten after a moment.
+  let disarm: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(disarm));
+  const remove = async (path: string) => {
+    clearTimeout(disarm);
+    if (armed() !== path) {
+      setArmed(path);
+      disarm = setTimeout(() => armed() === path && setArmed(null), 4000);
+      return;
+    }
+    setArmed(null);
+    setProblem(null);
+    try {
+      props.onGone((await deleteFile(taskId, path)).files);
+      reloadAll();
+    } catch (error) {
+      setProblem(message(error));
+    }
+  };
+
+  /** The box a name is typed in. Enter applies, Escape gives up, leaving the box applies too. */
+  const nameBox = (label: string, depth: number): JSX.Element => (
+    <div class="tree-line" style={{ 'padding-left': `${6 + depth * 14}px` }}>
+      <input
+        class="tree-name"
+        aria-label={label}
+        value={name()}
+        disabled={busy()}
+        ref={(el) => {
+          nameEl = el;
+          setTimeout(() => {
+            el.focus();
+            // In a rename the name without its ending is what is usually changed.
+            const dot = el.value.lastIndexOf('.');
+            el.setSelectionRange(0, naming()?.kind === 'rename' && dot > 0 ? dot : el.value.length);
+          }, 0);
+        }}
+        onInput={(event) => setName(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') void apply();
+          if (event.key === 'Escape') stopNaming();
+        }}
+        onBlur={() => (problem() ? undefined : void apply())}
+      />
+    </div>
   );
 
   const level = (path: string, depth: number): JSX.Element => (
@@ -157,7 +281,10 @@ function FileTree(props: { task: Task; current: string | null; onOpen: (path: st
               {folder().problem}
             </span>
           </Show>
-          <Show when={!folder().loading && !folder().problem && folder().entries.length === 0}>
+          <Show when={naming()?.kind !== 'rename' && naming()?.at === path}>
+            {nameBox(naming()!.kind === 'folder' ? 'Name of the new folder' : 'Name of the new file', depth)}
+          </Show>
+          <Show when={!folder().loading && !folder().problem && folder().entries.length === 0 && naming()?.at !== path}>
             <span class="tree-note" style={{ 'padding-left': `${6 + depth * 14}px` }}>
               Empty
             </span>
@@ -165,22 +292,63 @@ function FileTree(props: { task: Task; current: string | null; onOpen: (path: st
           <For each={folder().entries}>
             {(entry) => (
               <>
-                <button
-                  type="button"
-                  class="tree-row"
-                  style={{ 'padding-left': `${6 + depth * 14}px` }}
-                  aria-current={entry.path === props.current ? 'true' : undefined}
-                  aria-expanded={entry.isDir ? Boolean(folders[entry.path]?.open) : undefined}
-                  onClick={() => (entry.isDir ? toggle(entry.path) : props.onOpen(entry.path))}
+                <Show
+                  when={naming()?.kind === 'rename' && naming()!.at === entry.path}
+                  fallback={
+                    <div class="tree-line">
+                      <button
+                        type="button"
+                        class="tree-row"
+                        style={{ 'padding-left': `${6 + depth * 14}px` }}
+                        aria-current={entry.path === props.current ? 'true' : undefined}
+                        aria-expanded={entry.isDir ? Boolean(folders[entry.path]?.open) : undefined}
+                        onClick={() => (entry.isDir ? toggle(entry.path) : props.onOpen(entry.path))}
+                      >
+                        <span class="label">
+                          {entry.name}
+                          {entry.isDir ? '/' : ''}
+                        </span>
+                        <Show when={!entry.isDir}>
+                          <ChangeBadges review={reviewed(entry.path)} task={props.task} />
+                        </Show>
+                      </button>
+                      <span class="tree-actions" classList={{ shown: armed() === entry.path }}>
+                        <Show when={entry.isDir}>
+                          <button
+                            type="button"
+                            aria-label={`New file in ${entry.path}`}
+                            title="New file in this folder"
+                            onClick={() => startNaming({ kind: 'file', at: entry.path }, '')}
+                          >
+                            <Icon.Plus />
+                          </button>
+                        </Show>
+                        <button
+                          type="button"
+                          aria-label={`Rename ${entry.path}`}
+                          title="Rename"
+                          onClick={() => startNaming({ kind: 'rename', at: entry.path }, entry.name)}
+                        >
+                          <Icon.Pencil />
+                        </button>
+                        <button
+                          type="button"
+                          class={armed() === entry.path ? 'sure' : undefined}
+                          aria-label={armed() === entry.path ? `Really delete ${entry.path}?` : `Delete ${entry.path}`}
+                          title={armed() === entry.path ? 'Press again to delete. It can be put back.' : 'Delete'}
+                          onClick={() => void remove(entry.path)}
+                          onBlur={() => armed() === entry.path && setArmed(null)}
+                        >
+                          <Show when={armed() === entry.path} fallback={<Icon.Trash />}>
+                            Delete?
+                          </Show>
+                        </button>
+                      </span>
+                    </div>
+                  }
                 >
-                  <span class="label">
-                    {entry.name}
-                    {entry.isDir ? '/' : ''}
-                  </span>
-                  <Show when={!entry.isDir}>
-                    <ChangeBadges review={reviewed(entry.path)} task={props.task} />
-                  </Show>
-                </button>
+                  {nameBox(`New name of ${entry.path}`, depth)}
+                </Show>
                 <Show when={entry.isDir && folders[entry.path]?.open}>{level(entry.path, depth + 1)}</Show>
               </>
             )}
@@ -190,7 +358,27 @@ function FileTree(props: { task: Task; current: string | null; onOpen: (path: st
     </Show>
   );
 
-  return <div class="tree">{level('', 0)}</div>;
+  return (
+    <div class="tree">
+      <div class="tree-tools">
+        <button type="button" class="btn tiny ghost" onClick={() => startNaming({ kind: 'file', at: '' }, '')}>
+          New file
+        </button>
+        <button type="button" class="btn tiny ghost" onClick={() => startNaming({ kind: 'folder', at: '' }, '')}>
+          New folder
+        </button>
+      </div>
+      <Show when={problem()}>
+        <p class="tree-problem" role="alert">
+          <span class="grow">{problem()}</span>
+          <button type="button" class="btn tiny" onClick={stopNaming}>
+            Dismiss
+          </button>
+        </p>
+      </Show>
+      {level('', 0)}
+    </div>
+  );
 }
 
 /** The files that are not as they were at the last review, as a flat list. */
@@ -432,6 +620,30 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
     await Promise.all(files.filter((file) => file.dirty).map((file) => save(file.path)));
   };
 
+  /** Closes the tabs of files that are gone. There is nothing left to save them to. */
+  const drop = (paths: string[]) => {
+    const gone = new Set(paths);
+    if (!files.some((file) => gone.has(file.path))) return;
+    const index = files.findIndex((file) => file.path === current());
+    for (const file of files.filter((one) => gone.has(one.path))) host?.close(file.path);
+    const rest = files.filter((file) => !gone.has(file.path));
+    setFiles(rest);
+    if (current() !== null && gone.has(current()!)) setCurrent(rest[Math.max(0, index - 1)]?.path ?? null);
+    rememberTabs();
+    publish();
+  };
+
+  /** Files got new names: their tabs are opened again under them. */
+  const follow = async (moved: { from: string; to: string }[]) => {
+    const shown = current();
+    const open_ = moved.filter((one) => fileAt(one.from));
+    drop(open_.map((one) => one.from));
+    for (const one of open_) await open(one.to);
+    const next = moved.find((one) => one.from === shown);
+    if (next) setCurrent(next.to);
+    else if (shown !== null && fileAt(shown)) setCurrent(shown);
+  };
+
   const close = async (path: string) => {
     // What was typed is never thrown away: closing a tab saves it first.
     if (fileAt(path)?.dirty) await save(path);
@@ -614,7 +826,13 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
           </button>
         </div>
         <div style={{ display: listing() === 'all' ? undefined : 'none' }}>
-          <FileTree task={props.task} current={current()} onOpen={(path) => void open(path)} />
+          <FileTree
+            task={props.task}
+            current={current()}
+            onOpen={(path) => void open(path)}
+            onMoved={(moved) => void follow(moved)}
+            onGone={(paths) => void drop(paths)}
+          />
         </div>
         <Show when={listing() === 'changed'}>
           <ChangedList

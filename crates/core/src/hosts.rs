@@ -148,6 +148,75 @@ pub struct Request {
     pub review: &'static str,
 }
 
+/// What a reviewer wrote about a line of a pull request or merge request, and nobody has settled yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    /// What the host needs to answer it.
+    pub id: String,
+    pub author: String,
+    /// The file and line it is about, when it is about a line.
+    pub path: Option<String>,
+    pub line: Option<u64>,
+    pub body: String,
+    pub url: String,
+}
+
+/// The open review threads of a pull request, asked of GitHub in one question.
+const GITHUB_THREADS: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(first:1){nodes{databaseId author{login} path line originalLine body url}}}}}}}";
+
+/// Review threads as GitHub's GraphQL answers them. Settled threads are left out.
+pub fn parse_github_comments(json: &str) -> Result<Vec<Comment>> {
+    let value: Value = serde_json::from_str(json).context("GitHub's answer is not JSON")?;
+    let threads = value
+        .pointer("/data/repository/pullRequest/reviewThreads/nodes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("GitHub's answer has no review threads in it"))?;
+    let mut comments = Vec::new();
+    for thread in threads.iter().filter(|thread| thread["isResolved"] != true) {
+        let first = &thread["comments"]["nodes"][0];
+        let Some(id) = first["databaseId"].as_u64() else { continue };
+        comments.push(Comment {
+            id: id.to_string(),
+            author: first["author"]["login"].as_str().unwrap_or("someone").to_string(),
+            path: first["path"].as_str().map(str::to_string),
+            line: first["line"].as_u64().or_else(|| first["originalLine"].as_u64()),
+            body: first["body"].as_str().unwrap_or_default().trim().to_string(),
+            url: first["url"].as_str().unwrap_or_default().to_string(),
+        });
+    }
+    Ok(comments)
+}
+
+/// Discussions of a merge request as GitLab's API lists them. Settled ones and
+/// GitLab's own notes ("changed the description") are left out.
+pub fn parse_gitlab_comments(json: &str) -> Result<Vec<Comment>> {
+    let value: Value = serde_json::from_str(json).context("GitLab's answer is not JSON")?;
+    let discussions = value.as_array().ok_or_else(|| anyhow!("GitLab's answer is not a list of discussions"))?;
+    let mut comments = Vec::new();
+    for discussion in discussions {
+        let first = &discussion["notes"][0];
+        if first["system"] == true || first["resolvable"] != true || first["resolved"] == true {
+            continue;
+        }
+        let Some(id) = discussion["id"].as_str() else { continue };
+        comments.push(Comment {
+            id: id.to_string(),
+            author: first["author"]["username"].as_str().unwrap_or("someone").to_string(),
+            path: first["position"]["new_path"].as_str().map(str::to_string),
+            line: first["position"]["new_line"].as_u64().or_else(|| first["position"]["old_line"].as_u64()),
+            body: first["body"].as_str().unwrap_or_default().trim().to_string(),
+            url: String::new(),
+        });
+    }
+    Ok(comments)
+}
+
+/// A GitLab project's path as its API wants it: `group/sub/name` with the slashes written out.
+fn gitlab_project(slug: &str) -> String {
+    slug.replace('/', "%2F")
+}
+
 impl Request {
     /// Open, no conflicts, checks green or absent, and nobody asked for changes.
     pub fn ready(&self) -> bool {
@@ -651,6 +720,62 @@ impl Hosts {
     }
 
     /// Merges a request. With `delete_branch` the branch is removed on the host afterwards.
+    /// What reviewers wrote about lines of a request and nobody has settled yet.
+    pub fn comments(&self, remote: &Remote, number: u64) -> Result<Vec<Comment>> {
+        match remote.kind {
+            HostKind::GitHub => {
+                let (owner, name) = remote.slug.split_once('/').ok_or_else(|| anyhow!("Odd repository name"))?;
+                let json = self.run(
+                    HostKind::GitHub,
+                    &[
+                        "api",
+                        "graphql",
+                        "--hostname",
+                        &remote.host,
+                        "-f",
+                        &format!("query={GITHUB_THREADS}"),
+                        "-F",
+                        &format!("owner={owner}"),
+                        "-F",
+                        &format!("name={name}"),
+                        "-F",
+                        &format!("number={number}"),
+                    ],
+                )?;
+                parse_github_comments(&json)
+            }
+            HostKind::GitLab => {
+                let path = format!(
+                    "projects/{}/merge_requests/{number}/discussions?per_page=100",
+                    gitlab_project(&remote.slug)
+                );
+                parse_gitlab_comments(&self.run(HostKind::GitLab, &["api", "--hostname", &remote.host, &path])?)
+            }
+        }
+    }
+
+    /// Answers a reviewer's comment in its own thread.
+    pub fn reply(&self, remote: &Remote, number: u64, comment_id: &str, body: &str) -> Result<()> {
+        if !comment_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            bail!("No such comment");
+        }
+        let text = format!("body={body}");
+        match remote.kind {
+            HostKind::GitHub => {
+                let path = format!("repos/{}/pulls/{number}/comments/{comment_id}/replies", remote.slug);
+                self.run(HostKind::GitHub, &["api", "--hostname", &remote.host, "-X", "POST", &path, "-f", &text])?;
+            }
+            HostKind::GitLab => {
+                let path = format!(
+                    "projects/{}/merge_requests/{number}/discussions/{comment_id}/notes",
+                    gitlab_project(&remote.slug)
+                );
+                self.run(HostKind::GitLab, &["api", "--hostname", &remote.host, "-X", "POST", &path, "-f", &text])?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn merge_request(&self, remote: &Remote, number: u64, squash: bool, delete_branch: bool) -> Result<()> {
         let number = number.to_string();
         match remote.kind {
@@ -679,6 +804,33 @@ impl Hosts {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn review_comments_are_read_and_settled_ones_left_out() {
+        let github = r#"{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[
+            {"isResolved":false,"comments":{"nodes":[{"databaseId":55,"author":{"login":"anna"},"path":"src/a.ts","line":5,"originalLine":4,"body":" Should the limit come from config? ","url":"https://github.com/o/n/pull/1#discussion_r55"}]}},
+            {"isResolved":true,"comments":{"nodes":[{"databaseId":56,"author":{"login":"anna"},"path":"src/b.ts","line":1,"body":"done","url":""}]}},
+            {"isResolved":false,"comments":{"nodes":[{"databaseId":57,"author":null,"path":"src/c.ts","line":null,"originalLine":12,"body":"On a line that is gone","url":""}]}}
+        ]}}}}}"#;
+        let comments = super::parse_github_comments(github).unwrap();
+        assert_eq!(comments.len(), 2);
+        assert_eq!((comments[0].id.as_str(), comments[0].author.as_str()), ("55", "anna"));
+        assert_eq!((comments[0].path.as_deref(), comments[0].line), (Some("src/a.ts"), Some(5)));
+        assert_eq!(comments[0].body, "Should the limit come from config?");
+        assert_eq!((comments[1].author.as_str(), comments[1].line), ("someone", Some(12)));
+        assert!(super::parse_github_comments("{}").is_err());
+
+        let gitlab = r#"[
+            {"id":"abc123","notes":[{"system":false,"resolvable":true,"resolved":false,"author":{"username":"boris"},"body":"Put the limiter on /register too.","position":{"new_path":"routes/auth.ts","new_line":12}}]},
+            {"id":"sys","notes":[{"system":true,"resolvable":false,"body":"changed the description"}]},
+            {"id":"done","notes":[{"system":false,"resolvable":true,"resolved":true,"author":{"username":"boris"},"body":"ok"}]}
+        ]"#;
+        let comments = super::parse_gitlab_comments(gitlab).unwrap();
+        assert_eq!(comments.len(), 1);
+        assert_eq!((comments[0].id.as_str(), comments[0].author.as_str()), ("abc123", "boris"));
+        assert_eq!((comments[0].path.as_deref(), comments[0].line), (Some("routes/auth.ts"), Some(12)));
+        assert_eq!(super::gitlab_project("group/sub/name"), "group%2Fsub%2Fname");
+    }
+
     use super::*;
 
     #[test]

@@ -145,6 +145,36 @@ const stroke = {
 } as const;
 
 export const Icon = {
+  Pencil: () => (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10.5 3l2.5 2.5L6 12.5l-3 .5.5-3z" />
+    </svg>
+  ),
+  Trash: () => (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8.5h6l.5-8.5" />
+    </svg>
+  ),
   Inbox: () => (
     <svg width="16" height="16" viewBox="0 0 16 16" {...stroke} stroke-width="1.5" aria-hidden="true">
       <path d="M2 9l2-6h8l2 6v4H2V9z" />

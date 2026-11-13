@@ -429,6 +429,32 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             Ok(json!({}))
         }
 
+        "files.create" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let path = text_param(params, "path")?.to_string();
+            let folder = params.get("folder").and_then(Value::as_bool).unwrap_or(false);
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.file_create(&task_id, &path, folder)).await?
+        }
+        "files.rename" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let from = text_param(params, "from")?.to_string();
+            let to = text_param(params, "to")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.file_rename(&task_id, &from, &to)).await?
+        }
+        "files.delete" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let path = text_param(params, "path")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.file_delete(&task_id, &path)).await?
+        }
+        "files.restore" => {
+            let task_id = text_param(params, "taskId")?.to_string();
+            let kept = text_param(params, "keptAs")?.to_string();
+            let manager = manager.clone();
+            tokio::task::spawn_blocking(move || manager.file_restore(&task_id, &kept)).await?
+        }
         "files.list" => {
             let root = manager.cwd(text_param(params, "taskId")?)?;
             let path = params.get("path").and_then(Value::as_str).unwrap_or("").to_string();

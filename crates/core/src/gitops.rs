@@ -685,6 +685,70 @@ pub fn diff_between(root: &Path, from: &str, to: &str, path: &str) -> Result<Fil
     }
 }
 
+/// One change to a file, as line numbers on both sides and the lines themselves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stretch {
+    /// The first line taken out, as numbered before. For a change that only
+    /// adds lines, the line after which they were put in, plus one.
+    pub old_start: usize,
+    pub old_len: usize,
+    /// The first line put in, as numbered after.
+    pub new_start: usize,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+/// Every change between two snapshots, commits or trees, file by file, with
+/// no lines around them: exactly which lines each side touched.
+pub fn stretches_between(root: &Path, from: &str, to: &str) -> Result<HashMap<String, Vec<Stretch>>> {
+    let text = git(root, &["diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", from, to, "--"])?;
+    Ok(parse_stretches(&text))
+}
+
+fn parse_stretches(text: &str) -> HashMap<String, Vec<Stretch>> {
+    let mut files: HashMap<String, Vec<Stretch>> = HashMap::new();
+    let mut path = String::new();
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("diff --git ") {
+            path = rest.split(" b/").last().unwrap_or(rest).to_string();
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
+            path = rest.to_string();
+        } else if let Some(rest) = line.strip_prefix("@@ ") {
+            let mut parts = rest.split(' ');
+            let (old_start, old_len) = parse_range(parts.next().unwrap_or("-0").trim_start_matches('-'));
+            let (new_start, _) = parse_range(parts.next().unwrap_or("+0").trim_start_matches('+'));
+            // For an addition git names the line before it; the change itself begins one further.
+            let old_start = if old_len == 0 { old_start + 1 } else { old_start };
+            files.entry(path.clone()).or_default().push(Stretch {
+                old_start,
+                old_len,
+                new_start,
+                added: Vec::new(),
+                removed: Vec::new(),
+            });
+        } else if let Some(stretch) = files.get_mut(&path).and_then(|list| list.last_mut()) {
+            if let Some(added) = line.strip_prefix('+') {
+                stretch.added.push(added.to_string());
+            } else if let Some(removed) = line.strip_prefix('-') {
+                stretch.removed.push(removed.to_string());
+            }
+        }
+    }
+    files
+}
+
+/// The commit a ref or a working copy's HEAD points at.
+pub fn commit_of(root: &Path, name: &str) -> Option<String> {
+    rev(root, name)
+}
+
+/// The newest commit two commits both come from.
+pub fn common_start(root: &Path, a: &str, b: &str) -> Option<String> {
+    let text = git(root, &["merge-base", a, b]).ok()?;
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
 /// A file's bytes as they were in a snapshot or commit. `None` when it was not there.
 pub fn bytes_at(root: &Path, rev_name: &str, path: &str) -> Result<Option<Vec<u8>>> {
     let output = run(root, &["cat-file", "blob", &format!("{rev_name}:{path}")])?;
@@ -711,6 +775,24 @@ pub fn commits_since(root: &Path, from: &str) -> Vec<(String, String)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn changes_without_context_say_exactly_which_lines_each_side_touched() {
+        let patch = "diff --git a/src/a.ts b/src/a.ts\nindex 1..2 100644\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -3,0 +4,2 @@ import x\n+one\n+two\n@@ -12 +14 @@\n-old\n+new\n@@ -20,2 +21,0 @@\n-gone\n-too\n";
+        let files = super::parse_stretches(patch);
+        let list = &files["src/a.ts"];
+        assert_eq!(list.len(), 3);
+        // Two lines put in after line 3: the change sits at line 4 of the old text and takes nothing out.
+        assert_eq!((list[0].old_start, list[0].old_len, list[0].new_start), (4, 0, 4));
+        assert_eq!(list[0].added, ["one", "two"]);
+        assert_eq!((list[1].old_start, list[1].old_len, list[1].new_start), (12, 1, 14));
+        assert_eq!(
+            (list[1].removed.as_slice(), list[1].added.as_slice()),
+            (&["old".to_string()][..], &["new".to_string()][..])
+        );
+        assert_eq!((list[2].old_start, list[2].old_len), (20, 2));
+        assert!(list[2].added.is_empty());
+    }
+
     use super::*;
     use std::path::PathBuf;
 
