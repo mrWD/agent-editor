@@ -3,9 +3,13 @@ import { layoutFlow } from './flow';
 import {
   countsLine,
   describeBlock,
+  filesOf,
   hasStateLine,
+  isTestFile,
   layoutPlan,
+  linesOf,
   movedBy,
+  proofOf,
   stateWord,
   type Block,
   type PlanArrow,
@@ -154,5 +158,61 @@ describe('laying a plan out', () => {
     expect(movedBy('M 220 140 H 275', 0, 100)).toBe('M 220 240 H 275');
     expect(movedBy('M 110 56 V 76 H 300 V 91', 20, 10)).toBe('M 130 66 V 86 H 320 V 101');
     expect(movedBy('M 200 34 H 416 V 180 H 205', 5, 6)).toBe('M 205 40 H 421 V 186 H 210');
+  });
+});
+
+describe('where a block was built and what proves it', () => {
+  it('says one line or a stretch of lines', () => {
+    expect(linesOf({ path: 'a.ts', line: 3 })).toBe('line 3');
+    expect(linesOf({ path: 'a.ts', line: 3, to: 3 })).toBe('line 3');
+    expect(linesOf({ path: 'a.ts', line: 4, to: 9 })).toBe('lines 4 to 9');
+    expect(linesOf({ path: 'a.ts', line: null })).toBe('');
+  });
+
+  it('names each file once, with all its stretches', () => {
+    const files = filesOf({
+      files: [
+        { path: 'src/a.ts', line: 4, to: 9 },
+        { path: 'src/b.ts', line: null },
+        { path: 'src/a.ts', line: 20, to: 22 },
+        { path: 'src/c.ts', line: 1, to: 1 },
+        { path: 'src/c.ts', line: 5, to: 6 },
+        { path: 'src/c.ts', line: 9, to: 9 },
+      ],
+    });
+    expect(files.map((one) => [one.place.path, one.words])).toEqual([
+      ['src/a.ts', 'lines 4 to 9 and 20 to 22'],
+      ['src/b.ts', ''],
+      ['src/c.ts', 'line 1, 5 to 6, 9'],
+    ]);
+  });
+
+  it('knows a test file by its name', () => {
+    for (const path of [
+      'tests/limit.ts',
+      'src/__tests__/a.ts',
+      'src/a.test.ts',
+      'a.spec.js',
+      'pkg/limit_test.go',
+      'x/test_limit.py',
+    ]) {
+      expect(isTestFile(path), path).toBe(true);
+    }
+    for (const path of ['src/latest.ts', 'src/contest/a.ts', 'attest.ts', 'src/a.ts']) {
+      expect(isTestFile(path), path).toBe(false);
+    }
+  });
+
+  it('takes the tests the agent named and the test files the turn changed as proof', () => {
+    const proof = proofOf({
+      proved: ['answers 429 on the sixth attempt'],
+      files: [
+        { path: 'src/limit.ts', line: 3, to: 3 },
+        { path: 'tests/limit.test.ts', line: 1, to: 9 },
+      ],
+    });
+    expect(proof.tests).toEqual(['answers 429 on the sixth attempt']);
+    expect(proof.files.map((place) => place.path)).toEqual(['tests/limit.test.ts']);
+    expect(proofOf({ files: [] })).toEqual({ tests: [], files: [] });
   });
 });

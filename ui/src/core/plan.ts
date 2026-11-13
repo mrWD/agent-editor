@@ -20,8 +20,8 @@ export type BlockKind = 'step' | 'ask' | 'note';
  */
 export type BlockState = 'planned' | 'building' | 'built' | 'proposed' | 'yours' | 'before';
 
-/** A file of the task, and a line in it when that is known. */
-export type Place = { path: string; line: number | null };
+/** A file of the task, and a line in it when that is known; `to` is the last line when it is a stretch of lines. */
+export type Place = { path: string; line: number | null; to?: number | null };
 
 export type Block = {
   id: string;
@@ -40,6 +40,8 @@ export type Block = {
   files: Place[];
   /** Where a block an agent wrote came from. `null` for the user's own. */
   from: 'draft' | 'build' | 'code' | null;
+  /** The tests the agent named as proof that the built block works. */
+  proved?: string[];
 };
 
 export type PlanArrow = { from: string; to: string; label: string | null };
@@ -128,6 +130,39 @@ export const draftPlan = (taskId: string, from: 'issue' | 'code') => command('dr
 // ----- words -----
 
 const kindWord: Record<BlockKind, string> = { step: 'Step', ask: 'Question', note: 'Note' };
+
+/** "line 3" or "lines 4 to 9": where in its file a place is, or nothing when no line is known. */
+export function linesOf(place: Place): string {
+  if (!place.line) return '';
+  return place.to && place.to > place.line ? `lines ${place.line} to ${place.to}` : `line ${place.line}`;
+}
+
+/** The files of a block, each once, with all its stretches of lines in words. */
+export function filesOf(block: Pick<Block, 'files'>): { place: Place; words: string }[] {
+  const byPath = new Map<string, Place[]>();
+  for (const place of block.files) byPath.set(place.path, [...(byPath.get(place.path) ?? []), place]);
+  return [...byPath.values()].map((places) => {
+    const said = places.map(linesOf).filter(Boolean);
+    // "lines 4 to 9 and 20 to 22": the word is said once.
+    const words = said
+      .map((one, index) => (index === 0 ? one : one.replace(/^lines? /, '')))
+      .join(said.length > 2 ? ', ' : ' and ');
+    return { place: places[0]!, words };
+  });
+}
+
+/** Whether a file is a test by its name: in a tests folder, or called `*.test.*`, `*.spec.*`, `*_test.*`, `test_*`. */
+export function isTestFile(path: string): boolean {
+  return /(^|\/)(tests?|__tests__|specs?)\/|\.(test|spec)\.[a-z]+$|_test\.[a-z]+$|(^|\/)test_[^/]+$/i.test(path);
+}
+
+/** What shows that a built block works: the tests the agent named, and the test files its turn changed. */
+export function proofOf(block: Pick<Block, 'files' | 'proved'>): { tests: string[]; files: Place[] } {
+  const files = filesOf(block)
+    .map((one) => one.place)
+    .filter((place) => isTestFile(place.path));
+  return { tests: block.proved ?? [], files };
+}
 
 export function stateWord(state: BlockState): string {
   switch (state) {

@@ -43,6 +43,9 @@ pub struct Place {
     pub path: String,
     #[serde(default)]
     pub line: Option<u32>,
+    /// The last line, when the place is a stretch of lines and not one line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<u32>,
 }
 
 /// One step or question of a flow, as the format writes it.
@@ -80,7 +83,7 @@ pub fn write_flow(flow: &Flow) -> String {
         let star = if node.changed { "*" } else { "" };
         // A place is written only when it can be read back: a line, and a path without spaces.
         let place = match &node.place {
-            Some(Place { path, line: Some(line) }) if !path.contains(char::is_whitespace) => {
+            Some(Place { path, line: Some(line), .. }) if !path.contains(char::is_whitespace) => {
                 format!(" @ {path}:{line}")
             }
             _ => String::new(),
@@ -155,7 +158,7 @@ fn split_place(rest: &str) -> (&str, Option<Place>) {
             && line.bytes().all(|byte| byte.is_ascii_digit())
             && let Ok(line) = line.parse()
         {
-            return (head, Some(Place { path: path.to_string(), line: Some(line) }));
+            return (head, Some(Place { path: path.to_string(), line: Some(line), to: None }));
         }
     }
     (rest, None)
@@ -311,6 +314,9 @@ pub struct Block {
     /// How the block read when it was last built, so a later build can be told what changed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub built_from: Option<String>,
+    /// The tests the agent named as proof that the built block works.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proved: Vec<String>,
 }
 
 impl Block {
@@ -327,6 +333,7 @@ impl Block {
             files: Vec::new(),
             from: None,
             built_from: None,
+            proved: Vec::new(),
         }
     }
 
@@ -342,6 +349,7 @@ impl Block {
         self.by_name = None;
         self.at = None;
         self.files.clear();
+        self.proved.clear();
     }
 }
 
@@ -462,9 +470,9 @@ impl Plan {
         self.room_for(1)?;
         let text = if text.trim().is_empty() {
             match kind {
-                Kind::Step => "New step".to_string(),
-                Kind::Ask => "New question?".to_string(),
-                Kind::Note => "New note".to_string(),
+                Kind::Step => STAND_IN_NAMES[0].to_string(),
+                Kind::Ask => STAND_IN_NAMES[1].to_string(),
+                Kind::Note => STAND_IN_NAMES[2].to_string(),
             }
         } else {
             name_of(kind, text)?
@@ -883,7 +891,7 @@ impl Plan {
 
     /// The end of the turn that was building a block: built, with the files
     /// the turn changed, or planned again when the turn was stopped or failed.
-    pub fn build_ended(&mut self, id: &str, ended_well: bool, files: Vec<String>, author: &Author) {
+    pub fn build_ended(&mut self, id: &str, ended_well: bool, files: Vec<Place>, proved: Vec<String>, author: &Author) {
         let Ok(block) = self.block_mut(id) else { return };
         if block.state != State::Building {
             return;
@@ -896,23 +904,54 @@ impl Plan {
         block.by = Some(author.id.clone());
         block.by_name = Some(author.name.clone());
         block.at = Some(author.at);
-        block.files = files.into_iter().take(MAX_FILES).map(|path| Place { path, line: None }).collect();
+        block.files = files.into_iter().take(MAX_FILES).collect();
+        block.proved = proved;
         block.built_from = Some(block.wording());
     }
 }
 
 /// The blocks an agent says are missing: the `PROPOSE: <text>` lines of its answer.
 pub fn proposals_in(answer: &str) -> Vec<String> {
+    marked_lines(answer, "PROPOSE:")
+}
+
+/// The tests an agent names as proof of what it built: the `PROVED BY: <test>` lines of its answer.
+pub fn proofs_in(answer: &str) -> Vec<String> {
+    marked_lines(answer, "PROVED BY:")
+}
+
+/// The lines of an answer that start with a mark the editor asked for, without the mark.
+fn marked_lines(answer: &str, mark: &str) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
     for line in answer.lines() {
         // Agents like to dress a line up: as a list item, in bold, as code.
         let bare = line.trim().trim_start_matches(['-', '*', '`', '>', ' ']);
-        let Some(said) = bare.strip_prefix("PROPOSE:") else { continue };
+        let Some(said) = bare.strip_prefix(mark) else { continue };
         let said = one_line(said.trim_matches(['*', '`', ' ']));
         // The pattern shows the text in angle brackets, and some agents keep them.
         let said = said.strip_prefix('<').and_then(|inner| inner.strip_suffix('>')).unwrap_or(&said).trim().to_string();
         if !said.is_empty() && !found.contains(&said) && found.len() < MAX_PROPOSALS {
             found.push(said);
+        }
+    }
+    found
+}
+
+/// What a block is called until the user names it: a step, a question, a note.
+const STAND_IN_NAMES: [&str; 3] = ["New step", "New question?", "New note"];
+
+/// How many stretches of lines one file of a built block is told with.
+const MAX_STRETCHES: usize = 3;
+
+/// The lines a change put in, as stretches "from line to line". Stretches that touch are one.
+fn stretches_of_lines(changes: &[gitops::Stretch]) -> Vec<(u32, u32)> {
+    let mut found: Vec<(u32, u32)> = Vec::new();
+    for change in changes.iter().filter(|change| !change.added.is_empty()) {
+        let first = change.new_start as u32;
+        let last = first + change.added.len() as u32 - 1;
+        match found.last_mut() {
+            Some((_, end)) if first <= *end + 1 => *end = (*end).max(last),
+            _ => found.push((first, last)),
         }
     }
     found
@@ -936,6 +975,8 @@ fn build_message(plan: &Plan, block: &Block) -> String {
         ),
         which,
         "If you think a block is missing from the plan, do not build it. End your answer with one line `PROPOSE: <what the block should do>` for each such block."
+            .to_string(),
+        "If a test shows that this block works, name it in one more line: `PROVED BY: <the name of the test>`."
             .to_string(),
     ]
     .join("\n\n")
@@ -1314,16 +1355,27 @@ impl Manager {
         match &job.doing {
             Doing::Build(id) => {
                 let files = if ended_well { self.files_of_turn(&task, turn, job.started_at) } else { Vec::new() };
+                let proved = if ended_well { proofs_in(&answer) } else { Vec::new() };
+                let mut built = None;
                 self.change_plan(task_id, |plan| {
                     self.plans.jobs.lock().unwrap().remove(task_id);
-                    plan.build_ended(id, ended_well, files, &author);
+                    plan.build_ended(id, ended_well, files, proved, &author);
                     if ended_well {
+                        built = plan.blocks.iter().find(|block| block.id == *id).map(|block| block.text.clone());
                         for said in proposals_in(&answer) {
                             plan.propose(&said, Some(id), &author);
                         }
                     }
                     Ok(())
-                })
+                })?;
+                // The conversation keeps what was built and by whom, next to everything else that happened.
+                if let Some(text) = built {
+                    self.emit(
+                        task_id,
+                        json!({ "type": "plan_block", "action": "built", "blockId": id, "text": text, "by": author.id, "byName": author.name }),
+                    );
+                }
+                Ok(())
             }
             Doing::Draft | Doing::Draw => self.change_plan(task_id, |plan| {
                 self.plans.jobs.lock().unwrap().remove(task_id);
@@ -1339,9 +1391,11 @@ impl Manager {
     /// The files a turn changed: those its finished edits name, and in a git
     /// project everything that differs from the code as it was when the
     /// turn's message was sent. That covers what a command of the agent changed.
-    fn files_of_turn(&self, task: &TaskRow, turn: &[Value], started_at: u64) -> Vec<String> {
+    fn files_of_turn(&self, task: &TaskRow, turn: &[Value], started_at: u64) -> Vec<Place> {
         let root = Path::new(&task.cwd);
         let mut files = edited_in(turn, root);
+        // In a git project the turn's own lines are known too: the stretches it put in.
+        let mut lines: HashMap<String, Vec<(u32, u32)>> = HashMap::new();
         if task.branch.is_some()
             && let Ok(checkpoints) = self.store().checkpoints(&task.id)
             && let Some(before) = checkpoints
@@ -1354,8 +1408,24 @@ impl Manager {
             && let Ok(changed) = gitops::changes_between(root, &before.tree, &now)
         {
             files.extend(changed.into_iter().map(|file| file.path));
+            if let Ok(stretches) = gitops::stretches_between(root, &before.tree, &now) {
+                for (path, list) in stretches {
+                    lines.insert(path, stretches_of_lines(&list));
+                }
+            }
         }
-        files.into_iter().collect()
+        let mut places = Vec::new();
+        for path in files {
+            match lines.get(&path).filter(|list| !list.is_empty()) {
+                Some(list) => {
+                    for (first, last) in list.iter().take(MAX_STRETCHES) {
+                        places.push(Place { path: path.clone(), line: Some(*first), to: Some(*last) });
+                    }
+                }
+                None => places.push(Place { path, line: None, to: None }),
+            }
+        }
+        places
     }
 
     /// What an agent is told about the task's plan with a message, if anything.
@@ -1390,6 +1460,8 @@ impl Manager {
             _ => {}
         }
         let mut added = None;
+        // A block made in the interface starts under a stand-in name; the name it gets next is its first real one.
+        let mut named = None;
         self.change_plan(task_id, |plan| {
             match method {
                 "plan.add" => {
@@ -1397,7 +1469,15 @@ impl Manager {
                         .map_err(|_| anyhow!("A block is a step, a question (\"ask\") or a note"))?;
                     added = Some(plan.add(kind, text("text").unwrap_or_default(), text("after"), text("label"))?);
                 }
-                "plan.edit" => plan.edit(need("blockId")?, text("text"), text("details"))?,
+                "plan.edit" => {
+                    let id = need("blockId")?;
+                    let before = plan.block(id)?.text.clone();
+                    plan.edit(id, text("text"), text("details"))?;
+                    let block = plan.block(id)?;
+                    if STAND_IN_NAMES.contains(&before.as_str()) && block.text != before && block.by.is_none() {
+                        named = Some(id.to_string());
+                    }
+                }
                 "plan.connect" => plan.connect(need("from")?, need("to")?, text("label"))?,
                 "plan.disconnect" => plan.disconnect(need("from")?, need("to")?)?,
                 "plan.remove" => plan.remove(need("blockId")?)?,
@@ -1411,6 +1491,21 @@ impl Manager {
             Ok(())
         })?;
         let mut view = self.plan_of(task_id)?;
+        // The conversation keeps who added what, so the agent's lines and the user's read as one story.
+        // A block is told once it has a name of its own: at once when it came with one, else when it is first renamed.
+        let told = added.clone().or(named);
+        let block = told.as_deref().and_then(|id| {
+            view["blocks"].as_array().and_then(|blocks| blocks.iter().find(|block| block["id"] == id)).cloned()
+        });
+        if let Some(block) = block
+            && let (Some(text), Some(kind)) = (block["text"].as_str(), block["kind"].as_str())
+            && !STAND_IN_NAMES.contains(&text)
+        {
+            self.emit(
+                task_id,
+                json!({ "type": "plan_block", "action": "added", "blockId": block["id"], "kind": kind, "text": text, "by": "you" }),
+            );
+        }
         if let Some(id) = added {
             view["blockId"] = json!(id);
         }
@@ -1421,6 +1516,33 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn place(path: &str) -> Place {
+        Place { path: path.into(), line: None, to: None }
+    }
+
+    #[test]
+    fn the_lines_a_turn_put_in_are_told_as_stretches() {
+        let change = |new_start: usize, added: usize| gitops::Stretch {
+            old_start: new_start,
+            old_len: 0,
+            new_start,
+            added: vec!["x".to_string(); added],
+            removed: vec![],
+        };
+        // Lines 4 to 9, a line taken out (it adds nothing), 10 to 11 touching the first, and 20 alone.
+        let found = stretches_of_lines(&[change(4, 6), change(9, 0), change(10, 2), change(20, 1)]);
+        assert_eq!(found, [(4, 11), (20, 20)]);
+        assert!(stretches_of_lines(&[change(3, 0)]).is_empty());
+    }
+
+    #[test]
+    fn the_tests_an_agent_names_as_proof_are_read_out_of_its_answer() {
+        let answer = "Done.\n\n- PROVED BY: `answers 429 on the sixth attempt`\nPROVED BY: <resets after a minute>\nPROPOSE: Log it";
+        assert_eq!(proofs_in(answer), ["answers 429 on the sixth attempt", "resets after a minute"]);
+        assert_eq!(proposals_in(answer), ["Log it"]);
+        assert!(proofs_in("It is proved by nothing.").is_empty());
+    }
 
     fn author() -> Author {
         Author { id: "mock".into(), name: "Practice agent".into(), at: 7 }
@@ -1440,7 +1562,7 @@ mod tests {
     fn a_plan_is_written_in_the_flow_format_and_read_back_the_same() {
         let (mut plan, [request, _, refuse, _]) = login_plan();
         plan.block_mut(&request).unwrap().state = State::Before;
-        plan.block_mut(&request).unwrap().files = vec![Place { path: "src/app.ts".into(), line: Some(4) }];
+        plan.block_mut(&request).unwrap().files = vec![Place { path: "src/app.ts".into(), line: Some(4), to: None }];
         plan.block_mut(&refuse).unwrap().state = State::Built;
         let written = plan.written();
         assert_eq!(
@@ -1488,7 +1610,7 @@ mod tests {
         let flow = parse_flow(answer).unwrap();
         assert_eq!(flow.nodes[0].text, "Mail it to: ops@example.com");
         assert_eq!(flow.nodes[0].place, None);
-        assert_eq!(flow.nodes[1].place, Some(Place { path: "src/mail.ts".into(), line: Some(12) }));
+        assert_eq!(flow.nodes[1].place, Some(Place { path: "src/mail.ts".into(), line: Some(12), to: None }));
         assert!(flow.nodes[1].ask && !flow.nodes[1].changed);
         // "a b:3" is not a place: a path has no space in it.
         assert_eq!((flow.nodes[2].text.as_str(), flow.nodes[2].changed), ("Done @ a b:3", true));
@@ -1597,13 +1719,19 @@ mod tests {
         plan.block_mut(&refuse).unwrap().state = State::Building;
         assert!(plan.edit(&refuse, Some("Respond 418"), None).unwrap_err().to_string().contains("being built"));
         assert!(plan.remove(&refuse).is_err() && plan.take(&refuse, true).is_err());
-        plan.build_ended(&refuse, true, vec!["src/middleware/rateLimit.ts".into()], &author());
+        plan.build_ended(
+            &refuse,
+            true,
+            vec![place("src/middleware/rateLimit.ts")],
+            vec!["answers 429".into()],
+            &author(),
+        );
         let built = plan.block(&refuse).unwrap().clone();
         assert_eq!((built.state, built.by.as_deref(), built.at), (State::Built, Some("mock"), Some(7)));
-        assert_eq!(built.files, vec![Place { path: "src/middleware/rateLimit.ts".into(), line: None }]);
+        assert_eq!(built.files, vec![Place { path: "src/middleware/rateLimit.ts".into(), line: None, to: None }]);
         assert_eq!(built.built_from.as_deref(), Some("Respond 429"));
         // The end of a turn that built nothing of the plan changes nothing.
-        plan.build_ended(&check, true, vec![], &author());
+        plan.build_ended(&check, true, vec![], vec![], &author());
         assert_eq!(plan.block(&check).unwrap().state, State::Planned);
 
         // The same text again is no change. Another text, or more to do, and it is planned again.
@@ -1616,7 +1744,7 @@ mod tests {
 
         // A stopped or failed turn puts the block back.
         plan.block_mut(&refuse).unwrap().state = State::Building;
-        plan.build_ended(&refuse, false, vec!["x".into()], &author());
+        plan.build_ended(&refuse, false, vec![place("x")], vec!["a test".into()], &author());
         assert_eq!(plan.block(&refuse).unwrap().state, State::Planned);
 
         // Taking a block and giving it back.
@@ -1766,7 +1894,7 @@ mod tests {
         let drawn: Vec<&Block> = plan.blocks.iter().filter(|block| block.from.as_deref() == Some("code")).collect();
         assert_eq!(drawn.len(), 4);
         assert!(drawn.iter().all(|block| block.state == State::Before));
-        assert_eq!(drawn[1].files, vec![Place { path: "src/middleware/rateLimit.ts".into(), line: Some(3) }]);
+        assert_eq!(drawn[1].files, vec![Place { path: "src/middleware/rateLimit.ts".into(), line: Some(3), to: None }]);
         assert_eq!(plan.counts().proposed, 4);
 
         // An answer in another shape is called that, and adds nothing.
@@ -1788,7 +1916,7 @@ mod tests {
         let message = build_message(&plan, plan.block(&refuse).unwrap());
         assert_eq!(
             message,
-            "Build one block of this task's plan, and nothing else. The plan, in the editor's flow format (`*` marks a block that is built already):\n\n```flow\nstep b1: Request to POST /login\nask b2: Over the limit?\nstep b3: Respond 429\nstep b4: Check the password\nb1 -> b2\nb2 -> b3: yes\nb2 -> b4: no\n```\n\nBuild only this block: `b3`, “Respond 429”.\nWhat it should do: Say in Retry-After how long to wait.\n\nIf you think a block is missing from the plan, do not build it. End your answer with one line `PROPOSE: <what the block should do>` for each such block."
+            "Build one block of this task's plan, and nothing else. The plan, in the editor's flow format (`*` marks a block that is built already):\n\n```flow\nstep b1: Request to POST /login\nask b2: Over the limit?\nstep b3: Respond 429\nstep b4: Check the password\nb1 -> b2\nb2 -> b3: yes\nb2 -> b4: no\n```\n\nBuild only this block: `b3`, “Respond 429”.\nWhat it should do: Say in Retry-After how long to wait.\n\nIf you think a block is missing from the plan, do not build it. End your answer with one line `PROPOSE: <what the block should do>` for each such block.\n\nIf a test shows that this block works, name it in one more line: `PROVED BY: <the name of the test>`."
         );
         let draft = draft_message("Add rate limiting to /login\n\nFive attempts a minute.", false);
         assert!(draft.starts_with("Draft a plan for this task as a flow chart"), "{draft}");
@@ -1839,7 +1967,7 @@ mod tests {
     fn a_plan_is_kept_as_json_and_an_older_one_still_reads() {
         let (mut plan, [_, _, refuse, _]) = login_plan();
         plan.block_mut(&refuse).unwrap().state = State::Building;
-        plan.build_ended(&refuse, true, vec!["src/a.ts".into()], &author());
+        plan.build_ended(&refuse, true, vec![place("src/a.ts")], vec![], &author());
         let kept = serde_json::to_string(&plan).unwrap();
         assert_eq!(serde_json::from_str::<Plan>(&kept).unwrap(), plan);
         let value: Value = serde_json::from_str(&kept).unwrap();

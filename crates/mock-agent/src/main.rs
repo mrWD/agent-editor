@@ -21,6 +21,8 @@
 //!   "Build only this block:"): the same edit as above, although the prompt holds the plan as a
 //!   ```flow block. The first time the block's name has the word "limit" in it, the answer ends
 //!   with a line "PROPOSE: …", as an agent does that thinks a block is missing from the plan;
+//!   when the block's name has the word "test" in it and the edit was made, the answer also ends with a line
+//!   "PROVED BY: …", naming the test that shows the block works;
 //! - a prompt that starts with "Explain" is a question, even when it has the word "changed" in it;
 //! - `session/cancel` stops the turn with the stop reason `cancelled`;
 //! - every turn ends with a note on how much of the context is used. It costs nothing.
@@ -685,6 +687,10 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
             known.proposed = true;
             answer.push_str("\n\nPROPOSE: Reset the count after a correct password");
         }
+    }
+    // A block that asks for a test gets one named as its proof, when the edit was made.
+    if edited && build.is_some_and(|line| line.to_lowercase().contains("test")) {
+        answer.push_str("\n\nPROVED BY: answers 429 on the sixth attempt");
     }
     for word in answer.split_inclusive(' ') {
         if stop(agent) {

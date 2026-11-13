@@ -1219,6 +1219,14 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
               {current().info.branch}
             </span>
           </Show>
+          {/* A block an agent proposed stands still until the user says yes or no: said here, on every view. */}
+          <Show when={(planOf(props.id)?.counts.proposed ?? 0) > 0}>
+            <a class="task-plan-waits" href={taskHref(props.id, 'plan')}>
+              {planOf(props.id)!.counts.proposed === 1
+                ? '1 block waits for your yes'
+                : `${planOf(props.id)!.counts.proposed} blocks wait for your yes`}
+            </a>
+          </Show>
           <span class="grow" />
           <span class="state" classList={{ needs: stageOfTask(current()) === 'needs' }}>
             {stageWord(stageOfTask(current()))}

@@ -76,6 +76,16 @@ export type Diff = { path: string; oldText: string; newText: string };
 export type FeedItem =
   | { kind: 'user'; text: string; edited: string[]; images: PictureName[]; at: number }
   | { kind: 'edit'; path: string; at: number }
+  /** A block of the plan was added by the user or built by an agent. */
+  | {
+      kind: 'block';
+      action: 'added' | 'built';
+      blockId: string;
+      what: 'block' | 'note';
+      text: string;
+      by: string;
+      at: number;
+    }
   | {
       /** The user made, renamed or deleted a file in the tree. */
       kind: 'file';
@@ -292,6 +302,17 @@ export function applyEvent(task: Task, event: any) {
       return;
     case 'user_edit':
       feed.push({ kind: 'edit', path: String(event.path), at });
+      return;
+    case 'plan_block':
+      feed.push({
+        kind: 'block',
+        action: event.action === 'built' ? 'built' : 'added',
+        blockId: String(event.blockId ?? ''),
+        what: event.kind === 'note' ? 'note' : 'block',
+        text: String(event.text ?? ''),
+        by: String(event.by ?? 'you'),
+        at,
+      });
       return;
     case 'agent_note':
       // A note an agent left through the editor's own tools, for whoever works on the task next.

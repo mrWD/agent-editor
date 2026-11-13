@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Match, on, Show, Switch, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import { go, taskHref } from '../app/router';
+import { go, route, taskHref } from '../app/router';
 import { ago, Check, Chip, Icon, RingDot } from '../components/bits';
 import {
   acceptBlock,
@@ -14,9 +14,11 @@ import {
   dismissPlanProblem,
   draftPlan,
   editBlock,
+  filesOf,
   hasStateLine,
   layoutPlan,
   planOf,
+  proofOf,
   removeBlock,
   setOnlyPlan,
   stateWord,
@@ -37,6 +39,47 @@ const shortOf = (agentId: string | null) => app.agents.find((agent) => agent.id 
 
 /** The block the user picked in each task, so a look at the code and back does not lose it. */
 const [chosen, setChosen] = createStore<Record<string, string | undefined>>({});
+/** The block a task's next message is not about after all: the user left it out. */
+const [leftOut, setLeftOut] = createStore<Record<string, string | undefined>>({});
+
+/** Shows a block in the Plan view: for the lines of the conversation that name one. */
+export function showBlock(taskId: string, blockId: string) {
+  setChosen(taskId, blockId);
+  go(taskHref(taskId, 'plan'));
+}
+
+/** The block the next message is about: the one picked in the Plan view, while that view is on screen. */
+function aboutBlock(taskId: string): Block | null {
+  const now = route();
+  if (now.page !== 'task' || now.id !== taskId || now.view !== 'plan') return null;
+  const id = chosen[taskId];
+  if (!id || leftOut[taskId] === id) return null;
+  return planOf(taskId)?.blocks.find((block) => block.id === id && block.kind !== 'note') ?? null;
+}
+
+/** What goes in front of a message about a block of the plan, so the agent knows which one is meant. */
+export function planAboutText(taskId: string): string | null {
+  const block = aboutBlock(taskId);
+  return block ? `About the block \`${block.id}\` of the plan, “${block.text}”:` : null;
+}
+
+/** Above the message box: what the message is about, with a way to leave it out. */
+export function PlanAbout(props: { taskId: string }): JSX.Element {
+  return (
+    <Show when={aboutBlock(props.taskId)}>
+      {(block) => (
+        <div class="quote-chip plan-about">
+          <span class="fine">About</span>
+          <span class="plan-about-chip">plan</span>
+          <span class="plan-about-chip">block: {block().text}</span>
+          <button type="button" class="link" onClick={() => setLeftOut(props.taskId, block().id)}>
+            Leave it out
+          </button>
+        </div>
+      )}
+    </Show>
+  );
+}
 
 /** The small pictures of the toolbar's three kinds of block. */
 const kindIcon: Record<BlockKind, () => JSX.Element> = {
@@ -194,7 +237,67 @@ export function PlanView(props: { task: Task }): JSX.Element {
     ),
   );
 
-  const pick = (id: string) => setChosen(taskId, chosen[taskId] === id ? undefined : id);
+  const pick = (id: string) => {
+    setChosen(taskId, chosen[taskId] === id ? undefined : id);
+    // Picked anew, a block is what the next message is about again.
+    setLeftOut(taskId, undefined);
+  };
+
+  // ----- joining two blocks by dragging from one to the other -----
+
+  const [join, setJoin] = createSignal<{
+    from: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    over: string | null;
+  } | null>(null);
+  const startJoin = (event: PointerEvent, from: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget as HTMLElement;
+    const box = handle.getBoundingClientRect();
+    const start = { x1: box.left + box.width / 2, y1: box.top + box.height / 2 };
+    // The block under the pointer that an arrow can lead to: any step or question but the one it starts from.
+    const under = (x: number, y: number) => {
+      const found = document
+        .elementsFromPoint(x, y)
+        .find((one) => one instanceof HTMLElement && one.dataset.block && one.dataset.block !== from);
+      return (found as HTMLElement | undefined)?.dataset.block ?? null;
+    };
+    const move = (moved: PointerEvent) =>
+      setJoin({ from, ...start, x2: moved.clientX, y2: moved.clientY, over: under(moved.clientX, moved.clientY) });
+    const stop = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('keydown', key, true);
+      setJoin(null);
+    };
+    function end(ended: PointerEvent) {
+      const to = under(ended.clientX, ended.clientY);
+      stop();
+      if (!to) return;
+      void act(async () => {
+        await connectBlocks(taskId, from, to, '');
+        // The block the arrow leads to is shown next: that is where the arrow gets its label.
+        setChosen(taskId, to);
+      });
+    }
+    function cancel() {
+      stop();
+    }
+    function key(pressed: KeyboardEvent) {
+      if (pressed.key === 'Escape') stop();
+    }
+    handle.setPointerCapture(event.pointerId);
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', cancel);
+    window.addEventListener('keydown', key, true);
+    setJoin({ from, ...start, x2: event.clientX, y2: event.clientY, over: null });
+  };
   const rename = (id: string) => {
     setChosen(taskId, id);
     // The panel of the block is on screen by now; its name is ready to be typed over.
@@ -259,23 +362,20 @@ export function PlanView(props: { task: Task }): JSX.Element {
   /** One arrow of the chart is dashed and coloured when it leads to a block that waits for a yes. */
   const proposedLine = (to: string) => stateOf(to) === 'proposed';
 
-  const fileLinks = (block: Block) => (
-    <For each={block.files}>
-      {(place) => (
-        <a
-          class="plan-file"
-          href={taskHref(taskId, 'code')}
-          onClick={(event) => {
-            event.preventDefault();
-            showInEditor(place);
-          }}
-        >
-          {place.path}
-          {place.line ? `, line ${place.line}` : ''}
-        </a>
-      )}
-    </For>
+  const fileLink = (place: Place, words: string) => (
+    <a
+      class="plan-file"
+      href={taskHref(taskId, 'code')}
+      onClick={(event) => {
+        event.preventDefault();
+        showInEditor(place);
+      }}
+    >
+      {place.path}
+      {words ? `, ${words}` : ''}
+    </a>
   );
+  const fileLinks = (block: Block) => <For each={filesOf(block)}>{(one) => fileLink(one.place, one.words)}</For>;
 
   return (
     <section class="center plan-view" aria-label="Plan of this task">
@@ -451,6 +551,8 @@ export function PlanView(props: { task: Task }): JSX.Element {
                             type="button"
                             class={`map-step plan-block ${block.kind} ${block.state}`}
                             data-box="true"
+                            data-block={block.kind === 'note' ? undefined : block.id}
+                            classList={{ 'join-target': join()?.over === block.id }}
                             style={{
                               left: `${box().x}px`,
                               top: `${box().y}px`,
@@ -509,6 +611,26 @@ export function PlanView(props: { task: Task }): JSX.Element {
                               </span>
                             </Show>
                           </button>
+                        )}
+                      </Show>
+                    )}
+                  </For>
+                  {/* Dragging from the dot on a block's side to another block joins them. The panel of a block
+                      does the same from the keyboard, so the dots are left out of the tab order. */}
+                  <For each={blocks().filter((block) => block.kind !== 'note')}>
+                    {(block) => (
+                      <Show when={boxOf(block.id)}>
+                        {(box) => (
+                          <span
+                            class="plan-handle"
+                            classList={{ on: join()?.from === block.id }}
+                            data-box="true"
+                            data-handle={block.id}
+                            aria-hidden="true"
+                            title="Drag to another block to connect them"
+                            style={{ left: `${box().x + box().w - 7}px`, top: `${box().y + box().h / 2 - 7}px` }}
+                            onPointerDown={(event) => startJoin(event, block.id)}
+                          />
                         )}
                       </Show>
                     )}
@@ -654,6 +776,14 @@ export function PlanView(props: { task: Task }): JSX.Element {
                         {fileLinks(block())}
                       </Show>
                     </dd>
+                    <dt>Proved by</dt>
+                    <dd class="plan-files">
+                      <For each={proofOf(block()).tests}>{(test) => <span>The test “{test}”</span>}</For>
+                      <For each={proofOf(block()).files}>{(place) => fileLink(place, '')}</For>
+                      <Show when={proofOf(block()).tests.length + proofOf(block()).files.length === 0}>
+                        No test was named, and that turn changed no test.
+                      </Show>
+                    </dd>
                     <dt>Built by</dt>
                     <dd class="plan-by">
                       <Chip agentId={block().by ?? ''} short={shortOf(block().by)} flat />
@@ -746,10 +876,17 @@ export function PlanView(props: { task: Task }): JSX.Element {
         </Show>
       </div>
 
+      <Show when={join()}>
+        {(line) => (
+          <svg class="plan-join" aria-hidden="true">
+            <line x1={line().x1} y1={line().y1} x2={line().x2} y2={line().y2} />
+          </svg>
+        )}
+      </Show>
+
       <div class="statusline">
         <span>
-          Draw it yourself or let an agent draft it. Double-click a block to rename it; pick one to say what it comes
-          after.
+          Draw it yourself or let an agent draft it. Drag from the dot on a block to connect it, double-click to rename.
         </span>
         <span class="grow" />
         <Show when={plan()}>{(known) => <span class="plan-counts">{countsLine(known().counts)}</span>}</Show>

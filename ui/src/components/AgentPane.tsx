@@ -21,7 +21,7 @@ import { teamOf, watchTeam } from '../core/team';
 import { clearPointed, pointedText } from '../core/previewState';
 import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
-import { PlanProposals } from '../screens/Plan';
+import { PlanAbout, planAboutText, PlanProposals, showBlock } from '../screens/Plan';
 import { ago, Check, Chip, clock, money, Ring, RingDot } from './bits';
 import { Markdown } from './Markdown';
 import {
@@ -249,7 +249,9 @@ export function AgentPane(props: { task: Task }): JSX.Element {
       : typed;
     // What was pointed at in the Preview goes first too, in words: the agent gets text.
     const pointed = pointedText(taskId(), props.task.info.cwd);
-    const text = pointed ? `${pointed}\n\n${said}` : said;
+    // A block picked in the Plan view is named first of all: the message is about it.
+    const about = planAboutText(taskId());
+    const text = [about, pointed, said].filter((part) => part).join('\n\n');
     if (instead === undefined) setDraft('');
     setWork(taskId(), { quote: null, pausedByTyping: false });
     clearPointed(taskId());
@@ -294,6 +296,27 @@ export function AgentPane(props: { task: Task }): JSX.Element {
               </p>
             </Show>
           </>
+        )}
+      </Match>
+      <Match when={entry.kind === 'block' && entry}>
+        {(did) => (
+          <div class="activity">
+            <Show
+              when={did().by === 'you'}
+              fallback={
+                <Chip agentId={did().by} short={state.agents.find((one) => one.id === did().by)?.short ?? 'Ag'} flat />
+              }
+            >
+              <Chip agentId="you" short="You" flat />
+            </Show>
+            <span class="verb">
+              {did().action} the {did().what}
+            </span>
+            <button type="button" class="what link" onClick={() => showBlock(taskId(), did().blockId)}>
+              {did().text}
+            </button>
+            <span class="fine">{ago(did().at)}</span>
+          </div>
         )}
       </Match>
       <Match when={entry.kind === 'edit' && entry}>
@@ -680,6 +703,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             )}
           </Show>
           <PointedChips taskId={taskId()} />
+          <PlanAbout taskId={taskId()} />
           <WaitingPictures taskId={taskId()} />
           <textarea
             id={`msg-${props.task.info.id}`}

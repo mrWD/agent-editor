@@ -156,7 +156,7 @@ async fn a_block_is_built_by_one_turn_and_keeps_the_files_that_turn_changed() {
     );
     assert_eq!(plan["next"], Value::Null, "what comes after it has to wait");
     let seen = bench.until(|e| is(e, "permission_request")).await;
-    let message = "Build one block of this task's plan, and nothing else. The plan, in the editor's flow format (`*` marks a block that is built already):\n\n```flow\nstep b1: Answer 429\nstep b2: Tell the form how long to wait\nb1 -> b2\n```\n\nBuild only this block: `b1`, “Answer 429”.\n\nIf you think a block is missing from the plan, do not build it. End your answer with one line `PROPOSE: <what the block should do>` for each such block.";
+    let message = "Build one block of this task's plan, and nothing else. The plan, in the editor's flow format (`*` marks a block that is built already):\n\n```flow\nstep b1: Answer 429\nstep b2: Tell the form how long to wait\nb1 -> b2\n```\n\nBuild only this block: `b1`, “Answer 429”.\n\nIf you think a block is missing from the plan, do not build it. End your answer with one line `PROPOSE: <what the block should do>` for each such block.\n\nIf a test shows that this block works, name it in one more line: `PROVED BY: <the name of the test>`.";
     assert_eq!(sent(&seen), message);
     // The message holds the plan and the rule, so no note about the plan is put in front of it.
     assert_eq!(thought(&seen), message);
@@ -177,8 +177,17 @@ async fn a_block_is_built_by_one_turn_and_keeps_the_files_that_turn_changed() {
         (&built["state"], &built["by"], &built["byName"]),
         (&json!("built"), &json!("mock"), &json!("Practice agent"))
     );
-    assert_eq!(built["files"], json!([{ "path": DEMO, "line": null }]));
+    // In a git project the block knows the very lines the turn put in.
+    assert_eq!(built["files"], json!([{ "path": DEMO, "line": 3, "to": 3 }]));
+    assert!(built.get("proved").is_none(), "nobody named a test");
     assert!(built["at"].as_u64().is_some_and(|at| at > 0));
+    // The conversation keeps a line about it, after the turn's own events.
+    let told: Vec<&Value> = seen.iter().filter(|e| is(e, "plan_block")).collect();
+    assert_eq!(told.len(), 1);
+    assert_eq!(
+        (&told[0]["action"], &told[0]["text"], &told[0]["byName"]),
+        (&json!("built"), &json!("Answer 429"), &json!("Practice agent"))
+    );
     assert_eq!((&plan["busy"], &plan["next"]), (&Value::Null, &json!("b2")));
     assert_eq!(plan["counts"], json!({ "built": 1, "total": 2, "building": 0, "planned": 1, "proposed": 0 }));
     let folder = bench.state.manager.cwd(&bench.id).unwrap();
@@ -188,12 +197,17 @@ async fn a_block_is_built_by_one_turn_and_keeps_the_files_that_turn_changed() {
     bench.plan("build", json!({})).await;
     let seen = bench.answer("allow-once").await;
     assert!(
-        sent(&seen).contains("```flow\nstep* b1: Answer 429\nstep b2: Tell the form how long to wait\nb1 -> b2\n```")
+        // What is built is told with the place it was built in, so the agent can find it.
+        sent(&seen).contains(
+            "```flow\nstep* b1: Answer 429 @ src/middleware/rateLimit.ts:3\nstep b2: Tell the form how long to wait\nb1 -> b2\n```"
+        ),
+        "{}",
+        sent(&seen)
     );
     assert!(sent(&seen).contains("Build only this block: `b2`, “Tell the form how long to wait”."));
     let plan = bench.plan("get", json!({})).await;
     assert_eq!(states(&plan), pairs(&[("Answer 429", "built"), ("Tell the form how long to wait", "built")]));
-    assert_eq!(block(&plan, "b2")["files"], json!([{ "path": DEMO, "line": null }]));
+    assert_eq!(block(&plan, "b2")["files"], json!([{ "path": DEMO, "line": 5, "to": 5 }]));
     assert_eq!(
         bench.refusal("build", json!({})).await,
         "Nothing is left to build: every block of the plan is built or yours."
@@ -523,4 +537,54 @@ async fn every_change_is_told_to_all_windows_and_survives_the_core() {
     let plan = dispatch(&again, "plan.get", &json!({ "taskId": id })).await.unwrap();
     assert_eq!(states(&plan), pairs(&[("Over the limit?", "planned"), ("Respond 429", "planned")]));
     assert_eq!(plan["busy"], Value::Null);
+}
+
+#[tokio::test]
+async fn a_built_block_names_its_proof_and_the_conversation_keeps_what_was_added_and_built() {
+    let mut bench = Bench::new("plan-proof", true, "What does the limiter do?").await;
+    // A block that comes with its name is told in the conversation at once.
+    bench.plan("add", json!({ "kind": "step", "text": "Answer 429, with a test" })).await;
+    // One made in the interface starts under a stand-in name: it is told when it gets a name of its own, once.
+    let plan = bench.plan("add", json!({ "kind": "step" })).await;
+    let second = plan["blockId"].as_str().unwrap().to_string();
+    bench.plan("edit", json!({ "blockId": second, "text": "Log the blocked attempt" })).await;
+    bench.plan("edit", json!({ "blockId": second, "text": "Log every blocked attempt" })).await;
+    // A note is no block of the plan, but adding it is told the same way.
+    bench.plan("add", json!({ "kind": "note", "text": "Ask Ops about the log" })).await;
+    let history = bench.state.manager.history(&bench.id).unwrap();
+    let added: Vec<(&str, &str, &str)> = history
+        .iter()
+        .filter(|e| is(e, "plan_block"))
+        .map(|e| (e["action"].as_str().unwrap(), e["kind"].as_str().unwrap(), e["text"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        added,
+        [
+            ("added", "step", "Answer 429, with a test"),
+            ("added", "step", "Log the blocked attempt"),
+            ("added", "note", "Ask Ops about the log"),
+        ]
+    );
+    assert!(history.iter().filter(|e| is(e, "plan_block")).all(|e| e["by"] == "you"));
+
+    // The agent is asked to name the test that proves the block, and what it names is kept with the block.
+    bench.plan("build", json!({ "blockId": "b1" })).await;
+    let seen = bench.answer("allow-once").await;
+    assert!(sent(&seen).ends_with("name it in one more line: `PROVED BY: <the name of the test>`."));
+    assert!(answer_text(&seen).ends_with("PROVED BY: answers 429 on the sixth attempt"));
+    let plan = bench.plan("get", json!({})).await;
+    assert_eq!(block(&plan, "b1")["proved"], json!(["answers 429 on the sixth attempt"]));
+    assert_eq!(block(&plan, "b1")["files"], json!([{ "path": DEMO, "line": 3, "to": 3 }]));
+
+    // Changed, the block is planned again and nothing proves it any more.
+    let plan = bench.plan("edit", json!({ "blockId": "b1", "text": "Answer 429 and say when to come back" })).await;
+    assert_eq!(block(&plan, "b1")["state"], "planned");
+    assert!(block(&plan, "b1").get("proved").is_none());
+
+    // An edit that was refused proves nothing, whatever the block is called.
+    bench.plan("edit", json!({ "blockId": "b1", "text": "Answer 429, with a test" })).await;
+    bench.plan("build", json!({ "blockId": "b1" })).await;
+    let seen = bench.answer("reject-once").await;
+    assert!(!answer_text(&seen).contains("PROVED BY"));
+    assert!(block(&bench.plan("get", json!({})).await, "b1").get("proved").is_none());
 }

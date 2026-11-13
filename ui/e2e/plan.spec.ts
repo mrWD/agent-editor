@@ -578,3 +578,134 @@ test.describe('Plan: the flow chart a task is built from', () => {
     await second.close();
   });
 });
+
+test.describe('Plan: joining by hand, proof, and the conversation', () => {
+  test('PL-11 dragging from the dot of a block to another block joins them; Escape lets go', async ({
+    app,
+    core,
+    project,
+  }) => {
+    const shop = await project();
+    const taskId = await newTask(app, shop.dir);
+    await add(core, taskId, 'Answer 429');
+    await add(core, taskId, 'Log the blocked attempt');
+    await app.showView('Plan');
+    const { view, chart, block, detail } = plan(app);
+    await expect(block('Log the blocked attempt')).toHaveAccessibleName('Step: Log the blocked attempt. Planned.');
+    await expect(view).toContainText('Drag from the dot on a block to connect it, double-click to rename.');
+    const arrowsNow = async () => (await core.request<Kept>('plan.get', { taskId })).arrows;
+    const centre = async (locator: ReturnType<typeof block>) => {
+      const box = (await locator.boundingBox())!;
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    };
+    const dot = chart.locator('[data-handle="b1"]');
+    const from = await centre(dot);
+    const to = await centre(block('Log the blocked attempt'));
+
+    // Let go with Escape half way: nothing is joined, and the line is gone.
+    await app.page.mouse.move(from.x, from.y);
+    await app.page.mouse.down();
+    await app.page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+    await expect(view.locator('.plan-join line')).toHaveCount(1);
+    await app.page.keyboard.press('Escape');
+    await expect(view.locator('.plan-join')).toHaveCount(0);
+    await app.page.mouse.up();
+    expect(await arrowsNow()).toEqual([]);
+
+    // Dropped on a block, the two are joined; the block the arrow leads to is shown, ready for a label.
+    await app.page.mouse.move(from.x, from.y);
+    await app.page.mouse.down();
+    await app.page.mouse.move(to.x, to.y, { steps: 6 });
+    await expect(block('Log the blocked attempt')).toHaveClass(/join-target/);
+    await app.page.mouse.up();
+    await expect(block('Answer 429')).toHaveAccessibleName('Step: Answer 429. Planned. Then Log the blocked attempt.');
+    expect(await arrowsNow()).toEqual([{ from: 'b1', to: 'b2', label: null }]);
+    await expect(detail.getByRole('heading')).toHaveText('Log the blocked attempt');
+    await expect(detail.getByRole('group', { name: 'What it comes after' })).toContainText('Answer 429');
+
+    // Dropped on nothing, or on the block it started from, nothing changes.
+    await app.page.mouse.move(from.x, from.y);
+    await app.page.mouse.down();
+    await app.page.mouse.move(from.x - 40, from.y, { steps: 3 });
+    await app.page.mouse.up();
+    expect(await arrowsNow()).toHaveLength(1);
+  });
+
+  test('PL-12 PL-13 a built block says its lines and what proves it; the conversation keeps who added and built what', async ({
+    app,
+    core,
+    project,
+  }) => {
+    const shop = await project();
+    const taskId = await newTask(app, shop.dir);
+    await app.showView('Plan');
+    const { block, detail, tool } = plan(app);
+
+    // A block made here gets its line in the conversation when it gets its name.
+    await tool('Step').click();
+    await typeName(app, 'Answer 429, with a test');
+    const lines = app.conversation.locator('.activity');
+    await expect(lines.last()).toHaveText(/^Youadded the blockAnswer 429, with a test/);
+
+    // The message box says what the next message is about, and the message names the block.
+    const about = app.conversation.locator('.plan-about');
+    await expect(about).toHaveText('Aboutplanblock: Answer 429, with a testLeave it out');
+    await app.messageBox.fill('What does the limiter do?');
+    await app.sendButton.click();
+    await app.turnEnds();
+    await expect(app.messages.last()).toContainText('About the block `b1` of the plan, “Answer 429, with a test”:');
+    await expect(app.messages.last()).toContainText('What does the limiter do?');
+    // Left out, the next message is about nothing in particular; picking the block again brings it back.
+    await about.getByRole('button', { name: 'Leave it out' }).click();
+    await expect(about).toHaveCount(0);
+    await block('Answer 429, with a test').click();
+    await block('Answer 429, with a test').click();
+    await expect(about).toHaveCount(1);
+    // On another view the message is not about the plan.
+    await app.showView('Code');
+    await expect(about).toHaveCount(0);
+    await app.showView('Plan');
+
+    // Built: the very lines, the test the agent named, and a line in the conversation that leads back to the block.
+    await tool('Build the next block').click();
+    await app.answer('Allow this edit');
+    await app.turnEnds();
+    await expect(detail).toContainText(`Built in${DEMO_FILE}, line 3`);
+    await expect(detail).toContainText('Proved byThe test “answers 429 on the sixth attempt”');
+    await expect(lines.last()).toContainText('built the blockAnswer 429, with a test');
+    await app.showView('Code');
+    await lines.last().getByRole('button', { name: 'Answer 429, with a test' }).click();
+    await expect(app.page).toHaveURL(new RegExp(`#/task/${taskId}/plan$`));
+    await expect(detail.getByRole('heading')).toHaveText('Answer 429, with a test');
+
+    // A block that was built without a test says so instead of naming one.
+    const second = await add(core, taskId, 'Tell the form how long to wait');
+    await core.request('plan.build', { taskId, blockId: second });
+    await app.answer('Allow this edit');
+    await app.turnEnds();
+    await block('Tell the form how long to wait').click();
+    await expect(detail).toContainText('Proved byNo test was named, and that turn changed no test.');
+  });
+
+  test('PL-14 a block an agent proposed is said in the bar of the task on every view', async ({
+    app,
+    core,
+    project,
+  }) => {
+    const shop = await project();
+    const taskId = await newTask(app, shop.dir);
+    await add(core, taskId, 'Limit the attempts');
+    await app.showView('Plan');
+    await plan(app).tool('Build the next block').click();
+    await app.answer('Allow this edit');
+    await app.turnEnds();
+    const waits = app.page.getByRole('link', { name: '1 block waits for your yes' });
+    await expect(waits).toBeVisible();
+    await app.showView('Code');
+    await expect(waits).toBeVisible();
+    await waits.click();
+    await expect(app.page).toHaveURL(new RegExp(`#/task/${taskId}/plan$`));
+    await proposals(app).getByRole('button', { name: 'Not needed' }).click();
+    await expect(waits).toHaveCount(0);
+  });
+});
