@@ -10,6 +10,15 @@ pub fn is_own(url: &Url, own: &Url) -> bool {
         && url.port_or_known_default() == own.port_or_known_default()
 }
 
+/// True when `url` is a page of an app shown in the Preview. Such a page comes through a relay
+/// of the core, on a port of this computer that `is_relay` knows; it is shown in a frame inside
+/// the interface, so it has to load in the window like the interface itself.
+pub fn is_preview(url: &Url, is_relay: impl Fn(u16) -> bool) -> bool {
+    url.scheme() == "http"
+        && matches!(url.host_str(), Some("127.0.0.1" | "localhost"))
+        && url.port().is_some_and(is_relay)
+}
+
 /// True for the kinds of address that are safe to hand to the system: web pages and mail.
 /// Anything else, a `file:` address for one, is neither shown nor handed on.
 pub fn may_leave(url: &Url) -> bool {
@@ -48,6 +57,20 @@ mod tests {
         assert!(!is_own(&url("https://127.0.0.1:51234/"), &own));
         assert!(!is_own(&url("https://github.com/owner/repo/pull/7"), &own));
         assert!(!is_own(&url("file:///etc/passwd"), &own));
+    }
+
+    #[test]
+    fn a_page_of_the_preview_is_one_that_comes_through_a_relay_of_the_core() {
+        let relays = |port: u16| port == 50111;
+        assert!(is_preview(&url("http://127.0.0.1:50111/login?next=1"), relays));
+        assert!(is_preview(&url("http://localhost:50111/"), relays));
+
+        // The app's own dev server, another program on this computer, another computer: none is a relay.
+        assert!(!is_preview(&url("http://127.0.0.1:5173/"), relays));
+        assert!(!is_preview(&url("https://127.0.0.1:50111/"), relays));
+        assert!(!is_preview(&url("http://example.com:50111/"), relays));
+        assert!(!is_preview(&url("http://127.0.0.1/"), relays));
+        assert!(!is_preview(&url("file:///etc/passwd"), relays));
     }
 
     #[test]

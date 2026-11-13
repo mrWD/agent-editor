@@ -13,6 +13,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     let shell = app.state::<Shell>();
     let own = shell.address.clone();
     let (for_links, for_new_windows) = (app.clone(), app.clone());
+    let previews = shell.core.lock().unwrap().as_ref().map(|core| core.state().previews.clone());
 
     WebviewWindowBuilder::new(app, MAIN, WebviewUrl::External(shell.address.clone()))
         .title("Agent Editor")
@@ -28,6 +29,10 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
         // The window shows the interface and nothing else. A link that leaves it goes to the browser.
         .on_navigation(move |url| {
             if links::is_own(url, &own) || url.scheme() == "about" {
+                return true;
+            }
+            // The Preview shows the running app in frames, and on some systems a frame asks here too.
+            if previews.as_ref().is_some_and(|previews| links::is_preview(url, |port| previews.serves(port))) {
                 return true;
             }
             links::open_outside(&for_links, url);

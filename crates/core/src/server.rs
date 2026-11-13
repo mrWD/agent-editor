@@ -50,6 +50,8 @@ pub struct AppState {
     pub runner: Arc<Runner>,
     /// The language servers of every task.
     pub lsp: Arc<Lsp>,
+    /// The relays the Preview view shows running apps through.
+    pub previews: Arc<crate::preview::Previews>,
     /// What the desktop app lends to the core. `None` when the core runs on its own.
     pub desktop: Option<Desktop>,
 }
@@ -124,7 +126,8 @@ impl AppState {
         let terminals = Arc::new(Terminals::without(own));
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
         let lsp = Arc::new(Lsp::new(manager.clone()));
-        Self { manager, terminals, search: Arc::new(Search::new()), runner, lsp, desktop: None }
+        let previews = Arc::new(crate::preview::Previews::new());
+        Self { manager, terminals, search: Arc::new(Search::new()), runner, lsp, previews, desktop: None }
     }
 
     /// The desktop app, when the one who asks is the app's own window.
@@ -147,6 +150,7 @@ impl AppState {
         self.terminals.close_task(task_id);
         self.manager.stop_checks(Some(task_id));
         self.lsp.stop_task(task_id).await;
+        self.previews.close(task_id).await;
         if let Ok((project, root)) = self.run_place(task_id) {
             let runner = self.runner.clone();
             let id = task_id.to_string();
@@ -222,9 +226,11 @@ pub async fn serve_until(
     let manager = state.manager.clone();
     let terminals = state.terminals.clone();
     let lsp = state.lsp.clone();
+    let previews = state.previews.clone();
     axum::serve(listener, router(state, ui_dir)).with_graceful_shutdown(stop).await?;
     terminals.close_all();
     lsp.stop_all().await;
+    previews.close_all().await;
     manager.stop_all().await;
     Ok(())
 }
@@ -1078,6 +1084,9 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         }
 
         "lsp.start" | "lsp.send" | "lsp.setFormatOnSave" => state.lsp.command(method, params).await,
+        "preview.state" | "preview.open" | "preview.close" | "preview.remember" => {
+            crate::preview::command(&state.previews, manager, method, params).await
+        }
 
         "search.files" | "search.text" => {
             let root = manager.cwd(text_param(params, "taskId")?)?;

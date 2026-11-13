@@ -61,6 +61,7 @@ import { EditorHost, type FileMeta } from '../editor/host';
 import { ChangesView } from './Changes';
 import { ChecksView } from './Checks';
 import { LookBackView } from './LookBack';
+import { PreviewView } from './Preview';
 import { SpanView } from './Span';
 import { MapView } from './Map';
 import { languageOf } from '../editor/languages';
@@ -81,7 +82,6 @@ const viewNames: Record<View, string> = {
 /** Which milestone brings each view that is not built yet. Shown instead of a blank pane. */
 const notBuilt: Partial<Record<View, { milestone: string; what: string }>> = {
   plan: { milestone: 'M6', what: 'The flowchart the task is built from.' },
-  preview: { milestone: 'M7', what: 'The running app on several devices at once.' },
   map: { milestone: 'M7', what: 'Diagrams of the code this task touches.' },
 };
 
@@ -1063,12 +1063,16 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
       <Show when={props.view === 'map' && !lookingBack()}>
         <MapView task={props.task} />
       </Show>
+      <Show when={props.view === 'preview' && !lookingBack()}>
+        <PreviewView task={props.task} />
+      </Show>
       <Show
         when={
           props.view !== 'code' &&
           props.view !== 'changes' &&
           props.view !== 'checks' &&
           props.view !== 'map' &&
+          props.view !== 'preview' &&
           !lookingBack()
         }
       >

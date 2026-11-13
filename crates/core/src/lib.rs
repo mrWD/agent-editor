@@ -23,6 +23,7 @@ pub mod marks;
 pub mod mcp;
 pub mod overlaps;
 pub mod plan;
+pub mod preview;
 pub mod review;
 pub mod rules;
 pub mod runner;

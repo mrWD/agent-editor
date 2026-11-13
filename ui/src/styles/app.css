@@ -3443,3 +3443,321 @@ button.map-step:hover {
   border-radius: 0 8px 8px 0;
   background: var(--panel);
 }
+
+/* ---------- Preview ---------- */
+
+.preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.preview-bar.tools {
+  gap: 8px 14px;
+}
+.preview-bar .switcher button:disabled {
+  opacity: 0.55;
+}
+.preview-widths,
+.preview-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.preview-widths > .fine,
+.preview-all > .fine {
+  margin-right: 4px;
+}
+.preview-all {
+  gap: 6px;
+}
+.preview-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.preview-chip:hover {
+  color: var(--text);
+}
+.preview-chip[aria-pressed='true'],
+.preview-chip.custom.on {
+  border-color: var(--text);
+  background: var(--pressed);
+  color: var(--text);
+}
+/* A width of the user's own: a dashed border and a cross to remove it. */
+.preview-chip.custom,
+.preview-chip.add {
+  border-style: dashed;
+  border-color: var(--line-dashed);
+}
+.preview-chip.custom {
+  padding: 0;
+}
+.preview-chip.custom.on {
+  border-style: dashed;
+}
+.preview-chip.custom button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
+.preview-chip.custom button + button {
+  width: 22px;
+  padding: 0;
+  color: var(--text-3);
+}
+.preview-chip.custom button + button:hover {
+  color: var(--text);
+}
+.preview-chip.add {
+  gap: 4px;
+  color: var(--text);
+  font-family: var(--sans);
+}
+.preview-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.preview-add input {
+  width: 64px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px dashed var(--line-dashed);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--text);
+  font-size: 12px;
+}
+.preview-address {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.preview-address input {
+  width: 22ch;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+.preview-address button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+}
+.preview-address button:hover:not(:disabled) {
+  color: var(--text);
+}
+.preview-stage {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  /* The frames are scaled to fit, so the view never scrolls sideways. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: var(--ground-deep);
+}
+.preview-stage .center-note {
+  padding: 12px 8px;
+}
+.preview-frames {
+  display: flex;
+  flex-wrap: wrap;
+  /* The devices of a row stand on one line, whatever stands above each. */
+  align-items: flex-end;
+  gap: 24px;
+}
+.preview-frame {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.preview-frame-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 28px;
+}
+.preview-frame-head h3 {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.preview-frame-head h3 .mono {
+  font-weight: 400;
+  color: var(--text-2);
+}
+.preview-follows {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preview-theme {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+}
+.preview-theme button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+}
+.preview-theme button[aria-pressed='true'] {
+  background: var(--line-strong);
+  color: var(--text);
+}
+/* The box takes the room of the scaled device; the device inside is laid out at full size and drawn smaller. */
+.preview-device-box {
+  position: relative;
+  overflow: hidden;
+}
+.preview-device {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  border: 10px solid var(--line-strong);
+  overflow: hidden;
+  /* The colour of the bezel, so a hairline left by the scaling does not show. */
+  background: var(--line-strong);
+}
+.preview-device iframe {
+  display: block;
+  border: 0;
+  background: #fff;
+}
+
+.card.picked {
+  border-color: var(--line-strong);
+  gap: 10px;
+}
+.picked-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.picked-head h2 {
+  overflow-wrap: anywhere;
+}
+.picked-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.picked-facts dt {
+  color: var(--text-3);
+}
+.picked-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.picked-source {
+  font-size: 12px;
+}
+button.picked-source {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--line-dashed);
+  text-underline-offset: 3px;
+}
+button.picked-source:hover {
+  text-decoration-color: var(--text);
+}
+.drawn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.drawn label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.drawn-badge {
+  flex: 0 0 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #d1242f;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+.drawn .field {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.pointed-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.pointed-chips .tag {
+  border-color: var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
