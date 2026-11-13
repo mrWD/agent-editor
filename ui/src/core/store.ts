@@ -1395,3 +1395,74 @@ export type CodeMap = {
 export function getMap(taskId: string, center?: { path: string; symbol: string | null } | null) {
   return core.request<CodeMap>('map.get', { taskId, center: center ?? undefined });
 }
+
+// ----- the search over everything: commits, and every other task -----
+
+/** A commit as the search lists it. `onBranch` is true for a commit of the task's own branch. */
+export type CommitHit = {
+  hash: string;
+  short: string;
+  subject: string;
+  author: string;
+  at: number;
+  onBranch: boolean;
+};
+
+/** Commits of a task's branch and of its project whose first line holds `query`, or whose id starts with it. */
+export function searchCommits(taskId: string, query: string, limit = 20) {
+  return core.request<{ hits: CommitHit[] }>('search.commits', { taskId, query, limit });
+}
+
+/** A file, or a line, found in a task other than the one on screen. */
+export type FileHitIn = FileHit & { taskId: string; projectId: string };
+export type TextHitIn = TextHit & { taskId: string; projectId: string };
+
+/**
+ * Files of every open task but `here`, the task on screen, which is searched by
+ * itself. The core answers this apart from its other answers, so it may come later.
+ */
+export function searchFilesEverywhere(query: string, here: string | undefined, limit = 50) {
+  return core.request<{ hits: FileHitIn[] }>('everywhere.files', { query, limit, ...(here ? { taskId: here } : {}) });
+}
+
+/** Lines of every open task but `here` that hold `query`. */
+export function searchTextEverywhere(query: string, here: string | undefined, limit = 100) {
+  return core.request<{ hits: TextHitIn[] }>('everywhere.text', { query, limit, ...(here ? { taskId: here } : {}) });
+}
+
+/** One commit in full: what it says and which files it changed. */
+export type ShownCommit = CommitHit & { body: string; files: GitFile[] };
+
+export function gitShow(taskId: string, hash: string) {
+  return core.request<ShownCommit>('git.show', { taskId, hash });
+}
+
+/** What one commit changed in one file. Nobody is named as the writer of its lines. */
+export function gitShowFile(taskId: string, hash: string, path: string) {
+  return core.request<FileDiff>('git.show', { taskId, hash, path });
+}
+
+// ----- the terminals of a task -----
+
+/** A terminal as the core lists it. A shell has a number; what the Run tab starts has none. */
+export type TermInfo = {
+  termId: number;
+  taskId: string;
+  title: string;
+  purpose: string;
+  number: number | null;
+  /** The command that has been running in a shell for a moment. */
+  running: string | null;
+};
+
+export function listTerminals(taskId: string) {
+  return core.request<{ terminals: TermInfo[] }>('terminal.list', { taskId });
+}
+
+/**
+ * Closes a terminal. A shell with a command still running in it is closed only
+ * with `force`; without it the core answers with that command and leaves the shell be.
+ */
+export function closeTerminal(termId: number, force = false) {
+  return core.request<{ closed: boolean; running?: string }>('terminal.close', { termId, force });
+}

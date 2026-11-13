@@ -400,6 +400,17 @@ impl Manager {
             _ => note_of("build").unwrap_or_default(),
         };
         let shown = json!({ "type": "team_note", "role": step.role, "from": from, "to": to, "text": handed });
+        // The step before this one may have been stopped a moment ago, and an agent takes a moment to
+        // come to a stop. Waiting here is what the user means by "go on": they should not be told to wait.
+        for _ in 0..200 {
+            if self.state_of(task_id) != crate::tasks::TaskState::Running {
+                break;
+            }
+            if !self.team(task_id).is_some_and(|team| team.running) {
+                bail!("The team was stopped");
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         self.prompt_as(task_id, prompt, Some(shown)).await?;
 
         // The step lasts until the agent's turn is over. A question to the user is part of the turn.

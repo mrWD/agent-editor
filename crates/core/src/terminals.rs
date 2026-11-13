@@ -4,6 +4,10 @@
 //! dev server. What the program prints is sent to the interface as raw bytes;
 //! what the user types comes back the same way. The last screens of output are
 //! kept, so an interface that connects later can show what is already there.
+//!
+//! A task can have several shells. Each has a number of its own ("Terminal 2"),
+//! and the core knows which command runs in front of it at the moment: that is
+//! the shell's name on screen, and the reason to ask before closing it.
 
 use anyhow::{Context, Result, anyhow};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -13,12 +17,19 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 
 /// How much output of one terminal is kept for late joiners.
 const SCROLLBACK_BYTES: usize = 256 * 1024;
 /// How much recent text of a command is looked through for the address it serves on.
 const SNIFF_CHARS: usize = 4096;
+/// How long a command must be seen in front of a shell before the shell is
+/// named after it. Without this the name would flicker with every `ls`.
+const SETTLED: Duration = Duration::from_millis(800);
+/// The longest command line a shell is named after.
+#[cfg(unix)]
+const MAX_COMMAND_CHARS: usize = 120;
 
 /// What a terminal is for. The interface shows each kind in its own place.
 pub const SHELL: &str = "shell";
@@ -29,8 +40,9 @@ pub enum TermEvent {
     /// The program printed these bytes. `offset` counts every byte the terminal
     /// printed before them, so a listener can tell what it already has.
     Data { term_id: u32, offset: u64, bytes: Arc<[u8]> },
-    /// The program ended.
-    Exit { term_id: u32, task_id: String, purpose: String, code: u32 },
+    /// The program ended. `closed` says the user ended it on purpose: then
+    /// there is nothing left to show of it.
+    Exit { term_id: u32, task_id: String, purpose: String, code: u32, closed: bool },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,12 +53,37 @@ pub struct TermInfo {
     pub title: String,
     /// "shell" for the user's terminal; "run:web", "logs:db" and the like for what the Run tab starts.
     pub purpose: String,
+    /// Which of the task's shells this is, from 1. `None` for what the Run tab starts.
+    pub number: Option<u32>,
+    /// The command that has been running in front of a shell for a moment, as
+    /// `ps` prints it. `None` while the shell waits at its prompt.
+    pub running: Option<String>,
+}
+
+/// A program seen in front of a shell.
+#[cfg_attr(not(unix), allow(dead_code))]
+struct Front {
+    /// The leader of the process group that has the terminal.
+    pid: i32,
+    command: String,
+    since: Instant,
+    /// The command line was read again after the program had settled. The
+    /// first look may fall between the shell's fork and the program's start,
+    /// when the new process still carries the shell's own name.
+    settled: bool,
 }
 
 struct Term {
     task_id: String,
     title: String,
     purpose: String,
+    number: Option<u32>,
+    /// The process started here: for a shell, the shell itself.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pid: Option<u32>,
+    /// What was last seen running in front of a shell.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    front: Mutex<Option<Front>>,
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
@@ -74,6 +111,9 @@ pub struct Terminals {
     ended: Mutex<HashMap<(String, String), u32>>,
     /// Variables of the core's own environment that programs started here must not inherit.
     scrub: Vec<String>,
+    /// Held while a new shell gets its number, so two windows that open a
+    /// shell at the same moment do not both get "Terminal 2".
+    numbering: Mutex<()>,
     events: broadcast::Sender<TermEvent>,
 }
 
@@ -150,6 +190,62 @@ pub fn find_address(text: &str) -> Option<String> {
     None
 }
 
+/// The command line of a process, as `ps` prints it.
+#[cfg(unix)]
+fn command_of(pid: libc::pid_t) -> Option<String> {
+    let output = std::process::Command::new("ps")
+        // Twice "w": the whole command line, however wide `ps` thinks the screen is.
+        .args(["-ww", "-o", "args=", "-p", &pid.to_string()])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let line = text.lines().next()?.trim();
+    (!line.is_empty()).then(|| line.chars().take(MAX_COMMAND_CHARS).collect())
+}
+
+/// The command in front of a shell and for how long it has been seen there.
+/// `None` while the shell itself has the terminal, which is when it waits at
+/// its prompt.
+#[cfg(unix)]
+fn front_of(term: &Term) -> Option<(String, Duration)> {
+    if term.purpose != SHELL {
+        return None;
+    }
+    let shell = term.pid? as libc::pid_t;
+    // A shell leads a process group of its own and puts every command it runs into
+    // another one. The group that has the terminal says which of them is in front.
+    let leader = term.master.lock().unwrap().process_group_leader().filter(|leader| *leader > 0 && *leader != shell);
+    let mut front = term.front.lock().unwrap();
+    let Some(leader) = leader else {
+        *front = None;
+        return None;
+    };
+    match front.as_mut().filter(|seen| seen.pid == leader) {
+        Some(seen) => {
+            if !seen.settled && seen.since.elapsed() >= SETTLED {
+                seen.settled = true;
+                if let Some(command) = command_of(leader) {
+                    seen.command = command;
+                }
+            }
+            Some((seen.command.clone(), seen.since.elapsed()))
+        }
+        None => {
+            // `ps` may be missing or the program gone already; that something runs is still true.
+            let command = command_of(leader).unwrap_or_else(|| "a program".into());
+            *front = Some(Front { pid: leader, command: command.clone(), since: Instant::now(), settled: false });
+            Some((command, Duration::ZERO))
+        }
+    }
+}
+
+/// Windows has no group "in front" to ask about, so a shell there keeps its number as its name.
+#[cfg(not(unix))]
+fn front_of(_term: &Term) -> Option<(String, Duration)> {
+    None
+}
+
 impl Default for Terminals {
     fn default() -> Self {
         Self::new()
@@ -171,6 +267,7 @@ impl Terminals {
             terms: Mutex::new(HashMap::new()),
             ended: Mutex::new(HashMap::new()),
             scrub,
+            numbering: Mutex::new(()),
             events,
         }
     }
@@ -185,7 +282,8 @@ impl Terminals {
         self.events.subscribe()
     }
 
-    /// Starts the user's shell in `cwd`.
+    /// Starts a shell of the user's in `cwd`. A task can have several: each
+    /// gets the number after the highest one that is still open.
     pub fn open(self: &Arc<Self>, task_id: &str, cwd: &Path, cols: u16, rows: u16) -> Result<TermInfo> {
         let shell = default_shell();
         let mut command = CommandBuilder::new(&shell);
@@ -196,7 +294,18 @@ impl Terminals {
         self.scrub_env(&mut command);
         let title =
             Path::new(&shell).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "shell".into());
-        self.start(task_id, cwd, command, &title, SHELL, cols, rows)
+        let _numbering = self.numbering.lock().unwrap();
+        let highest = self
+            .terms
+            .lock()
+            .unwrap()
+            .values()
+            // The number of a shell the user has closed is free again, even if its program is still on its way out.
+            .filter(|term| term.task_id == task_id && !term.stopped_on_purpose.load(Ordering::SeqCst))
+            .filter_map(|term| term.number)
+            .max();
+        let number = highest.unwrap_or(0) + 1;
+        self.start(task_id, cwd, command, &title, SHELL, Some(number), cols, rows)
     }
 
     /// Runs one command line in `cwd`, the way a shell would. `env` is added to the environment.
@@ -222,7 +331,7 @@ impl Terminals {
         for (name, value) in env {
             command.env(name, value);
         }
-        self.start(task_id, cwd, command, command_line, purpose, 120, 30)
+        self.start(task_id, cwd, command, command_line, purpose, None, 120, 30)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -233,6 +342,7 @@ impl Terminals {
         mut command: CommandBuilder,
         title: &str,
         purpose: &str,
+        number: Option<u32>,
         cols: u16,
         rows: u16,
     ) -> Result<TermInfo> {
@@ -255,6 +365,9 @@ impl Terminals {
             task_id: task_id.to_string(),
             title: title.to_string(),
             purpose: purpose.to_string(),
+            number,
+            pid: child.process_id(),
+            front: Mutex::new(None),
             writer: Mutex::new(writer),
             master: Mutex::new(pair.master),
             killer: Mutex::new(child.clone_killer()),
@@ -315,14 +428,22 @@ impl Terminals {
             .spawn(move || {
                 let code = child.wait().map(|status| status.exit_code()).unwrap_or(1);
                 manager.terms.lock().unwrap().remove(&term_id);
-                if !watched.stopped_on_purpose.load(Ordering::SeqCst) {
+                let closed = watched.stopped_on_purpose.load(Ordering::SeqCst);
+                if !closed {
                     manager.ended.lock().unwrap().insert((task.clone(), why.clone()), code);
                 }
-                let _ = manager.events.send(TermEvent::Exit { term_id, task_id: task, purpose: why, code });
+                let _ = manager.events.send(TermEvent::Exit { term_id, task_id: task, purpose: why, code, closed });
             })
             .context("Could not watch the program")?;
 
-        Ok(TermInfo { term_id, task_id: task_id.to_string(), title: title.to_string(), purpose: purpose.to_string() })
+        Ok(TermInfo {
+            term_id,
+            task_id: task_id.to_string(),
+            title: title.to_string(),
+            purpose: purpose.to_string(),
+            number,
+            running: None,
+        })
     }
 
     fn get(&self, term_id: u32) -> Result<Arc<Term>> {
@@ -359,32 +480,56 @@ impl Terminals {
         Ok(())
     }
 
-    fn info(id: u32, term: &Term) -> TermInfo {
-        TermInfo {
-            term_id: id,
-            task_id: term.task_id.clone(),
-            title: term.title.clone(),
-            purpose: term.purpose.clone(),
-        }
+    /// What runs in front of a shell right now, whether it has settled there or
+    /// not: the answer to "is something still running in it?". `None` for a
+    /// shell at its prompt, and for a terminal that is not a shell.
+    pub fn running(&self, term_id: u32) -> Result<Option<String>> {
+        let term = self.get(term_id)?;
+        Ok(front_of(&term).map(|(command, _)| command))
     }
 
-    /// Every terminal of a task, oldest first.
-    pub fn list(&self, task_id: &str) -> Vec<TermInfo> {
-        let mut list: Vec<_> = self
+    /// The terminals of a task, oldest first. With `look`, the list is the one
+    /// the user sees: each shell is asked what runs in front of it, and a shell
+    /// the user has closed is left out even while its program is still on its
+    /// way out. Without `look` every program that has not ended yet is there.
+    fn infos(&self, task_id: &str, look: bool) -> Vec<TermInfo> {
+        let mine: Vec<(u32, Arc<Term>)> = self
             .terms
             .lock()
             .unwrap()
             .iter()
             .filter(|(_, term)| term.task_id == task_id)
-            .map(|(id, term)| Self::info(*id, term))
+            .filter(|(_, term)| !(look && term.purpose == SHELL && term.stopped_on_purpose.load(Ordering::SeqCst)))
+            .map(|(id, term)| (*id, term.clone()))
+            .collect();
+        // Looking asks the system, and may start `ps`: not while every other terminal waits for the list.
+        let mut list: Vec<_> = mine
+            .into_iter()
+            .map(|(id, term)| TermInfo {
+                term_id: id,
+                task_id: term.task_id.clone(),
+                title: term.title.clone(),
+                purpose: term.purpose.clone(),
+                number: term.number,
+                running: look
+                    .then(|| front_of(&term))
+                    .flatten()
+                    .filter(|(_, seen_for)| *seen_for >= SETTLED)
+                    .map(|(command, _)| command),
+            })
             .collect();
         list.sort_by_key(|info| info.term_id);
         list
     }
 
+    /// The terminals of a task as the user sees them, oldest first, each shell with the command that runs in it.
+    pub fn list(&self, task_id: &str) -> Vec<TermInfo> {
+        self.infos(task_id, true)
+    }
+
     /// The running terminal of a task that serves a purpose, if there is one.
     pub fn find(&self, task_id: &str, purpose: &str) -> Option<TermInfo> {
-        self.list(task_id).into_iter().find(|info| info.purpose == purpose)
+        self.infos(task_id, false).into_iter().find(|info| info.purpose == purpose)
     }
 
     /// The address a running command said it serves on.
@@ -413,7 +558,7 @@ impl Terminals {
 
     /// Ends every terminal of a task.
     pub fn close_task(&self, task_id: &str) {
-        for info in self.list(task_id) {
+        for info in self.infos(task_id, false) {
             let _ = self.close(info.term_id);
         }
     }

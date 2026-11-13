@@ -3,6 +3,10 @@
 //! Folders are walked the way git sees them: what `.gitignore` hides is not
 //! searched. The list of a folder's files is kept for a few seconds, so typing
 //! in the search box does not walk the disk on every key.
+//!
+//! The task on screen is searched by itself, so its answer is quick. The
+//! other tasks, of every project, are searched apart from it ("everywhere"):
+//! that answer may take longer and is added when it arrives.
 
 use crate::tasks::Manager;
 use anyhow::Result;
@@ -23,6 +27,9 @@ const MAX_FILES: usize = 200_000;
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 /// The longest piece of a line sent back with a hit.
 const MAX_LINE_CHARS: usize = 240;
+/// In another task, this many times the wanted number of files is compared
+/// with the copies already listed, before the search gives up on finding more.
+const COPIES_LOOKED_AT: usize = 4;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -60,6 +67,33 @@ pub struct ChatHit {
     pub text: String,
 }
 
+/// A file found in a task other than the one on screen.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileHitIn {
+    pub task_id: String,
+    pub project_id: String,
+    #[serde(flatten)]
+    pub hit: FileHit,
+}
+
+/// A line found in a task other than the one on screen.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TextHitIn {
+    pub task_id: String,
+    pub project_id: String,
+    #[serde(flatten)]
+    pub hit: TextHit,
+}
+
+/// The folder of one task, to be searched.
+struct Place {
+    task_id: String,
+    project_id: String,
+    root: PathBuf,
+}
+
 /// One thing said in a task, put together from its events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Said {
@@ -67,6 +101,9 @@ pub struct Said {
     pub at: u64,
     pub text: String,
 }
+
+/// Per project: the folders whose files a search has listed so far.
+type Listed = HashMap<String, Vec<PathBuf>>;
 
 /// A folder's files and when they were listed.
 type ListedFiles = (Instant, Arc<Vec<String>>);
@@ -177,6 +214,39 @@ fn window(line: &str, match_start: usize, match_len: usize) -> (String, usize) {
     (text, column)
 }
 
+/// True when two files hold the same bytes. Files too large to read for this
+/// count as the same when they are the same size.
+fn same_file(a: &Path, b: &Path) -> bool {
+    let (Ok(one), Ok(other)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
+    if !one.is_file() || !other.is_file() || one.len() != other.len() {
+        return false;
+    }
+    one.len() > MAX_TEXT_BYTES || matches!((std::fs::read(a), std::fs::read(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+/// The folders of every open task but the one on screen, newest task first,
+/// and for each project the folders whose files are listed already.
+///
+/// The tasks of one project are working copies of the same code, so most of
+/// their files are the same file many times over. A file is listed for a task
+/// only when no folder searched before it, in the same project, holds a copy:
+/// first the task on screen, then the newer tasks.
+fn places(manager: &Manager, here: Option<&str>) -> Result<(Vec<Place>, Listed)> {
+    let mut tasks = manager.list()?;
+    tasks.sort_by_key(|task| std::cmp::Reverse(task.row.created_at));
+    let mut listed = Listed::new();
+    let mut places = Vec::new();
+    for task in tasks {
+        let root = PathBuf::from(&task.row.cwd);
+        if here == Some(task.row.id.as_str()) {
+            listed.entry(task.row.project_id).or_default().push(root);
+        } else {
+            places.push(Place { task_id: task.row.id, project_id: task.row.project_id, root });
+        }
+    }
+    Ok((places, listed))
+}
+
 /// Finds `needle` in `line` without regard to case. Both positions are in characters.
 fn find_in_line(line: &str, needle_lower: &str) -> Option<usize> {
     if line.is_ascii() && needle_lower.is_ascii() {
@@ -209,8 +279,8 @@ impl Search {
         list
     }
 
-    /// Files under `root` whose path matches `query`, best first.
-    pub fn files(&self, root: &Path, query: &str, limit: usize) -> Vec<FileHit> {
+    /// Every file under `root` whose path matches `query`, best first.
+    fn matching_files(&self, root: &Path, query: &str) -> Vec<FileHit> {
         let mut hits: Vec<FileHit> = self
             .files_of(root)
             .iter()
@@ -219,12 +289,104 @@ impl Search {
             })
             .collect();
         hits.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
+        hits
+    }
+
+    /// Files under `root` whose path matches `query`, best first.
+    pub fn files(&self, root: &Path, query: &str, limit: usize) -> Vec<FileHit> {
+        let mut hits = self.matching_files(root, query);
         hits.truncate(limit);
         hits
     }
 
+    /// Files of every open task but `here` (the task on screen, searched by
+    /// itself) whose path matches `query`, best first. See `places` for which
+    /// of several copies of one file is listed.
+    pub fn files_everywhere(
+        &self,
+        manager: &Manager,
+        here: Option<&str>,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<FileHitIn>> {
+        if query.trim().is_empty() {
+            return Ok(vec![]);
+        }
+        let (places, mut listed) = places(manager, here)?;
+        let mut hits = Vec::new();
+        for place in places {
+            let before = listed.entry(place.project_id.clone()).or_default();
+            // Tasks of a project without git all work in the project's own folder.
+            if before.contains(&place.root) {
+                continue;
+            }
+            let fresh = self
+                .matching_files(&place.root, query)
+                .into_iter()
+                // Comparing reads files. In a working copy that differs in nothing, that would be every match.
+                .take(limit.saturating_mul(COPIES_LOOKED_AT))
+                .filter(|hit| {
+                    !before.iter().any(|other| same_file(&other.join(&hit.path), &place.root.join(&hit.path)))
+                })
+                .take(limit)
+                .map(|hit| FileHitIn { task_id: place.task_id.clone(), project_id: place.project_id.clone(), hit });
+            hits.extend(fresh);
+            before.push(place.root);
+        }
+        // Best first. Equal matches stay in the order they were found: the newer task first.
+        hits.sort_by_key(|found| std::cmp::Reverse(found.hit.score));
+        hits.truncate(limit);
+        Ok(hits)
+    }
+
+    /// Lines of every open task but `here` that contain `query`, in any
+    /// letter case, task by task from the newest. A file that a folder
+    /// searched before holds a copy of is left out, as in `files_everywhere`.
+    pub fn text_everywhere(
+        &self,
+        manager: &Manager,
+        here: Option<&str>,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<TextHitIn>> {
+        let (places, mut listed) = places(manager, here)?;
+        let mut hits = Vec::new();
+        for place in places {
+            if hits.len() >= limit {
+                break;
+            }
+            let before = listed.entry(place.project_id.clone()).or_default();
+            if before.contains(&place.root) {
+                continue;
+            }
+            let is_new = |path: &str, bytes: &[u8]| {
+                !before.iter().any(|other| std::fs::read(other.join(path)).is_ok_and(|theirs| theirs == bytes))
+            };
+            let fresh = self
+                .text_where(&place.root, query, limit - hits.len(), &is_new)
+                .into_iter()
+                .map(|hit| TextHitIn { task_id: place.task_id.clone(), project_id: place.project_id.clone(), hit });
+            hits.extend(fresh);
+            before.push(place.root);
+        }
+        Ok(hits)
+    }
+
     /// Lines under `root` that contain `query`, in any letter case.
     pub fn text(&self, root: &Path, query: &str, limit: usize) -> Vec<TextHit> {
+        self.text_where(root, query, limit, &|_, _| true)
+    }
+
+    /// Lines under `root` that contain `query`, from the files `wanted` lets
+    /// through. It is asked about a file only once a line of it has matched,
+    /// with the file's path from `root` and its bytes.
+    fn text_where(
+        &self,
+        root: &Path,
+        query: &str,
+        limit: usize,
+        wanted: &(dyn Fn(&str, &[u8]) -> bool + Sync),
+    ) -> Vec<TextHit> {
         let needle = query.to_lowercase();
         if needle.trim().is_empty() {
             return vec![];
@@ -252,24 +414,22 @@ impl Search {
                     return WalkState::Continue;
                 }
                 let Ok(content) = std::str::from_utf8(&bytes) else { return WalkState::Continue };
+                let path = relative(root, entry.path());
                 let mut local = Vec::new();
                 for (index, line) in content.lines().enumerate() {
                     if let Some(at) = find_in_line(line, &needle) {
                         let (text, column) = window(line, at, needle_chars);
-                        local.push(TextHit {
-                            path: relative(root, entry.path()),
-                            line: index + 1,
-                            column,
-                            length: needle_chars,
-                            text,
-                        });
-                        if count.fetch_add(1, Ordering::Relaxed) + 1 >= limit {
-                            full.store(true, Ordering::Relaxed);
+                        local.push(TextHit { path: path.clone(), line: index + 1, column, length: needle_chars, text });
+                        // More than the limit is never sent back, whatever the other files hold.
+                        if local.len() >= limit {
                             break;
                         }
                     }
                 }
-                if !local.is_empty() {
+                if !local.is_empty() && wanted(&path, &bytes) {
+                    if count.fetch_add(local.len(), Ordering::Relaxed) + local.len() >= limit {
+                        full.store(true, Ordering::Relaxed);
+                    }
                     found.lock().unwrap().extend(local);
                 }
                 WalkState::Continue

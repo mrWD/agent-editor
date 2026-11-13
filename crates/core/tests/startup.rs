@@ -104,14 +104,24 @@ async fn a_taken_port_is_passed_over_only_when_any_free_one_will_do() {
 #[tokio::test]
 async fn the_port_from_last_time_is_used_again_when_it_is_free() {
     let sandbox = Sandbox::new("port-again");
-    let first = ae_core::startup::serve(sandbox.manager(), &on_a_free_port()).await.unwrap();
-    let port = first.addr().port();
-    first.stop().await.unwrap();
+    // A port that was just given up can be handed to the next program that asks, and on this machine
+    // many other tests are asking. When that happens the port is no longer free, which is not what this
+    // test is about, so it starts over with another one.
+    let mut last = 0;
+    for _ in 0..5 {
+        let first = ae_core::startup::serve(sandbox.manager(), &on_a_free_port()).await.unwrap();
+        let port = first.addr().port();
+        first.stop().await.unwrap();
 
-    let again = Options { port: Port::Free { prefer: Some(port) }, ..Options::default() };
-    let second = ae_core::startup::serve(sandbox.manager(), &again).await.unwrap();
-    assert_eq!(second.addr().port(), port, "the interface finds what it remembered under the same address");
-    second.stop().await.unwrap();
+        let again = Options { port: Port::Free { prefer: Some(port) }, ..Options::default() };
+        let second = ae_core::startup::serve(sandbox.manager(), &again).await.unwrap();
+        last = second.addr().port();
+        second.stop().await.unwrap();
+        if last == port {
+            return;
+        }
+    }
+    panic!("the interface never found what it remembered under the same address; it got {last}");
 }
 
 /// Quitting the desktop app ends in `Core::stop`. Nothing the core started may outlive it:

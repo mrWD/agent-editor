@@ -205,6 +205,165 @@ async fn search_finds_files_text_and_things_said() {
     assert_eq!(yours["hits"][0]["who"], "you");
 }
 
+/// Starts a task that asks for nothing and waits until its first turn is over.
+async fn quiet_task(state: &AppState, project_id: &str, text: &str) -> String {
+    let mut events = state.manager.subscribe();
+    let task = state.manager.create(project_id, "mock", text).await.unwrap();
+    until(&mut events, &task.row.id, |e| state_is(e, "idle")).await;
+    task.row.id
+}
+
+#[tokio::test]
+async fn search_finds_commits_of_the_branch_and_of_the_project_and_shows_one() {
+    let sandbox = Sandbox::new("commits");
+    let state = AppState::new(sandbox.manager());
+    let manager = &state.manager;
+    let repo = git_project(&sandbox);
+    git(&repo, &["config", "user.name", "Test"]);
+    git(&repo, &["config", "user.email", "test@example.com"]);
+    let project = manager.add_project(&repo.to_string_lossy(), None).unwrap();
+    let id = quiet_task(&state, &project.id, "What does the limiter do?").await;
+    let other = quiet_task(&state, &project.id, "And the README?").await;
+
+    dispatch(&state, "files.write", &json!({ "taskId": id, "path": "README.md", "text": "# Shop\nby hand\n" }))
+        .await
+        .unwrap();
+    let made = dispatch(
+        &state,
+        "git.commit",
+        &json!({ "taskId": id, "message": "Say who wrote the README", "picks": [{ "path": "README.md" }] }),
+    )
+    .await
+    .unwrap();
+    let hash = made["commits"][0]["hash"].as_str().unwrap().to_string();
+
+    // The task's own commit, in any letter case, with who made it and when.
+    let found = dispatch(&state, "search.commits", &json!({ "taskId": id, "query": "the readme" })).await.unwrap();
+    let hits = found["hits"].as_array().unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(
+        (&hits[0]["hash"], &hits[0]["subject"], &hits[0]["author"], &hits[0]["onBranch"]),
+        (&json!(hash), &json!("Say who wrote the README"), &json!("Test"), &json!(true))
+    );
+    assert_eq!(hits[0]["short"].as_str().unwrap(), &hash[..hits[0]["short"].as_str().unwrap().len()]);
+    assert!(hits[0]["at"].as_u64().unwrap() > 1_600_000_000_000);
+    // The commit the project started with is the project's, not the branch's.
+    let start = dispatch(&state, "search.commits", &json!({ "taskId": id, "query": "start" })).await.unwrap();
+    assert_eq!((&start["hits"][0]["subject"], &start["hits"][0]["onBranch"]), (&json!("Start"), &json!(false)));
+    // Another task of the project does not have this task's commit; it has the project's.
+    let elsewhere = dispatch(&state, "search.commits", &json!({ "taskId": other, "query": "readme" })).await.unwrap();
+    assert_eq!(elsewhere["hits"], json!([]));
+    let shared = dispatch(&state, "search.commits", &json!({ "taskId": other, "query": "Start" })).await.unwrap();
+    assert_eq!(shared["hits"].as_array().unwrap().len(), 1);
+
+    // The commit itself: its files, then one file line by line.
+    let shown = dispatch(&state, "git.show", &json!({ "taskId": id, "hash": hash })).await.unwrap();
+    assert_eq!((&shown["subject"], &shown["onBranch"]), (&json!("Say who wrote the README"), &json!(true)));
+    assert_eq!(
+        shown["files"],
+        json!([{ "path": "README.md", "kind": "modified", "added": 1, "removed": 0, "binary": false, "changes": 1 }])
+    );
+    let diff = dispatch(&state, "git.show", &json!({ "taskId": id, "hash": hash, "path": "README.md" })).await.unwrap();
+    let added: Vec<_> = diff["hunks"][0]["lines"].as_array().unwrap().iter().filter(|l| l["kind"] == "add").collect();
+    assert_eq!(added.len(), 1);
+    assert_eq!(added[0]["text"], "by hand");
+    let refused = dispatch(&state, "git.show", &json!({ "taskId": id, "hash": "HEAD" })).await.unwrap_err();
+    assert!(refused.to_string().contains("not the id of a commit"), "{refused}");
+}
+
+#[tokio::test]
+async fn a_folder_without_git_has_no_commits_to_find() {
+    let sandbox = Sandbox::new("nocommits");
+    let state = AppState::new(sandbox.manager());
+    let project = state.manager.add_project(&sandbox.project().to_string_lossy(), None).unwrap();
+    let id = quiet_task(&state, &project.id, "What is here?").await;
+    let found = dispatch(&state, "search.commits", &json!({ "taskId": id, "query": "start" })).await.unwrap();
+    assert_eq!(found["hits"], json!([]));
+    let refused = dispatch(&state, "git.show", &json!({ "taskId": id, "hash": "abcd1234" })).await.unwrap_err();
+    assert!(refused.to_string().contains("without git"), "{refused}");
+}
+
+#[tokio::test]
+async fn search_looks_in_every_task_and_lists_a_file_once_for_its_copies() {
+    let sandbox = Sandbox::new("everywhere");
+    let state = AppState::new(sandbox.manager());
+    let manager = &state.manager;
+    let shop = manager.add_project(&git_project(&sandbox).to_string_lossy(), None).unwrap();
+    // A second project with a file of the same name and one of its own.
+    let blog_dir = sandbox.0.join("blog");
+    std::fs::create_dir_all(blog_dir.join("src/middleware")).unwrap();
+    std::fs::write(blog_dir.join("src/middleware/rateLimit.ts"), "export const windowMs = 1000;\n").unwrap();
+    std::fs::write(blog_dir.join("src/posts.ts"), "export const posts = [];\n").unwrap();
+    git(&blog_dir, &["init", "-q", "-b", "main"]);
+    git(&blog_dir, &["add", "."]);
+    git(&blog_dir, &["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "Start"]);
+    let blog = manager.add_project(&blog_dir.to_string_lossy(), None).unwrap();
+
+    let here = quiet_task(&state, &shop.id, "What does the limiter do?").await;
+    let sibling = quiet_task(&state, &shop.id, "And the README?").await;
+    let far = quiet_task(&state, &blog.id, "What is in the blog?").await;
+
+    let found = |hits: &Value| -> Vec<(String, String, String)> {
+        hits["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|hit| {
+                let text = |name: &str| hit[name].as_str().unwrap().to_string();
+                (text("taskId"), text("projectId"), text("path"))
+            })
+            .collect()
+    };
+    let by_name = json!({ "taskId": here, "query": "ratelim" });
+
+    // The other project's file is found and says whose it is. The sibling task's
+    // copy of the file on screen is the same file: it is not listed again.
+    let files = dispatch(&state, "everywhere.files", &by_name).await.unwrap();
+    assert_eq!(found(&files), vec![(far.clone(), blog.id.clone(), DEMO.to_string())]);
+    assert_eq!(files["hits"][0]["positions"], json!([15, 16, 17, 18, 19, 20, 21]));
+
+    // Once the sibling's copy differs, it is a file of its own.
+    let sibling_dir = manager.cwd(&sibling).unwrap();
+    std::fs::write(sibling_dir.join(DEMO), "export const loginLimiter = rateLimit({ windowMs: 5 });\n").unwrap();
+    let files = dispatch(&state, "everywhere.files", &by_name).await.unwrap();
+    let mut listed = found(&files);
+    listed.sort();
+    let mut wanted =
+        vec![(far.clone(), blog.id.clone(), DEMO.to_string()), (sibling.clone(), shop.id.clone(), DEMO.to_string())];
+    wanted.sort();
+    assert_eq!(listed, wanted);
+
+    // Text: the line of the other project and the changed line of the sibling; the unchanged README is left out.
+    let text = dispatch(&state, "everywhere.text", &json!({ "taskId": here, "query": "WINDOWMS" })).await.unwrap();
+    let lines: Vec<_> = text["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|hit| (hit["taskId"].as_str().unwrap(), hit["line"].as_u64().unwrap(), hit["text"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        lines,
+        vec![
+            (far.as_str(), 1, "export const windowMs = 1000;"),
+            (sibling.as_str(), 1, "export const loginLimiter = rateLimit({ windowMs: 5 });"),
+        ],
+        "newest task first"
+    );
+    assert_eq!((&text["hits"][0]["column"], &text["hits"][0]["length"]), (&json!(13), &json!(8)));
+    let readme = dispatch(&state, "everywhere.text", &json!({ "taskId": here, "query": "# Shop" })).await.unwrap();
+    assert_eq!(readme["hits"], json!([]));
+    let only_one = json!({ "taskId": here, "query": "windowms", "limit": 1 });
+    let one = dispatch(&state, "everywhere.text", &only_one).await.unwrap();
+    assert_eq!(one["hits"].as_array().unwrap().len(), 1, "the limit is respected");
+
+    // With no task on screen every task is looked at, and a project's file is still listed once per copy.
+    let all = dispatch(&state, "everywhere.files", &json!({ "query": "README" })).await.unwrap();
+    assert_eq!(found(&all), vec![(sibling.clone(), shop.id.clone(), "README.md".to_string())]);
+    let all = dispatch(&state, "everywhere.files", &json!({ "query": "ratelim" })).await.unwrap();
+    assert_eq!(found(&all).len(), 3, "the changed copy, the first copy and the other project's file");
+    assert_eq!(dispatch(&state, "everywhere.files", &json!({ "query": " " })).await.unwrap()["hits"], json!([]));
+}
+
 /// Collects what a terminal prints until `wanted` shows up.
 async fn output_until(events: &mut tokio::sync::broadcast::Receiver<TermEvent>, term_id: u32, wanted: &str) -> String {
     let mut printed = String::new();
@@ -296,6 +455,103 @@ async fn a_terminal_runs_commands_in_the_tasks_folder() {
     tokio::time::timeout(Duration::from_secs(20), ended).await.expect("the shell ends when closed");
     assert!(terminals.list("task-1").is_empty());
     assert!(terminals.input(info.term_id, b"x").is_err());
+}
+
+/// True while some process on this machine has exactly this command line.
+#[cfg(unix)]
+fn is_running(command_line: &str) -> bool {
+    let listed = std::process::Command::new("ps").args(["-ax", "-ww", "-o", "args="]).output().expect("ps runs");
+    String::from_utf8_lossy(&listed.stdout).lines().any(|line| line.trim() == command_line)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_task_has_several_shells_each_with_a_number_and_the_command_that_runs_in_it() {
+    let sandbox = Sandbox::new("shells");
+    let terminals = Arc::new(Terminals::new());
+    let mut events = terminals.subscribe();
+    let folder = sandbox.project();
+
+    let first = terminals.open("task-1", &folder, 100, 30).unwrap();
+    let second = terminals.open("task-1", &folder, 100, 30).unwrap();
+    let elsewhere = terminals.open("task-2", &folder, 100, 30).unwrap();
+    // Numbers count inside a task; a program of the Run tab has none.
+    assert_eq!((first.number, second.number, elsewhere.number), (Some(1), Some(2), Some(1)));
+    let dev = terminals.run("task-1", &folder, "sleep 20", "run:dev", &[]).unwrap();
+    assert_eq!(dev.number, None);
+    let listed = terminals.list("task-1");
+    let shells: Vec<_> = listed.iter().filter(|info| info.purpose == "shell").map(|info| info.term_id).collect();
+    assert_eq!(shells, vec![first.term_id, second.term_id]);
+
+    // Two shells, not two views of one: what is set in the first is unknown to the second.
+    terminals.input(first.term_id, b"mark=one; echo \"first-[$mark]\"\n").unwrap();
+    output_until(&mut events, first.term_id, "first-[one]").await;
+    terminals.input(second.term_id, b"echo \"second-[$mark]\"\n").unwrap();
+    output_until(&mut events, second.term_id, "second-[]").await;
+    // At its prompt a shell has no command to be named after, and nothing to ask about before closing.
+    assert_eq!(terminals.running(first.term_id).unwrap(), None);
+
+    // A command that stays in front of the second shell. Its length is this test's own, so it can be found later.
+    let sleep = format!("sleep 3{:04}", std::process::id() % 10_000);
+    terminals.input(second.term_id, format!("{sleep}\n").as_bytes()).unwrap();
+    let named = async {
+        loop {
+            let running = terminals.list("task-1").into_iter().find(|info| info.term_id == second.term_id);
+            if running.and_then(|info| info.running).as_deref() == Some(sleep.as_str()) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(20), named).await.expect("the shell is named after its command");
+    assert_eq!(terminals.running(second.term_id).unwrap().as_deref(), Some(sleep.as_str()));
+    let first_now = terminals.list("task-1").into_iter().find(|info| info.term_id == first.term_id).unwrap();
+    assert_eq!(first_now.running, None, "the other shell is still at its prompt");
+    // A program of the Run tab is not a shell: there is no "in front" to speak of.
+    assert_eq!(terminals.running(dev.term_id).unwrap(), None);
+    assert!(is_running(&sleep));
+
+    // Closing the shell ends what ran in it, and the event says it was closed on purpose.
+    terminals.stop(second.term_id).unwrap();
+    let left: Vec<_> = terminals.list("task-1").into_iter().filter_map(|info| info.number).collect();
+    assert_eq!(left, vec![1], "a closed shell is off the list at once, before its program is gone");
+    let ended = async {
+        loop {
+            if let Ok(TermEvent::Exit { term_id, closed, .. }) = events.recv().await
+                && term_id == second.term_id
+            {
+                assert!(closed);
+                break;
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(20), ended).await.expect("the shell ends when closed");
+    let gone = async {
+        while is_running(&sleep) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(20), gone).await.expect("the command ends with its shell");
+
+    // The next shell gets the number after the highest one still open: 2 again, then 3.
+    let third = terminals.open("task-1", &folder, 100, 30).unwrap();
+    assert_eq!(third.number, Some(2));
+    assert_eq!(terminals.open("task-1", &folder, 100, 30).unwrap().number, Some(3));
+
+    // A shell that ends by itself was not closed by anyone.
+    terminals.input(first.term_id, b"exit\n").unwrap();
+    let left = async {
+        loop {
+            if let Ok(TermEvent::Exit { term_id, closed, .. }) = events.recv().await
+                && term_id == first.term_id
+            {
+                assert!(!closed);
+                break;
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(20), left).await.expect("the shell ends on exit");
+    terminals.close_all();
 }
 
 #[cfg(unix)]
