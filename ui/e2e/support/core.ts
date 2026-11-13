@@ -48,6 +48,8 @@ export type CoreOptions = {
   twoAgents?: boolean;
   /** Let the practice language server stand in for the TypeScript one, which the tests never have. */
   practiceLspForTs?: boolean;
+  /** Leave the first run ahead, so the editor greets the user with its setup. */
+  firstRun?: boolean;
 };
 
 export type TaskInfo = {
@@ -114,6 +116,8 @@ export class Core {
       AE_XCRUN: path.join(this.toolsDir, 'xcrun'),
       AE_ADB: path.join(this.toolsDir, 'adb'),
       AE_MOCK_DELAY_MS: String(options.mockDelayMs ?? 30),
+      // An agent that runs in a terminal is taken to be done after this much quiet. Short, so tests need not wait.
+      AE_TERMINAL_QUIET_MS: '500',
       // The core looks at what is due (automations, requests that merge by themselves) often, so tests need not wait.
       AE_WATCH_EVERY_MS: '1500',
       GIT_CONFIG_GLOBAL: gitConfig,
@@ -136,6 +140,9 @@ export class Core {
     const core = new Core(options);
     core.portNumber = await freePort();
     await core.launch();
+    // Every test but the ones about the first run starts with the first run behind it:
+    // its dialog would stand in front of everything else.
+    if (!options.firstRun) await core.request('onboarding.set', { done: true });
     return core;
   }
 

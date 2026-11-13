@@ -24,6 +24,7 @@ pub mod map;
 pub mod marks;
 pub mod mcp;
 pub mod notify;
+pub mod onboarding;
 pub mod overlaps;
 pub mod paths;
 pub mod pictures;

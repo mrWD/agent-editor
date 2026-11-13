@@ -182,7 +182,12 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   when one fails. Problems lists them. Language servers give completions,
   problems, "go to definition" and formatting on save. The Run tab starts dev
   scripts from `package.json` and services from a compose file, each task in a
-  compose project of its own, with taken ports moved to free ones.
+  compose project of its own, with taken ports moved to free ones. Launch
+  profiles say what starts together; a task has its own values over the
+  project's `.env`, with secrets masked; missing packages are installed first;
+  a database keeps its data in a volume of the task and can be reset; what
+  other tasks run is listed with its memory and can be stopped; Shell opens a
+  terminal inside a running container.
 - **M6, together.** A team: a planner, a builder and a reviewer take one task
   in turn, then the checks run. A race: the same task goes to two or more
   agents, each in a working copy of its own, and one result is kept. The Plan
@@ -194,23 +199,76 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   for the next agent and report what they noticed.
 - **M7, Preview and Map.** Preview shows the running app at several widths at
   once, in light and dark, lets you pick an element or draw on the page, and
-  sends that to the agent in words. Map shows the files the task changed, what
+  sends that to the agent in words. A screenshot of each width goes into the
+  message (it needs Chrome, Chromium or Edge on this computer). The iOS
+  simulator and the Android emulator each have a tab that opens the app there
+  and shows the screen (they need Xcode and the Android tools). Map shows the files the task changed, what
   they define, who needs them and what they call, and draws a flow the agent
   describes.
 - **M8, the sections.** Issues from GitHub, GitLab or a Linear team; "Start"
   turns one into a task. Agents: who is doing what, cost by agent and by task,
   limits, a daily budget, handing a task to another agent. Automations: clean
   up after a merge, run checks, start a task every day at a time. Health: what
-  each project is missing, read from its files.
+  each project is missing, read from its files. Settings: the agents and their
+  commands, an agent of your own, the one a new task starts with, keeping the
+  computer awake while an agent works. Notifications for a question, the end
+  of a turn, failed checks and a request that became ready to merge, told once
+  and only while no window of the editor is in front.
 - **M9, the desktop app.** The core and the interface in one app (Tauri 2) for
   macOS, Windows and Linux: a folder dialog for "Another folder", links that
   open in the system's browser, a window that remembers its size and place, a
   menu, one running copy at a time. Not signed, no auto-update.
 
-Not built: a screenshot in Preview and the iOS and Android tabs there (they say
-so); a settings window; notifications.
+The editor is dark, as it was designed, and has a light theme: Settings, "The
+editor", Theme: Dark, Light, or "As the computer", which follows the system and
+changes with it. The code, the terminal and the marks of files change with
+everything else. The choice is kept in the browser, so the app and each
+browser have their own.
+
+The first time the editor is opened it takes the user through three chapters:
+trackers, agents, code. Each is a dialog that connects something, and then
+hints on the interface itself: one thing on screen is ringed, a card beside it
+says what it is, and "Next" and "Back" move between the hints. Where a hint
+says so, pressing the ringed thing is the way on. The last hint of a chapter
+opens the next chapter's dialog; the last of all leaves the user in the editor.
+A chapter in which nothing was connected has nothing to point at and goes
+straight on. Trackers: Linear, with a key that is checked. Agents: the ones
+the editor comes with; command-line agents found on this computer, from the
+list Orca knows (Claude Code, Codex, Cursor, Antigravity, Gemini, Copilot,
+OpenCode, Qwen Code, Kimi, Qoder, CodeBuddy, Trae and more), each added as an
+agent in a terminal with one press; agents of the ACP registry (Cursor,
+Copilot, Qwen Code, Kimi Code, Qoder, CodeBuddy, MiniMax Code, GLM and
+others); agents with an API key; Claude's agent pointed at DeepSeek, Kimi,
+GLM, Qwen, MiniMax or OpenRouter; and a local or self-hosted model. The editor
+calls no model itself, so a key or a model of another maker is always given
+to an agent, in its environment. Code: GitHub, GitLab and Docker, with what is
+connected and how to connect the rest, and a folder that becomes a project.
+Escape puts the first run aside, and Settings opens it again. Of the
+ready-made agents only Claude Code in a terminal was tried against the real
+thing; the others are written from the registry and the makers' documentation.
+
+An agent that does not speak ACP runs in a terminal instead. Add it in
+Settings as an agent of your own and tick "It runs in a terminal". A task then
+shows that terminal in place of the conversation; what you send is typed into
+the program, and you can type into it yourself. Write `{message}` among the
+arguments where the program takes a first message (`claude --model haiku
+{message}`): it is then started with yours. Without that, the first message
+is typed, and a program that opens with a question of its own, as Claude does
+when it asks whether to trust a new folder, takes the Enter for its answer. The editor cannot read what
+such a program means, so a turn is taken to be over when the program has
+printed nothing for a moment (2.5 seconds), and "your turn" may also mean that
+it is asking you something. Line marks, checkpoints, Changes and checks work
+as with any agent; a team or a race with such an agent has not been tried. There are no tool calls in the conversation, no
+questions to answer there, no settings in the head, no pictures, no cost, and
+none of the editor's own tools. A program started again is told what was said
+before as one long message.
 
 Not checked: anything on Windows or Linux (the CI is written and has never
 run); GitLab and Linear against the real services; Codex and Gemini; the
 real language servers for Rust, Go and Python (the one for TypeScript and
-JavaScript was tried by hand; the tests use a practice server).
+JavaScript was tried by hand; the tests use a practice server); the
+screenshot with a real browser, the real iOS simulator and Android emulator,
+and a notification of the real system (the tests use stand-ins for each); the
+command-line programs of Codex and Gemini as agents in a terminal (Claude's
+was tried by hand: started with a message, its question about the folder
+answered in the terminal, a second message of two lines typed into it).

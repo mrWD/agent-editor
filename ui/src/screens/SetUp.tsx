@@ -120,6 +120,7 @@ export function SetUp(props: { firstRun: boolean }): JSX.Element {
                 <option value={agent.id} disabled={!agent.available}>
                   {agent.name}
                   {agent.available ? '' : ' (not installed)'}
+                  {agent.available && agent.speaks === 'terminal' ? ' (in a terminal)' : ''}
                 </option>
               )}
             </For>

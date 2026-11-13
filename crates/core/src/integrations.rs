@@ -69,13 +69,30 @@ fn team_setting(project_id: &str) -> String {
 
 /// What an issue becomes as the first message of its task.
 fn first_message(issue: &Issue) -> String {
+    let mut message = issue.title.clone();
     let body = issue.body.trim();
-    if body.is_empty() {
-        format!("{}\n\nThis is issue {} ({}).", issue.title, issue.key, issue.url)
-    } else {
-        format!("{}\n\n{}\n\nThis is issue {} ({}).", issue.title, body, issue.key, issue.url)
+    if !body.is_empty() {
+        message.push_str(&format!("\n\n{body}"));
     }
+    // What is attached may be all there is to go on: an issue made from an error
+    // in Sentry has no text of its own, only the way to that error.
+    if !issue.links.is_empty() {
+        message.push_str("\n\nAttached to the issue:");
+        for link in &issue.links {
+            let title = link.title.trim();
+            if title.is_empty() || title == link.url {
+                message.push_str(&format!("\n- {}", link.url));
+            } else {
+                message.push_str(&format!("\n- {title}: {}", link.url));
+            }
+        }
+    }
+    message.push_str(&format!("\n\nThis is issue {} ({}).", issue.key, issue.url));
+    message
 }
+
+/// Where it is kept that the Linear key may only read, once Linear has said so.
+const LINEAR_READ_ONLY: &str = "linear.readOnly";
 
 /// Where it is kept that a task's request merges by itself, with how.
 fn auto_merge_key(task_id: &str) -> String {
@@ -117,7 +134,7 @@ impl Manager {
         json!({
             "github": self.hosts.tool_state(HostKind::GitHub, &servers[0]),
             "gitlab": self.hosts.tool_state(HostKind::GitLab, &servers[1]),
-            "linear": { "hasKey": self.linear_key().is_some() },
+            "linear": { "hasKey": self.linear_key().is_some(), "readOnly": self.linear_read_only() },
             "docker": self.hosts.docker_state(),
         })
     }
@@ -141,6 +158,8 @@ impl Manager {
     pub fn set_linear_key(&self, key: Option<&str>) -> Result<()> {
         let key = key.map(str::trim).filter(|key| !key.is_empty());
         self.store().set_setting("linear.key", key)?;
+        // What was found out about the old key says nothing about the new one.
+        self.store().set_setting(LINEAR_READ_ONLY, None)?;
         self.remembered.issues.lock().unwrap().clear();
         self.broadcast("integrations.changed", json!({}));
         Ok(())
@@ -277,6 +296,19 @@ impl Manager {
                     .ok_or_else(|| anyhow!("There is no open issue {key} in this project"))?
             }
         };
+        // A Linear issue is read once more by itself: the list has neither what is
+        // attached to it nor what was written since. If that fails, the list's is used.
+        let issue = match (source == "linear", self.linear_key()) {
+            (true, Some(token)) => {
+                let (hosts, wanted) = (self.hosts.clone(), issue.key.clone());
+                match tokio::task::spawn_blocking(move || hosts.linear_issue(&token, &wanted)).await? {
+                    // Only the very issue that was asked for takes the place of the list's.
+                    Ok(read) if read.key == issue.key => read,
+                    _ => issue,
+                }
+            }
+            _ => issue,
+        };
         let attached = TaskIssue {
             key: issue.key.clone(),
             id: issue.id.clone(),
@@ -364,14 +396,42 @@ impl Manager {
         let (Some(key), Some(team)) = (self.linear_key(), team) else {
             return;
         };
+        // A key that may only read is known after its first refusal: Linear is not asked again, and it is
+        // said in a line, not as a failure, for nothing is broken.
+        if self.linear_read_only() {
+            self.emit(
+                task_id,
+                json!({ "type": "tracker", "text": "The issue stays as it is in Linear: the key kept here may only read." }),
+            );
+            return;
+        }
         let issue_id = issue.id.as_str();
         match self.hosts.linear_move(&key, &team, issue_id, kind) {
             Ok(state) => self.emit(task_id, json!({ "type": "tracker", "text": format!("The issue is now “{state}” in Linear.") })),
+            Err(error) if error.to_string().contains(crate::hosts::READ_ONLY_KEY) => {
+                let _ = self.store().set_setting(LINEAR_READ_ONLY, Some("yes"));
+                self.broadcast("integrations.changed", json!({}));
+                self.emit(
+                    task_id,
+                    json!({
+                        "type": "tracker",
+                        "text": "The issue was not moved in Linear: the key kept here may only read. To have issues moved \
+                                 by themselves, make a personal API key with write access (Linear, Settings, Security and \
+                                 access) and connect it in Issues.",
+                        "failed": true
+                    }),
+                );
+            }
             Err(error) => self.emit(
                 task_id,
                 json!({ "type": "tracker", "text": format!("The issue could not be moved in Linear: {error:#}"), "failed": true }),
             ),
         }
+    }
+
+    /// Whether Linear has refused to change anything with the key kept here.
+    pub(crate) fn linear_read_only(&self) -> bool {
+        self.store().setting(LINEAR_READ_ONLY).ok().flatten().as_deref() == Some("yes")
     }
 
     // ----- merge requests -----
@@ -731,6 +791,7 @@ mod tests {
             labels: vec![],
             assignee: None,
             updated_at: 0,
+            links: vec![],
         };
         assert_eq!(
             first_message(&issue),
@@ -740,6 +801,36 @@ mod tests {
         assert_eq!(
             first_message(&issue),
             "Login allows unlimited attempts\n\nThis is issue #12 (https://github.com/x/shop/issues/12)."
+        );
+    }
+
+    #[test]
+    fn what_is_attached_to_an_issue_goes_to_the_agent_even_when_the_issue_says_nothing_else() {
+        // An issue Sentry made: no text, only the way to the error.
+        let issue = Issue {
+            key: "APP-7".into(),
+            id: "uuid-7".into(),
+            title: "Error: No error message".into(),
+            url: "https://linear.app/x/issue/APP-7".into(),
+            state: "Todo".into(),
+            body: String::new(),
+            labels: vec![],
+            assignee: None,
+            updated_at: 0,
+            links: vec![
+                crate::hosts::IssueLink {
+                    title: "Error: No error message".into(),
+                    url: "https://sentry.io/organizations/x/issues/1/".into(),
+                },
+                crate::hosts::IssueLink { title: " ".into(), url: "https://example.com/log".into() },
+            ],
+        };
+        assert_eq!(
+            first_message(&issue),
+            "Error: No error message\n\nAttached to the issue:\n\
+             - Error: No error message: https://sentry.io/organizations/x/issues/1/\n\
+             - https://example.com/log\n\n\
+             This is issue APP-7 (https://linear.app/x/issue/APP-7)."
         );
     }
 }

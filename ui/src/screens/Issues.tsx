@@ -228,6 +228,11 @@ export function Issues(): JSX.Element {
                               Connected to Linear
                               {who().name ? ` as ${who().name}` : ''}
                               {who().workspace ? ` in ${who().workspace}` : ''}. The key is kept on this computer.
+                              <Show when={status().linear.readOnly}>
+                                {' '}
+                                It may only read: issues are not moved when a task starts or merges. A key with write
+                                access changes that.
+                              </Show>
                             </>
                           )}
                         </Show>

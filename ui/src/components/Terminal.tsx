@@ -4,35 +4,43 @@ import '@xterm/xterm/css/xterm.css';
 import { createEffect, createSignal, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { core } from '../core/client';
 import { listTerminals, type TermInfo } from '../core/store';
+import { colourOf, currentTheme } from '../core/theme';
 
 /** Kinds of raw-byte messages; they match the core's. */
 const OUTPUT = 1;
 const REPLACE = 2;
 const INPUT = 1;
 
-const colours = {
-  background: '#0B0D10',
-  foreground: '#E7E9ED',
-  cursor: '#F5B544',
-  cursorAccent: '#0B0D10',
-  selectionBackground: 'rgba(245, 181, 68, 0.3)',
-  black: '#1C2028',
-  red: '#FF8A8A',
-  green: '#5BD08A',
-  yellow: '#F5B544',
-  blue: '#6FB1FF',
-  magenta: '#B8A1FF',
-  cyan: '#56D4C4',
-  white: '#A9B0BC',
-  brightBlack: '#8B93A1',
-  brightRed: '#FFA3A3',
-  brightGreen: '#7FE0A6',
-  brightYellow: '#F8C76E',
-  brightBlue: '#93C5FF',
-  brightMagenta: '#CBBBFF',
-  brightCyan: '#7FE2D5',
-  brightWhite: '#E7E9ED',
-};
+/**
+ * The colours of the terminal, read from the style sheet as it stands: the
+ * terminal draws itself, so it cannot be styled the way the rest is.
+ */
+function colours() {
+  const ansi = (index: number) => colourOf(`--ansi-${index}`);
+  return {
+    background: colourOf('--term-bg'),
+    foreground: colourOf('--term-fg'),
+    cursor: colourOf('--accent'),
+    cursorAccent: colourOf('--term-bg'),
+    selectionBackground: colourOf('--selection'),
+    black: ansi(0),
+    red: ansi(1),
+    green: ansi(2),
+    yellow: ansi(3),
+    blue: ansi(4),
+    magenta: ansi(5),
+    cyan: ansi(6),
+    white: ansi(7),
+    brightBlack: ansi(8),
+    brightRed: ansi(9),
+    brightGreen: ansi(10),
+    brightYellow: ansi(11),
+    brightBlue: ansi(12),
+    brightMagenta: ansi(13),
+    brightCyan: ansi(14),
+    brightWhite: ansi(15),
+  };
+}
 
 const encoder = new TextEncoder();
 
@@ -131,7 +139,7 @@ export function TerminalView(props: {
       fontSize: 12.5,
       lineHeight: 1.3,
       cursorBlink: true,
-      theme: colours,
+      theme: colours(),
       scrollback: 5000,
       allowProposedApi: true,
     });
@@ -195,6 +203,17 @@ export function TerminalView(props: {
       term = undefined;
     });
   });
+
+  // The theme changed: the terminal is drawn again in its colours.
+  createEffect(
+    on(
+      currentTheme,
+      () => {
+        if (term) term.options.theme = colours();
+      },
+      { defer: true },
+    ),
+  );
 
   // The shell starts the first time the terminal is looked at, not before.
   createEffect(

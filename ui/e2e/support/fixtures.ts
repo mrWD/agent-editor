@@ -21,6 +21,8 @@ type Options = {
   twoAgents: boolean;
   /** A core where the practice language server stands in for the TypeScript one. */
   practiceLspForTs: boolean;
+  /** A core of the test's own that has not been through the first run. */
+  firstRun: boolean;
 };
 
 type PerTest = {
@@ -44,6 +46,7 @@ export const test = base.extend<Options & PerTest, PerWorker>({
   practiceCost: [0, { option: true }],
   twoAgents: [false, { option: true }],
   practiceLspForTs: [false, { option: true }],
+  firstRun: [false, { option: true }],
 
   workerCore: [
     // eslint-disable-next-line no-empty-pattern -- Playwright reads the names of the fixtures from this pattern
@@ -56,14 +59,20 @@ export const test = base.extend<Options & PerTest, PerWorker>({
   ],
 
   core: async (
-    { workerCore, freshCore, mockDelayMs, brokenAgent, practiceCost, twoAgents, practiceLspForTs },
+    { workerCore, freshCore, mockDelayMs, brokenAgent, practiceCost, twoAgents, practiceLspForTs, firstRun },
     use,
     testInfo,
   ) => {
     const own =
-      freshCore || brokenAgent || practiceLspForTs || mockDelayMs !== DEFAULT_DELAY || practiceCost > 0 || twoAgents;
+      freshCore ||
+      firstRun ||
+      brokenAgent ||
+      practiceLspForTs ||
+      mockDelayMs !== DEFAULT_DELAY ||
+      practiceCost > 0 ||
+      twoAgents;
     const core = own
-      ? await Core.start({ mockDelayMs, brokenAgent, practiceCost, twoAgents, practiceLspForTs })
+      ? await Core.start({ mockDelayMs, brokenAgent, practiceCost, twoAgents, practiceLspForTs, firstRun })
       : await workerCore.get();
     const logFrom = core.log.length;
     await use(core);

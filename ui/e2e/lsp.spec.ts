@@ -1,3 +1,6 @@
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { AGENT_BINARY } from './support/core';
 import { APP_FILE, expect, readIn, test, unique, type App, type Project } from './support/fixtures';
 
 /**
@@ -355,6 +358,33 @@ test.describe('Language servers', () => {
       'title',
       /To install it: npm install -g typescript-language-server typescript$/,
     );
+  });
+
+  test('LS-15 a server that is installed while its note is on screen is found by itself, and the note goes away', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project();
+    await app.openHome();
+    const taskId = await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
+    const folder = await app.folderOf(taskId);
+    const missing = app.page.getByRole('status').filter({ hasText: 'is not installed' });
+    await app.openFile(APP_FILE);
+    await expect(missing).toBeVisible();
+    await expect(serverNote(app, 'No language server')).toBeVisible();
+
+    // The user installs it, as the note says, somewhere the editor does not see: here, into the task's own
+    // packages. The practice server stands in for the real one.
+    const bin = path.join(folder, 'node_modules', '.bin');
+    mkdirSync(bin, { recursive: true });
+    const server = path.join(bin, 'typescript-language-server');
+    writeFileSync(server, `#!/bin/sh\nexec "${AGENT_BINARY}" --lsp\n`);
+    chmodSync(server, 0o755);
+
+    // Nothing is pressed: the note is gone, and the file has its server.
+    await expect(missing).toBeHidden();
+    await expect(serverNote(app, 'No language server')).toHaveCount(0);
+    await expect(serverNote(app, SERVER_ON)).toBeVisible();
   });
 
   test('LS-10 leaving the task closes its files in the server, and coming back shows the problems again', async ({

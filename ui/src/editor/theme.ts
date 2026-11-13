@@ -5,7 +5,9 @@ import { tags as t } from '@lezer/highlight';
 
 /**
  * The editor in the colours of the design: graphite ground, four syntax
- * colours, the accent for the caret. Sizes come from the mockup of the
+ * colours, the accent for the caret. Every colour that depends on the ground
+ * is a name from the style sheet, so the light theme changes the editor with
+ * everything else. Sizes come from the mockup of the
  * workbench: 13px mono, line height 1.7, a 34px column for author badges.
  */
 const frame = EditorView.theme(
@@ -26,7 +28,7 @@ const frame = EditorView.theme(
     '.cm-line': { padding: '0 16px 0 10px' },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
     '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
-      { backgroundColor: 'rgba(245, 181, 68, 0.22)' },
+      { backgroundColor: 'var(--selection)' },
     '.cm-gutters': {
       backgroundColor: 'transparent',
       color: 'var(--text-3)',
@@ -36,7 +38,7 @@ const frame = EditorView.theme(
     '.cm-marks': { width: '34px' },
     '.cm-marks .cm-gutterElement': { display: 'flex', alignItems: 'center' },
     '.cm-lineNumbers .cm-gutterElement': { minWidth: '22px', padding: '0', textAlign: 'right' },
-    '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.025)' },
+    '.cm-activeLine': { backgroundColor: 'var(--veil-1)' },
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text)' },
     '.cm-line-agent': { backgroundColor: 'var(--agent-tint)' },
     '.cm-line-you': { backgroundColor: 'var(--raised)' },
@@ -50,10 +52,10 @@ const frame = EditorView.theme(
     '.cm-badge-agent': { width: '22px', backgroundColor: 'var(--agent-soft)', color: 'var(--agent-color)' },
     '.cm-badge-you': { width: '30px', backgroundColor: 'var(--text)', color: 'var(--ground)' },
     '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': {
-      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      backgroundColor: 'var(--veil-4)',
       outline: 'none',
     },
-    '.cm-selectionMatch': { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
+    '.cm-selectionMatch': { backgroundColor: 'var(--veil-3)' },
     '.cm-searchMatch': { backgroundColor: 'rgba(245, 181, 68, 0.25)', borderRadius: '2px' },
     '.cm-searchMatch-selected': { backgroundColor: 'rgba(245, 181, 68, 0.5)' },
 
@@ -109,20 +111,20 @@ const frame = EditorView.theme(
 const syntax = HighlightStyle.define([
   {
     tag: [t.keyword, t.operatorKeyword, t.modifier, t.controlKeyword, t.definitionKeyword, t.moduleKeyword],
-    color: '#E38BB7',
+    color: 'var(--syn-keyword)',
   },
-  { tag: [t.bool, t.null, t.self, t.atom], color: '#E38BB7' },
-  { tag: [t.string, t.special(t.string), t.regexp, t.character], color: '#9FD59A' },
-  { tag: [t.number, t.unit, t.color], color: '#E0B872' },
-  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: '#8B93A1', fontStyle: 'italic' },
-  { tag: [t.tagName, t.angleBracket], color: '#E38BB7' },
-  { tag: t.attributeName, color: '#E0B872' },
+  { tag: [t.bool, t.null, t.self, t.atom], color: 'var(--syn-keyword)' },
+  { tag: [t.string, t.special(t.string), t.regexp, t.character], color: 'var(--syn-string)' },
+  { tag: [t.number, t.unit, t.color], color: 'var(--syn-number)' },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: 'var(--syn-comment)', fontStyle: 'italic' },
+  { tag: [t.tagName, t.angleBracket], color: 'var(--syn-keyword)' },
+  { tag: t.attributeName, color: 'var(--syn-number)' },
   { tag: [t.heading, t.strong], fontWeight: '600' },
   { tag: t.emphasis, fontStyle: 'italic' },
-  { tag: [t.link, t.url], color: '#9FD59A', textDecoration: 'underline' },
+  { tag: [t.link, t.url], color: 'var(--syn-string)', textDecoration: 'underline' },
   { tag: t.strikethrough, textDecoration: 'line-through' },
-  { tag: [t.meta, t.processingInstruction], color: '#A9B0BC' },
-  { tag: t.invalid, color: '#FF8A8A' },
+  { tag: [t.meta, t.processingInstruction], color: 'var(--syn-meta)' },
+  { tag: t.invalid, color: 'var(--syn-invalid)' },
 ]);
 
 export const graphite: Extension = [frame, syntaxHighlighting(syntax)];

@@ -1,11 +1,25 @@
 //! Which agents the core knows how to start.
 //!
-//! Each agent is a command that speaks ACP on stdio. The list is built once at
-//! start: for every agent we check whether its command can be found, so the
-//! interface can say "not installed" instead of failing later.
+//! Each agent is a command that speaks ACP on stdio, or, for one that does
+//! not, a program the editor runs in a terminal and types into (see
+//! `tasks/terminal.rs`). The list is built once at start: for every agent we
+//! check whether its command can be found, so the interface can say "not
+//! installed" instead of failing later.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+/// How the editor talks to an agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Speaks {
+    /// The Agent Client Protocol on its input and output.
+    #[default]
+    Acp,
+    /// Nothing the editor understands: it runs in a terminal of the task, and
+    /// a message is typed into it the way the user would type it.
+    Terminal,
+}
 
 /// How to start one agent, and what the interface shows about it.
 #[derive(Debug, Clone, Serialize)]
@@ -31,6 +45,8 @@ pub struct AgentDef {
     pub note: Option<String>,
     /// True when using it spends tokens on the user's account.
     pub spends_tokens: bool,
+    /// Whether it speaks the protocol or runs in a terminal.
+    pub speaks: Speaks,
 }
 
 /// The agents found on this machine.
@@ -44,6 +60,7 @@ impl Registry {
     pub fn detect() -> Self {
         let mut agents = vec![Self::mock()];
         agents.extend(Self::mock_twin());
+        agents.extend(Self::mock_in_terminal());
         let npx = which::which("npx").ok();
         agents.push(Self::via_npx(
             &npx,
@@ -91,7 +108,26 @@ impl Registry {
                 .ok()
                 .and_then(|v| v.parse::<f64>().ok())
                 .is_some_and(|c| c > 0.0),
+            speaks: Speaks::Acp,
         }
+    }
+
+    /// The practice agent as a program in a terminal, there only when
+    /// `AE_MOCK_TERMINAL=1`: the way for agents that do not speak the protocol
+    /// can then be tried without installing one.
+    fn mock_in_terminal() -> Option<AgentDef> {
+        if std::env::var("AE_MOCK_TERMINAL").ok().as_deref() != Some("1") {
+            return None;
+        }
+        let first = Self::mock();
+        Some(AgentDef {
+            id: "mock-terminal".into(),
+            name: "Practice agent in a terminal".into(),
+            short: "Pt".into(),
+            args: vec!["--terminal".into()],
+            speaks: Speaks::Terminal,
+            ..first
+        })
     }
 
     /// A second practice agent, there only when `AE_MOCK_TWIN=1`: handing a task
@@ -130,6 +166,7 @@ impl Registry {
                 "Needs Node.js: the npx command was not found.".into()
             }),
             spends_tokens: true,
+            speaks: Speaks::Acp,
         }
     }
 }

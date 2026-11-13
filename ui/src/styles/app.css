@@ -1,4 +1,5 @@
-/* Design tokens: "A · Dark graphite". The values come straight from the design canvas. */
+/* Design tokens: "A · Dark graphite". The values come straight from the design canvas.
+   The light theme, at the end of this file, gives the same names other values. */
 :root {
   --ground: #0f1115;
   --ground-deep: #0b0d10;
@@ -29,6 +30,42 @@
   --green-bg: rgba(91, 208, 138, 0.1);
   --red: #ff8a8a;
   --red-bg: rgba(255, 122, 122, 0.1);
+
+  /* A veil over whatever is under it: lighter on a dark ground, darker on a light one. */
+  --veil-1: rgba(255, 255, 255, 0.025);
+  --veil-2: rgba(255, 255, 255, 0.05);
+  --veil-3: rgba(255, 255, 255, 0.08);
+  --veil-4: rgba(255, 255, 255, 0.1);
+  --selection: rgba(245, 181, 68, 0.22);
+  --scrim: rgba(8, 10, 13, 0.68);
+
+  /* Code: four colours and two greys. */
+  --syn-keyword: #e38bb7;
+  --syn-string: #9fd59a;
+  --syn-number: #e0b872;
+  --syn-comment: #8b93a1;
+  --syn-meta: #a9b0bc;
+  --syn-invalid: #ff8a8a;
+
+  /* The terminal: its ground, its text, and the sixteen colours programs print in. */
+  --term-bg: #0b0d10;
+  --term-fg: #e7e9ed;
+  --ansi-0: #1c2028;
+  --ansi-1: #ff8a8a;
+  --ansi-2: #5bd08a;
+  --ansi-3: #f5b544;
+  --ansi-4: #6fb1ff;
+  --ansi-5: #b8a1ff;
+  --ansi-6: #56d4c4;
+  --ansi-7: #a9b0bc;
+  --ansi-8: #8b93a1;
+  --ansi-9: #ffa3a3;
+  --ansi-10: #7fe0a6;
+  --ansi-11: #f8c76e;
+  --ansi-12: #93c5ff;
+  --ansi-13: #cbbbff;
+  --ansi-14: #7fe2d5;
+  --ansi-15: #e7e9ed;
 
   --sans: 'Inter Variable', Inter, system-ui, sans-serif;
   --mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
@@ -1320,7 +1357,7 @@ textarea::placeholder {
 .tone-plain {
   --agent-color: var(--text-2);
   --agent-soft: var(--pressed);
-  --agent-tint: rgba(255, 255, 255, 0.05);
+  --agent-tint: var(--veil-2);
   --agent-line: var(--line-strong);
 }
 
@@ -1544,7 +1581,7 @@ textarea::placeholder {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(8, 10, 13, 0.68);
+  background: var(--scrim);
 }
 .palette {
   position: fixed;
@@ -4579,7 +4616,7 @@ button.picked-source:hover {
   --race-tint: rgba(86, 212, 196, 0.1);
 }
 .race-agent.tone-plain {
-  --race-tint: rgba(255, 255, 255, 0.05);
+  --race-tint: var(--veil-2);
 }
 .race-agent[aria-pressed='true'] {
   width: auto;
@@ -5757,4 +5794,431 @@ button.picked-source:hover {
 }
 .device-status {
   margin: 0 -16px -16px;
+}
+
+/* ---------- An agent that runs in a terminal ---------- */
+
+/* Its terminal stands where the conversation would; what the editor itself knows of the task stays above it. */
+/* It gives way before the message box does: in a low window the box must stay in reach. */
+.agent-terminal {
+  flex: 1 1 0;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 0;
+  border-top: 1px solid var(--line-soft);
+}
+/* It takes the room its words need and no more: the terminal has the rest. */
+.feed.beside {
+  flex: 0 1 auto;
+  max-height: 26%;
+}
+.setting-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- The first run ---------- */
+
+.first-scrim {
+  z-index: 60;
+}
+.first-run {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 61;
+  transform: translate(-50%, -50%);
+  width: min(760px, calc(100% - 32px));
+  max-height: calc(100% - 48px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+.first-head,
+.first-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.first-head {
+  border-bottom: 1px solid var(--line);
+}
+.first-foot {
+  border-top: 1px solid var(--line);
+}
+.first-steps {
+  flex: 1 1 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.first-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.first-steps li.on {
+  color: var(--text);
+  font-weight: 600;
+}
+.first-steps li.done {
+  color: var(--text-2);
+}
+.first-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 500;
+}
+.first-steps li.on .first-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.first-steps li.done .first-dot {
+  border-color: var(--green);
+  color: var(--green);
+}
+.first-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.first-body .banner {
+  margin: 0;
+}
+.first-title {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.25;
+  outline: none;
+}
+.first-group {
+  margin: 4px 0 -4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.first-about {
+  margin: 0 0 -4px;
+}
+.first-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ground);
+}
+.first-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+}
+.first-list > .first-row + .first-row {
+  border-top: 1px solid var(--line);
+}
+.first-body > .first-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ground);
+}
+.first-what {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.first-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.first-name .name {
+  font-weight: 500;
+}
+.tag.good {
+  border-color: var(--green);
+  color: var(--green);
+}
+.first-form {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.first-form.plain {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.first-form label {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.first-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.first-inline .field {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.first-have {
+  padding: 12px 14px;
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  background: var(--green-bg);
+}
+.first-have h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green);
+}
+.first-have ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* ---------- The practice agent says what it is ---------- */
+
+.practice-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 181, 68, 0.45);
+  border-radius: 10px;
+  background: rgba(245, 181, 68, 0.08);
+  font-size: 13px;
+}
+.practice-note p {
+  margin: 0;
+}
+
+/* ---------- Hints on the interface: a tour ---------- */
+
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  /* Presses fall through the frame itself; its shades take them. */
+  pointer-events: none;
+  visibility: hidden;
+}
+.tour.shown {
+  visibility: visible;
+}
+/* What is not ringed is dimmed, and cannot be pressed while the tour is up. */
+.tour-shade {
+  position: fixed;
+  background: var(--scrim);
+  pointer-events: auto;
+}
+.tour-ring {
+  position: fixed;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  /* The ringed thing is looked at, not pressed, unless the hint says it may be. */
+  pointer-events: auto;
+}
+.tour-ring.press {
+  pointer-events: none;
+  cursor: pointer;
+}
+.tour-card {
+  position: fixed;
+  width: min(392px, calc(100% - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+.tour-card p {
+  margin: 0;
+  color: var(--text-2);
+}
+.tour-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.tour-count {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.tour-title {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.3;
+}
+.tour-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+/* The last button of a tour has more words than "Next": the row gives way before any of them breaks. */
+.tour-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tour-foot .btn {
+  white-space: nowrap;
+}
+
+/* ---------- The light theme ---------- */
+
+/* The same names as the dark tokens at the top, for a light ground. Every colour of text keeps
+   at least 4.5 to 1 against every ground it is set on; the tints of agents and of good and bad
+   news stay the pale colours they are, with darker words on them. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --ground: #f6f6f3;
+  --ground-deep: #eeeeea;
+  --panel: #ffffff;
+  --raised: #efefec;
+  --pressed: #e2e3df;
+
+  --line: #dedfdb;
+  --line-soft: #e8e9e5;
+  --line-strong: #c4c6c1;
+  --line-dashed: #a3a6a1;
+
+  --text: #1b1d21;
+  --text-2: #474d57;
+  --text-3: #5d636e;
+
+  --accent: #8f4e00;
+  --on-accent: #ffffff;
+
+  --claude: #5b40c4;
+  --claude-bg: rgba(91, 64, 196, 0.12);
+  --codex: #125bb5;
+  --codex-bg: rgba(18, 91, 181, 0.12);
+  --gemini: #086f63;
+  --gemini-bg: rgba(8, 111, 99, 0.12);
+
+  --green: #136b38;
+  --green-bg: rgba(19, 107, 56, 0.09);
+  --red: #b3262f;
+  --red-bg: rgba(179, 38, 47, 0.07);
+
+  --veil-1: rgba(0, 0, 0, 0.025);
+  --veil-2: rgba(0, 0, 0, 0.04);
+  --veil-3: rgba(0, 0, 0, 0.07);
+  --veil-4: rgba(0, 0, 0, 0.1);
+  --selection: rgba(200, 130, 20, 0.26);
+  --scrim: rgba(40, 42, 46, 0.45);
+
+  --syn-keyword: #a8327a;
+  --syn-string: #2f7a2a;
+  --syn-number: #8a5a00;
+  --syn-comment: #5d636e;
+  --syn-meta: #474d57;
+  --syn-invalid: #b3262f;
+
+  --term-bg: #eeeeea;
+  --term-fg: #1b1d21;
+  --ansi-0: #2a2e35;
+  --ansi-1: #b3262f;
+  --ansi-2: #136b38;
+  --ansi-3: #8a5a00;
+  --ansi-4: #125bb5;
+  --ansi-5: #5b40c4;
+  --ansi-6: #086f63;
+  --ansi-7: #474d57;
+  --ansi-8: #5d636e;
+  --ansi-9: #cf3b45;
+  --ansi-10: #1d8a4b;
+  --ansi-11: #a56d00;
+  --ansi-12: #1f74d6;
+  --ansi-13: #7257e0;
+  --ansi-14: #0f8f80;
+  --ansi-15: #1b1d21;
+
+  /* The marks of files are drawn for a dark ground; here each is the same colour, darker. */
+  --icon-folder: color-mix(in srgb, #8b93a1 55%, #000);
+  --icon-muted: color-mix(in srgb, #7b8392 55%, #000);
+  --icon-ts: color-mix(in srgb, #6fb1ff 55%, #000);
+  --icon-js: color-mix(in srgb, #e3c05f 55%, #000);
+  --icon-data: color-mix(in srgb, #c8a35a 55%, #000);
+  --icon-env: color-mix(in srgb, #9fb87a 55%, #000);
+  --icon-npm: color-mix(in srgb, #e0705f 55%, #000);
+  --icon-words: color-mix(in srgb, #9aa6b8 55%, #000);
+  --icon-css: color-mix(in srgb, #56d4c4 55%, #000);
+  --icon-html: color-mix(in srgb, #ff9a6c 55%, #000);
+  --icon-rust: color-mix(in srgb, #e08a5f 55%, #000);
+  --icon-python: color-mix(in srgb, #7fb2e0 55%, #000);
+  --icon-go: color-mix(in srgb, #6fd3ea 55%, #000);
+  --icon-ruby: color-mix(in srgb, #e07a7a 55%, #000);
+  --icon-php: color-mix(in srgb, #9b94e8 55%, #000);
+  --icon-java: color-mix(in srgb, #d98d55 55%, #000);
+  --icon-swift: color-mix(in srgb, #ff8f6b 55%, #000);
+  --icon-c: color-mix(in srgb, #8fa7c7 55%, #000);
+  --icon-csharp: color-mix(in srgb, #a98ce0 55%, #000);
+  --icon-vue: color-mix(in srgb, #63d49a 55%, #000);
+  --icon-svelte: color-mix(in srgb, #ff7a56 55%, #000);
+  --icon-sql: color-mix(in srgb, #8fc4d8 55%, #000);
+  --icon-image: color-mix(in srgb, #c99ae0 55%, #000);
+  --icon-svg: color-mix(in srgb, #d9a05f 55%, #000);
+  --icon-pdf: color-mix(in srgb, #e07a7a 55%, #000);
+  --icon-shell: color-mix(in srgb, #8fd08a 55%, #000);
+  --icon-docker: color-mix(in srgb, #6fb1ff 55%, #000);
+  --icon-git: color-mix(in srgb, #e07a5f 55%, #000);
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }

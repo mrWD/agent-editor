@@ -126,6 +126,8 @@ impl AppState {
             manager.set_mcp_base(format!("http://127.0.0.1:{port}"));
         }
         let terminals = Arc::new(Terminals::without(own));
+        // An agent that does not speak the protocol runs in one of them.
+        manager.lend_terminals(terminals.clone());
         let runner = Arc::new(Runner::new(terminals.clone(), manager.docker_path(), manager.data_dir().to_path_buf()));
         let lsp = Arc::new(Lsp::new(manager.clone()));
         let previews = Arc::new(crate::preview::Previews::new());
@@ -376,6 +378,8 @@ async fn converse(socket: WebSocket, state: AppState) {
                             let term_id = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
                             if attached.contains_key(&term_id) {
                                 let _ = state.terminals.input(term_id, &bytes[5..]);
+                                // In an agent's terminal a line the user ends is a message to the agent.
+                                state.manager.typed_into(term_id, &bytes[5..]);
                             }
                         }
                     }
@@ -531,7 +535,9 @@ fn terminal_command(
         }
         "terminal.resize" => {
             let (cols, rows) = size_params(params);
-            terminals.resize(number_param(params, "termId")? as u32, cols, rows)?;
+            let term_id = number_param(params, "termId")? as u32;
+            terminals.resize(term_id, cols, rows)?;
+            state.manager.terminal_resized(term_id);
             Ok(json!({}))
         }
         "terminal.close" => {
@@ -561,7 +567,9 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             "version": env!("CARGO_PKG_VERSION"),
             "platform": std::env::consts::OS,
             "cwd": std::env::current_dir().ok().map(|p| p.to_string_lossy().into_owned()),
-            "dataDir": manager.data_dir().to_string_lossy()
+            "dataDir": manager.data_dir().to_string_lossy(),
+            // False until the user has been through the first run, or has put it aside.
+            "onboarded": manager.onboarded()
         })),
         "agents.list" => Ok(manager.agents_listed()),
         "settings.get"
@@ -571,6 +579,10 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         | "agents.remove"
         | "agents.try"
         | "notifications.attention" => crate::settings::command(manager, method, params).await,
+
+        "onboarding.get" | "onboarding.set" | "onboarding.project" => {
+            crate::onboarding::command(manager, method, params).await
+        }
 
         "projects.list" => Ok(json!(manager.projects()?)),
         "projects.add" => {

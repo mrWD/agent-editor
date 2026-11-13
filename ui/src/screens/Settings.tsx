@@ -3,6 +3,8 @@ import { createStore, reconcile } from 'solid-js/store';
 import { Chip } from '../components/bits';
 import { core } from '../core/client';
 import { askPermission, permission, refusal, type Permission } from '../core/notify';
+import { showOnboardingAgain } from '../core/onboarding';
+import { chooseTheme, themeChoice, type ThemeChoice } from '../core/theme';
 import {
   commandLine,
   envText,
@@ -39,6 +41,12 @@ function originOf(agent: Pick<AgentSetting, 'own' | 'changed'>): string {
   if (agent.own) return 'Yours';
   return agent.changed ? 'Command changed' : 'Built in';
 }
+
+const THEMES: { value: ThemeChoice; name: string }[] = [
+  { value: 'dark', name: 'Dark' },
+  { value: 'light', name: 'Light' },
+  { value: 'system', name: 'As the computer' },
+];
 
 /** The value of `editing` that means "the form for a new agent is open". */
 const NEW = '__new__';
@@ -96,6 +104,8 @@ export function Settings(): JSX.Element {
   const [program, setProgram] = createSignal('');
   const [args, setArgs] = createSignal('');
   const [env, setEnv] = createSignal('');
+  /** Whether the agent in the form runs in a terminal because it speaks no protocol. */
+  const [inTerminal, setInTerminal] = createSignal(false);
   /** What "Try it" found for each agent it was pressed on; "trying" while it runs. */
   const [tried, setTried] = createSignal<Record<string, Tried | 'trying'>>({});
   /** What this browser says about showing notifications. */
@@ -142,6 +152,7 @@ export function Settings(): JSX.Element {
     setProgram(agent?.program ?? '');
     setArgs(joinArgs(agent?.args ?? []));
     setEnv(envText(agent?.env ?? []));
+    setInTerminal(agent?.speaks === 'terminal');
     setEditing(agent?.id ?? NEW);
     setProblem(null);
   };
@@ -159,6 +170,7 @@ export function Settings(): JSX.Element {
         program: program().trim(),
         args: splitArgs(args()),
         env: read.env,
+        terminal: inTerminal(),
       });
       setEditing(null);
       forgetTry(saved.saved);
@@ -261,9 +273,28 @@ export function Settings(): JSX.Element {
         value={env()}
         onInput={(event) => setEnv(event.currentTarget.value)}
       />
+      <Show when={!agent || agent.own}>
+        <label class="setting-check">
+          <input
+            type="checkbox"
+            checked={inTerminal()}
+            onChange={(event) => setInTerminal(event.currentTarget.checked)}
+          />
+          It runs in a terminal: it does not speak the Agent Client Protocol
+        </label>
+      </Show>
       <span class="fine">
-        The command has to speak the Agent Client Protocol on its input and output. It is used from the agent's next
-        start; an agent that is running goes on as it was started.
+        <Show
+          when={inTerminal()}
+          fallback="The command has to speak the Agent Client Protocol on its input and output."
+        >
+          The program is started in a terminal in the task's folder, and your messages are typed into it. Write{' '}
+          <code>{'{message}'}</code> among the arguments where the program takes a first message: it is then started
+          with yours, and a question it opens with (whether to trust the folder, say) waits for you instead of being
+          answered by what was typed. Its turn is taken to be over when it has printed nothing for a moment. It gets no
+          pictures and none of the editor's own tools, and what it does is shown in its terminal, not as a conversation.
+        </Show>{' '}
+        It is used from the agent's next start; an agent that is running goes on as it was started.
       </span>
       <div class="actions">
         <button type="submit" class="btn primary" disabled={busy()}>
@@ -302,8 +333,8 @@ export function Settings(): JSX.Element {
                 <div class="stage-head">
                   <h2 class="stage-title">Agents</h2>
                   <span class="stage-note">
-                    Each agent is a command line that speaks the Agent Client Protocol. The editor starts it once for
-                    every task.
+                    Each agent is a command line that speaks the Agent Client Protocol, or a program that runs in a
+                    terminal. The editor starts it once for every task.
                   </span>
                 </div>
                 <For each={known().agents}>
@@ -314,6 +345,9 @@ export function Settings(): JSX.Element {
                           <Chip agentId={agent.id} short={agent.short} flat />
                           <span class="name">{agent.name}</span>
                           <span class="tag">{originOf(agent)}</span>
+                          <Show when={agent.speaks === 'terminal'}>
+                            <span class="tag">In a terminal</span>
+                          </Show>
                           <Show when={!agent.available}>
                             <span class="fine text-bad">Not installed</span>
                           </Show>
@@ -386,7 +420,7 @@ export function Settings(): JSX.Element {
                     }}
                   >
                     <option value="" selected={known().defaultAgent === null}>
-                      The first agent that is installed
+                      The agent you used last, or the first that is installed
                     </option>
                     <For each={known().agents}>
                       {(agent) => (
@@ -498,6 +532,30 @@ export function Settings(): JSX.Element {
                 </div>
                 <div class="stage-row setting-row">
                   <div class="setting-what">
+                    <label class="name" for="theme-choice">
+                      Theme
+                    </label>
+                    <span class="soft">
+                      Dark is the editor as it was designed. "As the computer" follows the system and changes with it.
+                      This is kept in this browser, so another browser, or the app, has a choice of its own.
+                    </span>
+                  </div>
+                  <select
+                    id="theme-choice"
+                    class="select-button"
+                    onChange={(event) => chooseTheme(event.currentTarget.value as ThemeChoice)}
+                  >
+                    <For each={THEMES}>
+                      {(theme) => (
+                        <option value={theme.value} selected={themeChoice() === theme.value}>
+                          {theme.name}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                </div>
+                <div class="stage-row setting-row">
+                  <div class="setting-what">
                     <span class="name">Format files on save in new projects</span>
                     <span class="soft">
                       Saving tidies the file first, where a language server can. This is what a new project starts with:
@@ -535,6 +593,17 @@ export function Settings(): JSX.Element {
                 <div class="stage-row setting-row">
                   <span class="setting-what">Agent Editor</span>
                   <span class="mono">version {state.app?.version ?? 'unknown'}</span>
+                </div>
+                <div class="stage-row setting-row">
+                  <div class="setting-what">
+                    <span class="name">The first-run setup</span>
+                    <span class="soft">
+                      Connecting agents and services and adding a project, step by step, as on the first day.
+                    </span>
+                  </div>
+                  <button type="button" class="btn small" onClick={() => void showOnboardingAgain()}>
+                    Open it again
+                  </button>
                 </div>
                 <div class="stage-row setting-row">
                   <div class="setting-what">

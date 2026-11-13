@@ -9,7 +9,9 @@ import { watchNotifications } from './core/notify';
 import { watchRequests } from './core/requests';
 import { watchSettings } from './core/settings';
 import { startStore } from './core/store';
+import { startTheme } from './core/theme';
 
+startTheme();
 startStore();
 watchRequests();
 watchSettings();

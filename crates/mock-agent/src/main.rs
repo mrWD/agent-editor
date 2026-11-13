@@ -37,8 +37,10 @@
 //! - `AE_MOCK_COST=0.25`: every turn adds this much to what the session says it cost.
 //!
 //! Started with `--lsp`, the same program is a practice language server instead: see `lsp.rs`.
+//! Started with `--terminal`, it is an agent that speaks no protocol and talks in a terminal: see `terminal.rs`.
 
 mod lsp;
+mod terminal;
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -205,6 +207,9 @@ impl Agent {
 fn main() {
     if std::env::args().any(|arg| arg == "--lsp") {
         return lsp::run();
+    }
+    if std::env::args().any(|arg| arg == "--terminal") {
+        return terminal::run();
     }
     let delay_ms = std::env::var("AE_MOCK_DELAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(35);
 

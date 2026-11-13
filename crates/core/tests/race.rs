@@ -54,6 +54,7 @@ impl Track {
             available: true,
             note: None,
             spends_tokens: false,
+            speaks: Default::default(),
         };
         let mut broken = practice("broken", "Broken agent");
         broken.program = "false".into();

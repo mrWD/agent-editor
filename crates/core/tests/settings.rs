@@ -805,3 +805,42 @@ async fn the_computer_is_kept_awake_exactly_while_an_agent_works() {
     assert!(!process_is_there(&third[2]));
     assert!(!active());
 }
+
+#[tokio::test]
+async fn a_new_task_starts_with_the_real_agent_that_was_used_last_unless_one_was_picked() {
+    let sandbox = Sandbox::new("settings-used-last");
+    let state = AppState::new(sandbox.manager());
+    let manager = &state.manager;
+    let project = manager.add_project(sandbox.project().to_str().unwrap(), None).unwrap();
+    /// The agents a new task would start with, as every picker of the interface is told.
+    async fn marked(state: &AppState) -> Vec<String> {
+        let agents = dispatch(state, "agents.list", &json!({})).await.unwrap();
+        let chosen = agents.as_array().unwrap().iter().filter(|agent| agent["isDefault"] == true);
+        chosen.map(|agent| agent["id"].as_str().unwrap().to_string()).collect()
+    }
+
+    // Nothing was used yet: no agent is marked, and the interface takes the first that is installed.
+    assert!(marked(&state).await.is_empty());
+    // The practice agent has no model behind it: using it changes nothing.
+    let mut events = manager.subscribe();
+    let practice = manager.create(&project.id, "mock", "What does the limiter do?").await.unwrap();
+    until(&mut events, &practice.row.id, |e| state_is(e, "idle")).await;
+    assert!(marked(&state).await.is_empty());
+
+    // An agent that spends tokens was given a task: the next task starts with it.
+    let paid = manager.create(&project.id, "mock-paid", "What does the limiter do?").await.unwrap();
+    until(&mut events, &paid.row.id, |e| state_is(e, "idle")).await;
+    assert_eq!(marked(&state).await, ["mock-paid"]);
+    // Settings still shows that nothing was chosen there.
+    assert_eq!(dispatch(&state, "settings.get", &json!({})).await.unwrap()["defaultAgent"], Value::Null);
+
+    // A choice made in Settings stands over what was used last.
+    set(&state, json!({ "defaultAgent": "mock-load" })).await;
+    assert_eq!(marked(&state).await, ["mock-load"]);
+    set(&state, json!({ "defaultAgent": null })).await;
+    assert_eq!(marked(&state).await, ["mock-paid"]);
+
+    // With its task archived, no real agent is in use any more.
+    manager.archive(&paid.row.id).await.unwrap();
+    assert!(marked(&state).await.is_empty());
+}
