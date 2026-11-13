@@ -598,14 +598,44 @@ textarea::placeholder {
   display: flex;
 }
 .files {
-  flex: 0 0 230px;
-  min-width: 0;
+  /* How wide it is comes from the user: see the edge next to it. */
+  flex: 0 1 230px;
+  min-width: 160px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 8px;
-  border-right: 1px solid var(--line-soft);
+  padding: 10px 6px;
   overflow: auto;
+}
+/* The edge between a side pane and the middle. It is the line between them, and it can be dragged. */
+.side-grip {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 1px;
+  background: var(--line-soft);
+  cursor: col-resize;
+  touch-action: none;
+}
+/* Wider than the line it draws, so it is easy to catch. */
+.side-grip::before {
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+}
+.side-grip::after {
+  content: '';
+  position: absolute;
+  inset: 0 -1px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.side-grip:hover::after,
+.side-grip.dragging::after {
+  opacity: 1;
+}
+.side-grip:hover::after {
+  transition-delay: 0.15s;
 }
 .files-head {
   display: flex;
@@ -621,30 +651,73 @@ textarea::placeholder {
 .tree {
   display: flex;
   flex-direction: column;
-  font-family: var(--mono);
   font-size: 13px;
 }
+/* Names are read, not lined up in columns: they are set in the interface's own face, as other editors do. */
 .tree-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 28px;
+  gap: 5px;
+  min-height: 24px;
   width: 100%;
   padding: 0 6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-2);
-  font-family: var(--mono);
+  font-family: var(--sans);
   font-size: 13px;
+  line-height: 1.25;
   text-align: left;
 }
-.tree-row:hover {
-  color: var(--text);
-}
-.tree-row[aria-current='true'] {
+.tree-row:hover,
+.tree-line:hover > .tree-row,
+.tree-line:focus-within > .tree-row {
   background: var(--raised);
   color: var(--text);
+}
+.tree-row[aria-current='true'],
+.tree-line > .tree-row[aria-current='true'] {
+  background: var(--pressed);
+  color: var(--text);
+}
+.tree-row[aria-expanded] {
+  color: var(--text);
+}
+/* The mark of a folder. A file has the same room, empty. */
+.tree-twisty {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin-left: -2px;
+  color: var(--text-3);
+  transition: transform 0.1s;
+}
+.tree-row[aria-expanded='true'] > .tree-twisty {
+  transform: rotate(90deg);
+}
+.tree-row:hover > .tree-twisty {
+  color: var(--text-2);
+}
+/* What is inside an open folder, with a line down the side that shows how far the folder reaches. */
+.tree-inside {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.tree-inside::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: var(--guide);
+  width: 1px;
+  background: var(--line-soft);
+  pointer-events: none;
+}
+.tree:hover .tree-inside::before {
+  background: var(--line-strong);
 }
 .tree-row .label {
   flex-grow: 1;
@@ -774,11 +847,11 @@ textarea::placeholder {
 /* ---------- Agent pane ---------- */
 
 .agent-pane {
-  flex: 0 0 380px;
-  min-width: 0;
+  /* How wide it is comes from the user: see the edge next to it. */
+  flex: 0 1 380px;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--line-soft);
   background: var(--ground-deep);
 }
 .agent-head {
@@ -2440,8 +2513,39 @@ button.search-link:hover {
 
 .tree-tools {
   display: flex;
-  gap: 4px;
-  padding: 0 0 4px;
+  align-items: center;
+  gap: 2px;
+  min-height: 24px;
+  padding: 0 2px 2px 6px;
+}
+/* Whose files these are. */
+.tree-root {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.tree-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+}
+.tree-tools button:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text);
 }
 .tree-line {
   position: relative;
@@ -2451,6 +2555,10 @@ button.search-link:hover {
 .tree-line > .tree-row {
   min-width: 0;
 }
+/* The actions lie over the end of the row, on the row's own ground. */
+.tree-line:has(> .tree-row[aria-current='true']) > .tree-actions {
+  background: var(--pressed);
+}
 /* The actions of a row show when the row is pointed at or reached with the keyboard. */
 .tree-actions {
   position: absolute;
@@ -2458,7 +2566,7 @@ button.search-link:hover {
   display: flex;
   gap: 2px;
   padding-left: 6px;
-  background: var(--ground);
+  background: var(--raised);
   /* Unseen but there: the keyboard reaches them, and they show as soon as it does. */
   opacity: 0;
 }
@@ -2487,7 +2595,7 @@ button.search-link:hover {
   font-size: 12px;
 }
 .tree-actions button:hover {
-  background: var(--raised);
+  background: var(--line-strong);
   color: var(--text);
 }
 .tree-actions button.sure {
@@ -2498,13 +2606,14 @@ button.search-link:hover {
   flex: 1 1 0;
   min-width: 0;
   height: 26px;
+  height: 22px;
   margin: 1px 0;
   padding: 0 6px;
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--ground-deep);
   color: var(--text);
-  font-family: var(--mono);
+  font-family: var(--sans);
   font-size: 13px;
 }
 .tree-problem {

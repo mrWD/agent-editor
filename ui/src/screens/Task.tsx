@@ -18,6 +18,8 @@ import { createStore } from 'solid-js/store';
 import { RACE_VIEW, taskHref, VIEWS, type View } from '../app/router';
 import { AgentPane } from '../components/AgentPane';
 import { FileIcon } from '../components/FileIcon';
+import { SideGrip } from '../components/SideGrip';
+import { sideWidth } from '../core/layout';
 import { LspBadge, LspStatus } from '../components/LspStatus';
 import { ProblemsTab } from '../components/ProblemsTab';
 import { RunTab } from '../components/RunTab';
@@ -127,6 +129,29 @@ function ChangeBadges(props: { review: FileReview | undefined; task: Task }): JS
 
 type Folder = { entries: FileEntry[]; open: boolean; loading: boolean; problem: string | null };
 
+/** Where a row of the tree starts: every level deeper is one step to the right. */
+const TREE_EDGE = 6;
+const TREE_STEP = 14;
+const indent = (depth: number) => `${TREE_EDGE + depth * TREE_STEP}px`;
+
+/** The mark in front of a folder's name: it points to the right, and turns down when the folder opens. */
+const Twisty = (): JSX.Element => (
+  <svg
+    class="tree-twisty"
+    width="14"
+    height="14"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M6 4l4 4-4 4" />
+  </svg>
+);
+
 /** What is being named in the tree: a new file or folder inside `at`, or the entry `at` itself. */
 type Naming = { kind: 'file' | 'folder' | 'rename'; at: string };
 
@@ -171,6 +196,14 @@ function FileTree(props: {
     if (!folder) void load(path);
     else setFolders(path, 'open', !folder.open);
   };
+  // The top level has no row of its own and stays open.
+  const openOnes = () => Object.keys(folders).filter((path) => path !== '' && folders[path]?.open);
+  const anyOpen = () => openOnes().length > 0;
+  const foldAll = () => {
+    for (const path of openOnes()) setFolders(path, 'open', false);
+  };
+  const projectName = () =>
+    state.projects.find((project) => project.id === props.task.info.projectId)?.name ?? 'Project';
 
   onMount(() => {
     void load('');
@@ -257,7 +290,7 @@ function FileTree(props: {
 
   /** The box a name is typed in. Enter applies, Escape gives up, leaving the box applies too. */
   const nameBox = (label: string, depth: number): JSX.Element => (
-    <div class="tree-line" style={{ 'padding-left': `${6 + depth * 14}px` }}>
+    <div class="tree-line" style={{ 'padding-left': indent(depth) }}>
       <input
         class="tree-name"
         aria-label={label}
@@ -287,12 +320,12 @@ function FileTree(props: {
       {(folder) => (
         <>
           <Show when={folder().loading}>
-            <span class="tree-note" style={{ 'padding-left': `${6 + depth * 14}px` }}>
+            <span class="tree-note" style={{ 'padding-left': indent(depth) }}>
               Reading the folder
             </span>
           </Show>
           <Show when={folder().problem}>
-            <span class="tree-note" style={{ 'padding-left': `${6 + depth * 14}px`, color: 'var(--red)' }}>
+            <span class="tree-note" style={{ 'padding-left': indent(depth), color: 'var(--red)' }}>
               {folder().problem}
             </span>
           </Show>
@@ -300,7 +333,7 @@ function FileTree(props: {
             {nameBox(naming()!.kind === 'folder' ? 'Name of the new folder' : 'Name of the new file', depth)}
           </Show>
           <Show when={!folder().loading && !folder().problem && folder().entries.length === 0 && naming()?.at !== path}>
-            <span class="tree-note" style={{ 'padding-left': `${6 + depth * 14}px` }}>
+            <span class="tree-note" style={{ 'padding-left': indent(depth) }}>
               Empty
             </span>
           </Show>
@@ -314,15 +347,18 @@ function FileTree(props: {
                       <button
                         type="button"
                         class="tree-row"
-                        style={{ 'padding-left': `${6 + depth * 14}px` }}
+                        style={{ 'padding-left': indent(depth) }}
                         aria-current={entry.path === props.current ? 'true' : undefined}
                         aria-expanded={entry.isDir ? Boolean(folders[entry.path]?.open) : undefined}
                         onClick={() => (entry.isDir ? toggle(entry.path) : props.onOpen(entry.path))}
                       >
+                        {/* A file keeps the twisty's room empty, so names of one level start on one line. */}
+                        <Show when={entry.isDir} fallback={<span class="tree-twisty" />}>
+                          <Twisty />
+                        </Show>
                         <FileIcon path={entry.path} isDir={entry.isDir} open={Boolean(folders[entry.path]?.open)} />
-                        <span class="label">
+                        <span class="label" title={entry.path}>
                           {entry.name}
-                          {entry.isDir ? '/' : ''}
                         </span>
                         <Show when={!entry.isDir}>
                           <ChangeBadges review={reviewed(entry.path)} task={props.task} />
@@ -365,7 +401,12 @@ function FileTree(props: {
                 >
                   {nameBox(`New name of ${entry.path}`, depth)}
                 </Show>
-                <Show when={entry.isDir && folders[entry.path]?.open}>{level(entry.path, depth + 1)}</Show>
+                <Show when={entry.isDir && folders[entry.path]?.open}>
+                  {/* The line down the side shows how far the folder reaches. */}
+                  <div class="tree-inside" style={{ '--guide': `${TREE_EDGE + depth * TREE_STEP + 7}px` }}>
+                    {level(entry.path, depth + 1)}
+                  </div>
+                </Show>
               </>
             )}
           </For>
@@ -377,11 +418,33 @@ function FileTree(props: {
   return (
     <div class="tree">
       <div class="tree-tools">
-        <button type="button" class="btn tiny ghost" onClick={() => startNaming({ kind: 'file', at: '' }, '')}>
-          New file
+        <span class="tree-root" title={projectName()}>
+          {projectName()}
+        </span>
+        <button
+          type="button"
+          aria-label="New file"
+          title="New file"
+          onClick={() => startNaming({ kind: 'file', at: '' }, '')}
+        >
+          <Icon.FilePlus />
         </button>
-        <button type="button" class="btn tiny ghost" onClick={() => startNaming({ kind: 'folder', at: '' }, '')}>
-          New folder
+        <button
+          type="button"
+          aria-label="New folder"
+          title="New folder"
+          onClick={() => startNaming({ kind: 'folder', at: '' }, '')}
+        >
+          <Icon.FolderPlus />
+        </button>
+        <button
+          type="button"
+          aria-label="Fold every folder"
+          title="Fold every folder"
+          disabled={!anyOpen()}
+          onClick={foldAll}
+        >
+          <Icon.FoldAll />
         </button>
       </div>
       <Show when={problem()}>
@@ -938,7 +1001,11 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
 
   return (
     <>
-      <section class="files" aria-label="Files of this task" style={{ display: props.shown ? undefined : 'none' }}>
+      <section
+        class="files"
+        aria-label="Files of this task"
+        style={{ display: props.shown ? undefined : 'none', 'flex-basis': `${sideWidth('files')}px` }}
+      >
         <div class="files-head">
           <h2 class="pane-title grow">Files</h2>
           <button type="button" class="seg" aria-pressed={listing() === 'all'} onClick={() => setListing('all')}>
@@ -971,6 +1038,7 @@ function CodeView(props: { task: Task; shown: boolean }): JSX.Element {
           />
         </Show>
       </section>
+      <SideGrip side="files" label="Drag to make the files wider or narrower" hidden={!props.shown} />
 
       <section
         class={`center ${toneOf(props.task.info.agentId)}`}
@@ -1359,6 +1427,7 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
               </Show>
             )}
           </Show>
+          <SideGrip side="agent" label="Drag to make the conversation wider or narrower" />
           <AgentPane task={current()} />
         </div>
       </>

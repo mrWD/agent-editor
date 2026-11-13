@@ -24,7 +24,7 @@ test.describe('Making, renaming and deleting files in the tree', () => {
     await app.files.getByRole('button', { name: 'New folder', exact: true }).click();
     await app.files.getByRole('textbox', { name: 'Name of the new folder' }).fill('docs');
     await app.page.keyboard.press('Enter');
-    await expect(app.files.getByRole('button', { name: 'docs/', exact: true })).toBeVisible();
+    await expect(app.files.getByRole('button', { name: 'docs', exact: true })).toBeVisible();
     await app.files.getByRole('button', { name: 'New file in docs' }).click();
     await app.files.getByRole('textbox', { name: 'Name of the new file' }).fill('notes.md');
     await app.page.keyboard.press('Enter');
@@ -117,12 +117,12 @@ test.describe('Making, renaming and deleting files in the tree', () => {
 
     await app.files.getByRole('button', { name: 'Delete src', exact: true }).click();
     await app.files.getByRole('button', { name: 'Really delete src?' }).click();
-    await expect(app.files.getByRole('button', { name: 'src/', exact: true })).toHaveCount(0);
+    await expect(app.files.getByRole('button', { name: 'src', exact: true })).toHaveCount(0);
     await expect(app.tab('rateLimit.ts')).toHaveCount(0);
     expect(existsSync(path.join(folder, 'src'))).toBe(false);
 
     await app.activities.filter({ hasText: 'deleted' }).getByRole('button', { name: 'Put it back' }).click();
-    await expect(app.files.getByRole('button', { name: 'src/', exact: true })).toBeVisible();
+    await expect(app.files.getByRole('button', { name: 'src', exact: true })).toBeVisible();
     expect(readIn(folder, DEMO_FILE)).toBe(DEMO_TEXT);
   });
 });
@@ -141,7 +141,7 @@ test.describe('What the tree draws in front of a name', () => {
     const whatOf = (name: string) => row(name).locator('.file-icon-wrap').getAttribute('title');
 
     // A name is found by its name alone: the icon puts nothing into the row's words.
-    await expect(row('src/')).toBeVisible();
+    await expect(row('src')).toBeVisible();
     await expect(row('README.md')).toHaveText('README.md');
 
     // Each kind of file has a colour and a word of its own.
@@ -151,18 +151,18 @@ test.describe('What the tree draws in front of a name', () => {
     expect(await whatOf('package.json')).toBe('npm package');
     expect(await toneOf('.gitignore')).toBe('git');
     expect(await toneOf('compose.yaml')).toBe('data');
-    expect(await toneOf('src/')).toBe('folder');
+    expect(await toneOf('src')).toBe('folder');
 
     // The folder's drawing is one shape closed and another open; both are folders.
-    const folder = row('src/').locator('.file-icon path');
+    const folder = row('src').locator('.file-icon path');
     const closed = await folder.first().getAttribute('d');
-    await row('src/').click();
-    await expect(row('middleware/')).toBeVisible();
+    await row('src').click();
+    await expect(row('middleware')).toBeVisible();
     expect(await folder.count()).toBe(2);
     expect(await folder.first().getAttribute('d')).not.toBe(closed);
-    expect(await whatOf('src/')).toBe('Folder, open');
-    await row('src/').click();
-    await expect(row('middleware/')).toHaveCount(0);
+    expect(await whatOf('src')).toBe('Folder, open');
+    await row('src').click();
+    await expect(row('middleware')).toHaveCount(0);
     expect(await folder.first().getAttribute('d')).toBe(closed);
 
     // The file's own language, in the tree and on its tab.
@@ -177,9 +177,9 @@ test.describe('What the tree draws in front of a name', () => {
     const box = tree.getByRole('textbox', { name: 'Name of the new file' });
     await box.fill('notes/plan.md');
     await box.press('Enter');
-    await expect(row('notes/')).toBeVisible();
-    expect(await toneOf('notes/')).toBe('folder');
-    await row('notes/').click();
+    await expect(row('notes')).toBeVisible();
+    expect(await toneOf('notes')).toBe('folder');
+    await row('notes').click();
     await expect(row('plan.md')).toBeVisible();
     expect(await toneOf('plan.md')).toBe('words');
     // And the list under "Changed" draws the same icons.
