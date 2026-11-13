@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+# A newer push to the same branch makes the run of the older one pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core:
     name: Core on ${{ matrix.os }}
@@ -11,7 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        # macOS is checked on the author's own machine. In a private repository its minutes count ten times,
+        # so it is left out here; add `macos-latest` back to check it in CI too.
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -81,7 +88,8 @@ jobs:
       fail-fast: false
       matrix:
         # An older Ubuntu on purpose: an app built there also runs on newer systems, not the other way round.
-        os: [macos-latest, ubuntu-22.04, windows-latest]
+        # No macOS here either, for the same reason as above: the .app and the .dmg are built by hand on a Mac.
+        os: [ubuntu-22.04, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
