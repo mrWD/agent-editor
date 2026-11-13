@@ -215,6 +215,8 @@ pub struct Manager {
     pub(crate) remembered: crate::integrations::Remembered,
     /// What each task's agent is doing for the task's plan right now.
     pub(crate) plans: crate::plan::Plans,
+    /// Which run of each task's team is the one that counts: a run that was stopped and gone on from is not.
+    pub(crate) team_runs: Mutex<HashMap<String, u64>>,
     events: broadcast::Sender<Value>,
 }
 
@@ -262,6 +264,7 @@ impl Manager {
             hosts,
             remembered: Default::default(),
             plans: Default::default(),
+            team_runs: Default::default(),
             events,
         })
     }
