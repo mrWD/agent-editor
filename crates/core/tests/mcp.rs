@@ -133,7 +133,19 @@ async fn the_tools_speak_the_protocol_and_only_to_a_known_key() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["list_tasks", "leave_note", "read_notes", "report_problem"]);
+    assert_eq!(
+        names,
+        [
+            "list_tasks",
+            "leave_note",
+            "read_notes",
+            "report_problem",
+            "setup_guide",
+            "setup_status",
+            "add_project",
+            "set_linear_team"
+        ]
+    );
     let unknown = unknown.1.unwrap();
     assert_eq!(unknown["result"]["isError"], true);
     assert_eq!(unknown["result"]["content"][0]["text"], "No such tool: delete_everything");

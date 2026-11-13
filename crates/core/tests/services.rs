@@ -569,3 +569,68 @@ async fn issues_assigned_to_the_user_in_linear_show_without_a_team_and_start_in_
     .to_string();
     assert!(again.contains("already open"), "{again}");
 }
+
+#[tokio::test]
+async fn an_agent_sets_the_editor_up_from_what_stands_and_what_the_user_said() {
+    let sandbox = Sandbox::new("setup");
+    let tools = sandbox.0.join("tools");
+    // glab is signed in to the company's own server only.
+    let glab = fake_tool(
+        &tools,
+        "glab",
+        "case \"$*\" in *gitlab.company.com*) echo 'Logged in to gitlab.company.com' >&2; exit 0;; esac\nexit 1\n",
+    );
+    let linear = fake_linear();
+    let missing = PathBuf::from("/nonexistent/ae-test/tool");
+    let hosts = Hosts::with(missing.clone(), glab, missing, linear.url.clone());
+    let state = AppState::new(sandbox.manager_with(hosts));
+    let manager = &state.manager;
+
+    // Nothing yet: the report says what to do first.
+    let report = manager.setup_report();
+    assert!(report.contains("No projects yet. Add the user's repositories with `add_project`."), "{report}");
+    assert!(report.contains("Not connected: there is no key."), "{report}");
+    assert!(report.contains("- `gh` (GitHub): not installed."), "{report}");
+
+    let repo = git_project(&sandbox);
+    git(&repo, &["remote", "add", "origin", "git@gitlab.company.com:group/shop.git"]);
+    let project = manager.add_project(&repo.to_string_lossy(), Some("shop".into())).unwrap();
+    let report = manager.setup_report();
+    assert!(
+        report.contains("code on GitLab at gitlab.company.com, group/shop; issues come from the code host."),
+        "{report}"
+    );
+    assert!(report.contains("- `glab` (GitLab): ready."), "{report}");
+    assert!(report.contains("GitLab servers of the projects: gitlab.company.com."), "{report}");
+
+    // A team needs Linear connected, and a team the workspace has.
+    let refused = manager.setup_linear_team("shop", "APP").unwrap_err().to_string();
+    assert!(refused.contains("paste a personal API key in the Issues screen"), "{refused}");
+    manager.set_linear_key(Some("lin_test_key")).unwrap();
+    let report = manager.setup_report();
+    assert!(report.contains("Connected as Viktor in the workspace Shop Inc."), "{report}");
+    assert!(report.contains("Teams: APP (App), OPS (Operations)."), "{report}");
+    let wrong = manager.setup_linear_team("shop", "WEB").unwrap_err().to_string();
+    assert_eq!(wrong, "The workspace has no team \"WEB\". Its teams are: APP, OPS.");
+    let unknown = manager.setup_linear_team("api", "APP").unwrap_err().to_string();
+    assert_eq!(unknown, "There is no project \"api\". The projects are: shop.");
+    assert_eq!(manager.setup_linear_team("SHOP", "app").unwrap(), "shop: issues now come from Linear team APP.");
+    assert!(manager.setup_report().contains("issues come from Linear team APP."));
+    assert_eq!(manager.setup_linear_team(&project.id, "none").unwrap(), "shop: issues come from its code host again.");
+
+    // The task the setup button starts: the guide's instruction first, then what the user said.
+    let mut events = manager.subscribe();
+    let task = dispatch(
+        &state,
+        "setup.start",
+        &json!({ "projectId": project.id, "agentId": "mock", "text": "Linear team APP, our own GitLab" }),
+    )
+    .await
+    .unwrap();
+    let id = task["id"].as_str().unwrap().to_string();
+    let seen = until(&mut events, &id, |e| state_is(e, "idle")).await;
+    let first = seen.iter().find(|e| is(e, "user_message")).expect("the first message is sent");
+    let text = first["text"].as_str().unwrap();
+    assert!(text.starts_with(ae_core::setup::SETUP_PROMPT), "{text}");
+    assert!(text.ends_with("What my team uses: Linear team APP, our own GitLab"), "{text}");
+}

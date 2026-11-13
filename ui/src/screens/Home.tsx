@@ -22,6 +22,7 @@ import {
   type Task,
   usageSummary,
 } from '../core/store';
+import { SetUp } from './SetUp';
 
 const words = ['Nothing', 'One thing', 'Two things', 'Three things', 'Four things', 'Five things'];
 
@@ -420,6 +421,8 @@ export function Home(): JSX.Element {
             </Show>
           </p>
         </div>
+
+        <SetUp firstRun={state.ready && state.projects.length === 0} />
 
         <NewTask />
 

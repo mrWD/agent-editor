@@ -129,6 +129,14 @@ scripts/sonar-local.sh
   key per project.
 - **Docker** is used by the Run tab when a project has a compose file.
 
+The first time, an agent can do this for you: **Set up with an agent** on the
+home screen starts Claude or Codex with what you say your team uses (for
+example "Linear team APP, our own GitLab at gitlab.example.com"). It follows
+[docs/AGENT-SETUP.md](docs/AGENT-SETUP.md) through the editor's own tools:
+it reads where things stand, adds your repositories as projects and picks each
+project's Linear team. Signing in to `gh`, `glab` and Linear stays with you;
+the agent names the exact command or screen. It changes no code.
+
 ## Where it stands
 
 Milestones are listed in PLAN.md under "План разработки по вехам"; the state

@@ -377,6 +377,29 @@ textarea::placeholder {
   border-radius: 12px;
   background: var(--panel);
 }
+.setup-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.card.setup label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.card.setup .setup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.card.setup .setup-row .where {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.card.setup .grow {
+  flex: 1 1 auto;
+}
 .new-task label.title {
   font-family: var(--display);
   font-weight: 600;

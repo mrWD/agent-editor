@@ -9,6 +9,12 @@
 //! - `report_problem`: something wrong in the project that is outside this
 //!   task. It shows on the Health screen, where the user decides.
 //!
+//! And for setting the editor up when the user asks for that (see `setup`):
+//! - `setup_guide`: what "working" means and the steps to get there;
+//! - `setup_status`: the projects, code hosts, Linear, Docker and agents;
+//! - `add_project`: a repository of the user's becomes a project;
+//! - `set_linear_team`: which Linear team a project's issues come from.
+//!
 //! The server is part of the core's own web server. Each running agent gets
 //! an address with a key of its own, so a tool call is always known to come
 //! from one task's agent and can touch nothing but what the tools allow.
@@ -48,6 +54,40 @@ fn tools() -> Value {
                     "detail": text("Where it is and why it matters, in a sentence or two.")
                 },
                 "required": ["title"]
+            }
+        },
+        {
+            "name": "setup_guide",
+            "description": "How to set this editor up for the user's work: projects, GitHub or GitLab (also a company's own), Linear, Docker and the agents. Read it first when the user asks you to set the editor up or to make its services work.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "setup_status",
+            "description": "Where the editor's setup stands: each project with its code host and where its issues come from, whether gh, glab and Docker are ready, whether Linear is connected and its teams, and which agents can start. Call it before asking the user anything and again after each change.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "add_project",
+            "description": "Add a git repository on this computer as a project of the editor. Only when setting the editor up and the user works in that repository.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": text("The full path of the repository's folder."),
+                    "name": text("A name to show instead of the folder's own. Optional.")
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "set_linear_team",
+            "description": "Say which Linear team a project's issues come from, by the team's key such as APP. \"none\" sends them back to the project's GitHub or GitLab. Only when setting the editor up and you know the team is right.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": text("The project's name, as setup_status lists it."),
+                    "team": text("The team's key, or \"none\".")
+                },
+                "required": ["project", "team"]
             }
         }
     ])
@@ -93,7 +133,7 @@ impl Manager {
                 "protocolVersion": message.pointer("/params/protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "agent-editor", "title": "Agent Editor", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "Tools of the editor this task runs in. Use them to see the other tasks of the project, to leave a note for whoever works on this task next, and to tell the user about problems outside the task."
+                "instructions": "Tools of the editor this task runs in. Use them to see the other tasks of the project, to leave a note for whoever works on this task next, and to tell the user about problems outside the task. When the user asks you to set the editor up, read setup_guide and follow it."
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),
@@ -188,6 +228,18 @@ impl Manager {
                 }
                 Ok("The user is told on the Health screen. Do not fix it as part of this task.".into())
             }
+            "setup_guide" => Ok(crate::setup::GUIDE.into()),
+            "setup_status" => Ok(self.setup_report()),
+            "add_project" => {
+                let name = Some(text_of("name")).filter(|name| !name.is_empty());
+                let path = text_of("path");
+                if !std::path::Path::new(&path).join(".git").exists() {
+                    anyhow::bail!("{path} is not a git repository. Give the folder that holds .git");
+                }
+                let project = self.add_project(&path, name)?;
+                Ok(format!("{} ({}) is a project of the editor.", project.name, project.path))
+            }
+            "set_linear_team" => self.setup_linear_team(&text_of("project"), &text_of("team")),
             other => anyhow::bail!("No such tool: {other}"),
         }
     }
