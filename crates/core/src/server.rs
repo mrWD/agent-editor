@@ -567,7 +567,9 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             "version": env!("CARGO_PKG_VERSION"),
             "platform": std::env::consts::OS,
             "cwd": std::env::current_dir().ok().map(|p| p.to_string_lossy().into_owned()),
-            "dataDir": manager.data_dir().to_string_lossy()
+            "dataDir": manager.data_dir().to_string_lossy(),
+            // False until the user has been through the first run, or has put it aside.
+            "onboarded": manager.onboarded()
         })),
         "agents.list" => Ok(manager.agents_listed()),
         "settings.get"
@@ -577,6 +579,10 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         | "agents.remove"
         | "agents.try"
         | "notifications.attention" => crate::settings::command(manager, method, params).await,
+
+        "onboarding.get" | "onboarding.set" | "onboarding.project" => {
+            crate::onboarding::command(manager, method, params).await
+        }
 
         "projects.list" => Ok(json!(manager.projects()?)),
         "projects.add" => {
