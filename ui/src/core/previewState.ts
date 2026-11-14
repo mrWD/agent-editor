@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import { describePointed, type Drawing, type Picked, type PickedElement } from './preview';
+import { describePointed, type Drawing, type Picked, type PickedElement, type Shown } from './preview';
 
 /**
  * What the user pointed at in the Preview of a task: an element they picked
@@ -10,11 +10,13 @@ import { describePointed, type Drawing, type Picked, type PickedElement } from '
 export type Pointed = {
   picked: Picked | null;
   drawings: Drawing[];
+  /** Answers, rows and outputs the user wants the agent to see. */
+  shown: Shown[];
   /** While the Preview shows a page: whether the frames are reloaded for it, or the page reloads itself. */
   live: 'reloaded' | 'itself' | null;
 };
 
-const empty: Pointed = { picked: null, drawings: [], live: null };
+const empty: Pointed = { picked: null, drawings: [], shown: [], live: null };
 
 const [pointed, setPointed] = createStore<Record<string, Pointed>>({});
 
@@ -23,7 +25,7 @@ export function pointedOf(taskId: string): Pointed {
 }
 
 function change(taskId: string, next: Partial<Pointed>) {
-  if (!pointed[taskId]) setPointed(taskId, { ...empty, drawings: [] });
+  if (!pointed[taskId]) setPointed(taskId, { ...empty, drawings: [], shown: [] });
   setPointed(taskId, next);
 }
 
@@ -47,10 +49,26 @@ export function removeDrawing(taskId: string, n: number) {
   change(taskId, { drawings: pointedOf(taskId).drawings.filter((drawing) => drawing.n !== n) });
 }
 
-/** Forgets the pick and the drawings: they were sent, or the user left them out. */
+/** Puts a text of the Preview before the agent, to go with the next message. The same text is not put twice. */
+export function addShown(taskId: string, title: string, text: string) {
+  const shown = pointedOf(taskId).shown;
+  if (shown.some((one) => one.title === title && one.text === text)) return;
+  const n = shown.reduce((most, one) => Math.max(most, one.n), 0) + 1;
+  change(taskId, { shown: [...shown, { n, title, text, note: '' }] });
+}
+
+export function setShownNote(taskId: string, n: number, note: string) {
+  setPointed(taskId, 'shown', (one) => one.n === n, 'note', note);
+}
+
+export function removeShown(taskId: string, n: number) {
+  change(taskId, { shown: pointedOf(taskId).shown.filter((one) => one.n !== n) });
+}
+
+/** Forgets the pick, the drawings and what was shown: they were sent, or the user left them out. */
 export function clearPointed(taskId: string) {
   if (!pointed[taskId]) return;
-  change(taskId, { picked: null, drawings: [] });
+  change(taskId, { picked: null, drawings: [], shown: [] });
 }
 
 export function setLive(taskId: string, live: Pointed['live']) {
@@ -60,7 +78,7 @@ export function setLive(taskId: string, live: Pointed['live']) {
 /** What goes in front of the next message to the agent. Empty when nothing was pointed at. */
 export function pointedText(taskId: string, cwd: string): string {
   const now = pointedOf(taskId);
-  return describePointed(now.picked, now.drawings, cwd);
+  return describePointed(now.picked, now.drawings, cwd, now.shown);
 }
 
 /** A request from the pane to the Preview view: pick the parent of the picked element. */

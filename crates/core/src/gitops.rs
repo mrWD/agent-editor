@@ -777,6 +777,45 @@ pub fn bytes_at(root: &Path, rev_name: &str, path: &str) -> Result<Option<Vec<u8
     Ok(output.status.success().then_some(output.stdout))
 }
 
+/// Every file that differs from a commit, as it is on the disk now: what was committed since, what
+/// was changed and not committed, and what is new and not yet known to git. Each with "added",
+/// "modified" or "deleted".
+pub fn changed_since(root: &Path, from: &str) -> Result<Vec<(String, &'static str)>> {
+    let mut found: Vec<(String, &'static str)> = Vec::new();
+    for line in git(root, &["diff", "--name-status", "--no-renames", "-z", from, "--"])?
+        .split('\0')
+        .collect::<Vec<_>>()
+        .chunks(2)
+    {
+        let [status, path] = line else { continue };
+        let kind = match status.chars().next() {
+            Some('A') => "added",
+            Some('D') => "deleted",
+            _ => "modified",
+        };
+        found.push((path.to_string(), kind));
+    }
+    let untracked = git(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
+    found.extend(untracked.split('\0').filter(|path| !path.is_empty()).map(|path| (path.to_string(), "added")));
+    found.sort();
+    found.dedup_by(|a, b| a.0 == b.0);
+    Ok(found)
+}
+
+/// The names of the files right inside a folder as a commit has it. Empty when the folder was not there.
+pub fn names_at(root: &Path, rev_name: &str, folder: &str) -> Vec<String> {
+    let listed = git(root, &["ls-tree", "--name-only", "-z", rev_name, &format!("{}/", folder.trim_end_matches('/'))]);
+    listed
+        .map(|text| {
+            text.split('\0')
+                .filter_map(|path| path.rsplit('/').next())
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// The commit where the task's branch left `base`, if both are known.
 pub fn fork_point(root: &Path, base: &str) -> Option<String> {
     let text = git(root, &["merge-base", base, "HEAD"]).ok()?;

@@ -120,11 +120,16 @@ fn save_profile(manager: &Manager, runner: &Runner, place: &Place, project_id: &
 }
 
 /// One command, done on a thread that may wait for Docker.
-fn handle(manager: &Manager, runner: &Runner, method: &str, params: &Value) -> Result<Value> {
-    let task_id = text(params, "taskId")?;
+/// A task as the runner sees it, with its environment read: for whatever runs a program of the task.
+/// Gives the id of the task's project beside it.
+pub(crate) fn place_of(manager: &Manager, task_id: &str) -> Result<(Place, String)> {
+    let (place, project_id, _) = place_with_env(manager, task_id)?;
+    Ok((place, project_id))
+}
+
+fn place_with_env(manager: &Manager, task_id: &str) -> Result<(Place, String, (TaskEnv, PathBuf))> {
     let task = manager.task(task_id)?;
-    let project_id = task.row.project_id.as_str();
-    let project = manager.store().project(project_id).ok();
+    let project = manager.store().project(&task.row.project_id).ok();
     let root = PathBuf::from(&task.row.cwd);
     // A project that is gone from the list still has the task's folder to read from.
     let project_dir = project.as_ref().map_or_else(|| root.clone(), |project| PathBuf::from(&project.path));
@@ -136,6 +141,13 @@ fn handle(manager: &Manager, runner: &Runner, method: &str, params: &Value) -> R
         env: task_env.pairs(),
         secrets: task_env.secrets(),
     };
+    Ok((place, task.row.project_id, (task_env, project_dir)))
+}
+
+fn handle(manager: &Manager, runner: &Runner, method: &str, params: &Value) -> Result<Value> {
+    let task_id = text(params, "taskId")?;
+    let (place, project_id, (task_env, project_dir)) = place_with_env(manager, task_id)?;
+    let project_id = project_id.as_str();
     let service = params.get("service").and_then(Value::as_str);
     let one = service.map(|name| vec![name.to_string()]);
 

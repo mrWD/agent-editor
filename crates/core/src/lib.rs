@@ -6,12 +6,14 @@
 
 pub mod acp;
 pub mod agents;
+pub mod api;
 pub mod automations;
 pub mod awake;
 pub mod changes;
 pub mod checkpoints;
 pub mod checks;
 pub mod ci;
+pub mod database;
 pub mod deploys;
 pub mod devices;
 pub mod fileops;
@@ -22,6 +24,7 @@ pub mod health;
 pub mod hosts;
 pub mod imports;
 pub mod integrations;
+pub mod jobs;
 pub mod lsp;
 pub mod map;
 pub mod marks;

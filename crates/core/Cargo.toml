@@ -35,6 +35,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ureq = { version = "3", features = ["json"] }
 uuid = { version = "1", features = ["v4"] }
 which = "8"
+serde_yaml_ng = "0.10.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

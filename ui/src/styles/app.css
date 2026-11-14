@@ -3832,6 +3832,507 @@ a.deploy-name:hover {
 .preview-stage .center-note {
   padding: 12px 8px;
 }
+.preview-stage[hidden] {
+  display: none;
+}
+
+/* ---------- Preview of a service: its API ---------- */
+
+.api {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.api-source {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.api-split {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+}
+.api-list {
+  flex: 0 0 clamp(220px, 34%, 380px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--line-soft);
+  overflow-y: auto;
+}
+.api-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.api-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+.api-row:hover {
+  background: var(--veil-2);
+}
+.api-row[aria-current='true'] {
+  background: var(--pressed);
+}
+.api-method {
+  flex: 0 0 auto;
+  min-width: 5ch;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+.api-method[data-method='GET'] {
+  color: var(--green);
+}
+.api-method[data-method='POST'],
+.api-method[data-method='PUT'],
+.api-method[data-method='PATCH'] {
+  color: var(--accent);
+}
+.api-method[data-method='DELETE'] {
+  color: var(--red);
+}
+.api-path {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.api-path.old {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.tag.accent {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.api-one {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 24px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+.api-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.api-title .api-method {
+  font-size: 13px;
+}
+.api-free {
+  display: flex;
+  gap: 8px;
+}
+.api-params {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 12px;
+}
+.api-params label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.api-params .field,
+.api-setup .field {
+  height: 30px;
+  min-width: 0;
+  font-size: 12px;
+}
+.api-label {
+  font-weight: 500;
+}
+.api-text {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.api-more summary {
+  color: var(--text-2);
+  cursor: default;
+}
+.api-more[open] summary {
+  margin-bottom: 6px;
+}
+.api-send {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.api-url {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.api-one .banner {
+  margin: 0;
+}
+.api-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.api-answer-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.tag[data-tone='good'] {
+  border-color: var(--green);
+  color: var(--green);
+}
+.tag[data-tone='moved'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tag[data-tone='refused'],
+.tag[data-tone='failed'],
+.tag[data-level='breaking'] {
+  border-color: var(--red);
+  color: var(--red);
+}
+.tag[data-level='careful'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.api-body {
+  max-height: 60vh;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--ground-deep);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.api-headers {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+.api-headers dt {
+  color: var(--text-2);
+}
+.api-headers dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.api-level {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.api-level[data-level='breaking'] {
+  color: var(--red);
+}
+.api-level[data-level='careful'] {
+  color: var(--accent);
+}
+.api-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.api-changes li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.api-name {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--veil-3);
+  font-size: 12px;
+}
+.api-change-op {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: left;
+}
+button.api-change-op {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+button.api-change-op:hover {
+  color: var(--text);
+}
+.api-setup {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 13px;
+}
+.api-setup-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* ---------- Preview of a service: its database ---------- */
+
+.db-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 14px 16px 24px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+.db-part {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.db-part + .db-part {
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.db-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.db-head [data-tone='good'] {
+  color: var(--green);
+}
+.db-head [data-tone='bad'] {
+  color: var(--red);
+}
+.banner.db-flat {
+  margin: 0;
+}
+.db-migrations,
+.db-steps,
+.db-ran {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.db-migrations {
+  gap: 12px;
+}
+.db-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.db-steps {
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+}
+.db-steps li.danger {
+  margin-left: -16px;
+  padding-left: 14px;
+  border-left: 2px solid var(--red);
+}
+.db-trial {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.db-ran li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.db-ran details {
+  flex: 1 1 100%;
+}
+.db-ran code {
+  overflow-wrap: anywhere;
+}
+.db-table summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  cursor: default;
+}
+.db-table summary::before {
+  content: '▸';
+  color: var(--text-3);
+}
+.db-table[open] summary::before {
+  content: '▾';
+}
+.db-table summary::-webkit-details-marker {
+  display: none;
+}
+.db-table summary .btn {
+  margin-left: auto;
+}
+.db-grid {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.db-table .db-grid {
+  margin: 2px 0 6px 18px;
+}
+.db-grid td,
+.db-grid th {
+  padding: 3px 14px 3px 0;
+  text-align: left;
+  vertical-align: top;
+}
+.db-rows {
+  max-height: 60vh;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--ground-deep);
+  overflow: auto;
+}
+.db-grid.rows td,
+.db-grid.rows th {
+  max-width: 48ch;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.db-grid.rows th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  color: var(--text-2);
+  font-weight: 500;
+}
+.db-grid.rows td.nothing {
+  color: var(--text-3);
+}
+.db-write {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- Preview of a service: its background jobs ---------- */
+
+.jobs .api-row .fine {
+  flex: none;
+}
+.jobs-where {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.jobs-takes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.jobs .api-one > .field {
+  height: 32px;
+  font-size: 12px;
+}
+.jobs-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.jobs-setup .field {
+  height: 30px;
+  font-size: 12px;
+}
+
+/* A text of the Preview that goes along with the next message: an answer, rows, an output. */
+.card.shown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.card.shown label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.shown-text {
+  max-height: 120px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--ground-deep);
+  color: var(--text-2);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.card.shown .field {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
 .preview-frames {
   display: flex;
   flex-wrap: wrap;
