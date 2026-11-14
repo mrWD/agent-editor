@@ -34,7 +34,7 @@ use std::io::Read;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-/// The names a description goes by as a file.
+/// The names a description goes by as a file. A file whose name starts as one of these does is taken too.
 const FILE_NAMES: [&str; 6] =
     ["openapi.json", "openapi.yaml", "openapi.yml", "swagger.json", "swagger.yaml", "swagger.yml"];
 /// The folders of a project a description is looked for in.
@@ -175,7 +175,23 @@ fn from_files(root: &Path, named: Option<&str>) -> Result<Option<(String, Value)
         return Ok(Some((path.to_string(), found)));
     }
     for folder in FILE_FOLDERS {
-        for name in FILE_NAMES {
+        // The usual names first, then whatever else starts as they do: `openapi.snapshot.json`, `swagger-v2.yaml`.
+        let mut names: Vec<String> = FILE_NAMES.iter().map(|name| name.to_string()).collect();
+        let mut others: Vec<String> = std::fs::read_dir(root.join(folder))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|one| one.file_name().to_string_lossy().into_owned())
+            .filter(|name| {
+                let lower = name.to_lowercase();
+                (lower.starts_with("openapi") || lower.starts_with("swagger"))
+                    && [".json", ".yaml", ".yml"].iter().any(|end| lower.ends_with(end))
+                    && !names.contains(name)
+            })
+            .collect();
+        others.sort();
+        names.extend(others.into_iter().take(8));
+        for name in names {
             let path = if folder.is_empty() { name.to_string() } else { format!("{folder}/{name}") };
             let Ok(meta) = std::fs::metadata(root.join(&path)) else { continue };
             if !meta.is_file() || meta.len() > MAX_SPEC {

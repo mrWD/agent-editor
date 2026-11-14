@@ -271,6 +271,11 @@ async fn a_description_kept_as_a_file_is_compared_with_the_file_where_the_branch
     let fresh = asked(&state, "api.get", json!({ "taskId": task_id })).await.unwrap();
     assert_eq!(fresh["operations"][0]["change"], "new");
     assert!(asked(&state, "api.set", json!({ "taskId": task_id, "spec": "../other.yaml" })).await.is_err());
+    // Left to itself, the finder takes a file whose name only starts the usual way, after the usual ones.
+    asked(&state, "api.set", json!({ "taskId": task_id, "spec": "" })).await.unwrap();
+    std::fs::rename(folder.join("docs/openapi.json"), folder.join("openapi.snapshot.json")).unwrap();
+    let snapshot = asked(&state, "api.get", json!({ "taskId": task_id })).await.unwrap();
+    assert_eq!(snapshot["source"], json!({ "kind": "file", "where": "openapi.snapshot.json" }));
     asked(&state, "api.set", json!({ "taskId": task_id, "spec": "missing.yaml" })).await.unwrap();
     let missing = asked(&state, "api.get", json!({ "taskId": task_id })).await.unwrap();
     assert_eq!(missing["note"], "There is no file missing.yaml in the task's folder");
