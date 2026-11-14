@@ -394,6 +394,11 @@ fn remote(root: &Path) -> Option<String> {
     names.iter().find(|n| **n == "origin").or(names.first()).map(|n| n.to_string())
 }
 
+/// The commit a working copy is on, by its whole name. `None` in a folder without git or without a commit.
+pub fn head_commit(root: &Path) -> Option<String> {
+    rev(root, "HEAD")
+}
+
 /// True when the branch exists on the remote as far as this copy knows (no network is used).
 pub fn is_pushed(root: &Path, branch: &str) -> bool {
     remote(root).is_some_and(|remote| rev(root, &format!("refs/remotes/{remote}/{branch}")).is_some())

@@ -581,6 +581,7 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         | "notifications.attention" => crate::settings::command(manager, method, params).await,
 
         "ci.get" | "ci.act" => crate::ci::command(manager, method, params).await,
+        "deploys.get" => crate::deploys::command(manager, method, params).await,
         "tools.list" | "tools.save" | "tools.remove" => crate::toolservers::command(manager, method, params).await,
         "import.claude.list" | "import.claude.take" => crate::imports::command(manager, method, params).await,
         "onboarding.get" | "onboarding.set" | "onboarding.project" => {
