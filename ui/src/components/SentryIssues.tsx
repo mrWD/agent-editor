@@ -179,7 +179,7 @@ export function SentryIssues(props: {
               </button>
             </p>
           </Show>
-          <section class="issues-linear" aria-label="Sentry">
+          <section class="issues-connect" aria-label="Sentry">
             <Show
               when={!now().connected}
               fallback={

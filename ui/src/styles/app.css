@@ -2245,7 +2245,8 @@ button.search-link:hover {
   background: var(--raised);
   color: var(--text);
 }
-.issues-linear {
+.issues-linear,
+.issues-connect {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2255,7 +2256,8 @@ button.search-link:hover {
   border-radius: 8px;
   font-size: 13px;
 }
-.issues-linear label {
+.issues-linear label,
+.issues-connect label {
   color: var(--text-2);
 }
 .field.narrow {
