@@ -165,6 +165,58 @@ it reads where things stand, adds your repositories as projects and picks each
 project's Linear team. Signing in to `gh`, `glab` and Linear stays with you;
 the agent names the exact command or screen. It changes no code.
 
+## A service in Preview
+
+Preview shows a page at several widths and an app on a simulator. A service
+that answers in data has nothing to show that way, so Preview has three more
+things to look at, next to Web and the two devices.
+
+- **API.** The operations of the service, read from its OpenAPI or Swagger
+  description: a file of the project (`openapi.yaml`, `docs/openapi.json` and
+  the like), or what the running service gives at `/openapi.json` and the other
+  paths frameworks serve it under. A request is filled in from the description
+  and sent to the task's own service on this computer; the answer is shown
+  with its status, the time it took and its size. Headers kept for the project
+  (a key, usually) go with every request. **Contract** compares the
+  description with the one of the base: the same file where the branch
+  started, or a service that runs the base branch, whose address you give
+  under Set up. Each difference is weighed by what it does to a client written
+  against the base: it breaks clients, it is worth a look, or it is safe. The
+  operations the task touched come first in the list.
+- **Database.** The migrations the task added or changed, read from their
+  text and said step by step, with the steps that can lose data or break the
+  code that still runs marked and said why. Alembic, Django, Prisma, Rails,
+  Laravel, Knex, Diesel, Ecto, golang-migrate, Drizzle and plain SQL files are
+  known. **Try them** runs the migrations on the task's own database, takes
+  back the ones the task added and runs them again, and says what they did to
+  the tables and whether the way back left the tables as they were. The
+  commands run with the task's environment, so they change the database the
+  project's own settings point at. The trial is asked for twice, and refused
+  on a database other tasks may use and when the task's environment points
+  at a database on another computer. Under that are the tables,
+  and a query that is run for reading only until you allow changes. A
+  database is reached as a service of the task's compose project (through the
+  client in its own container, so nothing is installed and no password is
+  handled), by the address in the task's environment (`DATABASE_URL`, with
+  `psql` or `mysql` of this computer), or as a file of SQLite.
+- **Jobs.** Celery tasks, Dramatiq actors, Django and Laravel commands,
+  Sidekiq workers, Active Job classes and package scripts named like jobs,
+  found by reading the files, the ones the task touched first. One is started
+  with its arguments (JSON for a queue, the rest of a command line for a
+  command) and what it prints is shown as it comes. Each kind has a command
+  line the project can replace, for workers that live in a container.
+
+An answer, the rows of a query, a trial and a run can each be **shown to the
+agent**: the text goes along with your next message, with what you say is
+wrong with it. The values of the headers kept for the project and the secrets
+of the task's environment are left out.
+
+The Run tab starts such a service too. Beside the scripts of `package.json`
+it offers the lines of a `Procfile`, and for a project that names nothing
+itself the command of its framework: Django, FastAPI, Flask, Rails, Laravel,
+a Go program, and a Celery worker where an app is made. `PORT` among the
+task's own values moves the port, so two tasks can run side by side.
+
 ## Where it stands
 
 Milestones are listed in PLAN.md under "План разработки по вехам"; the state
@@ -329,4 +381,13 @@ against a GitLab pipeline of fifty jobs; no job was started or stopped
 there); waking the real Claude in a conversation that was brought in; the
 command-line programs of Codex and Gemini as agents in a terminal (Claude's
 was tried by hand: started with a message, its question about the folder
-answered in the terminal, a second message of two lines typed into it).
+answered in the terminal, a second message of two lines typed into it); the
+views for a service against a real project in FastAPI, Django or Rails (the
+API view is tested against a server of the tests' own that describes itself
+as FastAPI does; the reading of migrations and the finding of jobs, on files
+written for the tests; a job was never put on a real Celery queue); a
+database in a real container (Docker is off on this Mac; the tests use a
+stand-in that answers as `psql` in a container would) and MySQL at all (its
+side is written from the client's documentation). PostgreSQL through `psql`
+of this computer and SQLite were tried for real: tables, rows, the refusal
+to write, and a trial of migrations there and back.
