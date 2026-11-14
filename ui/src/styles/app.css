@@ -4268,6 +4268,38 @@ button.api-change-op:hover {
   gap: 6px;
 }
 
+/* ---------- Preview of a service: its background jobs ---------- */
+
+.jobs .api-row .fine {
+  flex: none;
+}
+.jobs-where {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.jobs-takes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.jobs .api-one > .field {
+  height: 32px;
+  font-size: 12px;
+}
+.jobs-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.jobs-setup .field {
+  height: 30px;
+  font-size: 12px;
+}
+
 /* A text of the Preview that goes along with the next message: an answer, rows, an output. */
 .card.shown {
   display: flex;

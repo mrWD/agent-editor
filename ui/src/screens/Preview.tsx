@@ -19,6 +19,7 @@ import { addPictures, pictureCount } from '../components/Pictures';
 import { ApiView } from '../components/PreviewApi';
 import { DatabaseView } from '../components/PreviewDatabase';
 import { DeviceView } from '../components/PreviewDevice';
+import { JobsView } from '../components/PreviewJobs';
 import { core } from '../core/client';
 import { MAX_PICTURES } from '../core/pictures';
 import {
@@ -64,7 +65,7 @@ const FROM_PAGE = 'ae-preview-page';
 
 type Relay = { port: number; target: string };
 type Tool = 'none' | 'pick' | 'draw';
-type Kind = 'web' | 'ios' | 'android' | 'api' | 'db';
+type Kind = 'web' | 'ios' | 'android' | 'api' | 'db' | 'jobs';
 
 /** What is known about the page in one frame. */
 type FrameState = {
@@ -221,7 +222,7 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   // What was looked at last is what opens next: a task on a service is not looked at as a page.
   const [kind, setKind] = createKept<Kind>(`task:${taskId}:preview.kind`, 'web');
   /** Whether what is on show is data of the task's service, not a screen of its app. */
-  const isData = () => kind() === 'api' || kind() === 'db';
+  const isData = () => kind() === 'api' || kind() === 'db' || kind() === 'jobs';
   const [tool, setTool] = createSignal<Tool>('none');
   const [adding, setAdding] = createSignal(false);
   const [widthProblem, setWidthProblem] = createSignal<string | null>(null);
@@ -846,6 +847,9 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           <button type="button" aria-pressed={kind() === 'db'} onClick={() => setKind('db')}>
             Database
           </button>
+          <button type="button" aria-pressed={kind() === 'jobs'} onClick={() => setKind('jobs')}>
+            Jobs
+          </button>
         </div>
         <Show when={kind() === 'web' && loaded()}>
           <div class="preview-widths" role="group" aria-label="Widths">
@@ -1042,6 +1046,9 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       </Show>
       <Show when={kind() === 'db'}>
         <DatabaseView taskId={taskId} />
+      </Show>
+      <Show when={kind() === 'jobs'}>
+        <JobsView taskId={taskId} services={run()?.services ?? []} />
       </Show>
 
       <div class="preview-stage" ref={stageEl} hidden={isData()}>
