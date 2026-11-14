@@ -5,6 +5,9 @@ import { whenLabel } from './bits';
 
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+/** A project SonarQube's part knows nothing of yet, for the moment between two readings. */
+const EMPTY = (projectId: string): SonarStatus['projects'][number] => ({ projectId, key: null, from: null });
+
 /**
  * The part of Health about SonarQube: connecting it, and which project of
  * SonarQube each project is. What it found is among the findings above, read
@@ -116,64 +119,64 @@ export function SonarCard(props: {
           </div>
         }
       >
-        <For each={props.status.projects}>
-          {(project) => (
-            <div class="stage-row health-check">
-              <span class="project-tag">{projectName(project.projectId)}</span>
-              <Show
-                when={keyOf() === project.projectId}
-                fallback={
-                  <>
-                    <span class="name">
-                      <Show when={project.key} fallback="Not a project of SonarQube yet">
-                        <code class="mono">{project.key}</code>
-                      </Show>
-                    </span>
-                    <span class="fine">
-                      {project.from === 'file'
-                        ? 'from its sonar-project.properties'
-                        : project.from === 'set'
-                          ? 'given here'
-                          : 'no key in its files'}
-                    </span>
-                    <span class="grow" />
-                    <button
-                      type="button"
-                      class="btn tiny ghost"
-                      aria-label={`Change the SonarQube key of ${projectName(project.projectId)}`}
-                      onClick={() => {
-                        setKey(project.from === 'set' ? (project.key ?? '') : '');
-                        setKeyOf(project.projectId);
-                      }}
-                    >
-                      {project.key ? 'Change the key' : 'Give its key'}
-                    </button>
-                  </>
-                }
-              >
-                <input
-                  class="field"
-                  aria-label={`SonarQube project key for ${projectName(project.projectId)}`}
-                  placeholder="Project key, such as acme:shop-web"
-                  value={key()}
-                  onInput={(event) => setKey(event.currentTarget.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && void saveKey(project.projectId)}
-                />
-                <span class="grow" />
-                <button
-                  type="button"
-                  class="btn tiny"
-                  disabled={busy()}
-                  onClick={() => void saveKey(project.projectId)}
+        {/* By the project's id, which stays the same while Health is read again: a row that was made
+            anew for every reading would lose a press that lands between two of them. */}
+        <For each={props.status.projects.map((one) => one.projectId)}>
+          {(projectId) => {
+            const project = () => props.status.projects.find((one) => one.projectId === projectId) ?? EMPTY(projectId);
+            return (
+              <div class="stage-row health-check">
+                <span class="project-tag">{projectName(projectId)}</span>
+                <Show
+                  when={keyOf() === projectId}
+                  fallback={
+                    <>
+                      <span class="name">
+                        <Show when={project().key} fallback="Not a project of SonarQube yet">
+                          <code class="mono">{project().key}</code>
+                        </Show>
+                      </span>
+                      <span class="fine">
+                        {project().from === 'file'
+                          ? 'from its sonar-project.properties'
+                          : project().from === 'set'
+                            ? 'given here'
+                            : 'no key in its files'}
+                      </span>
+                      <span class="grow" />
+                      <button
+                        type="button"
+                        class="btn tiny ghost"
+                        aria-label={`Change the SonarQube key of ${projectName(projectId)}`}
+                        onClick={() => {
+                          setKey(project().from === 'set' ? (project().key ?? '') : '');
+                          setKeyOf(projectId);
+                        }}
+                      >
+                        {project().key ? 'Change the key' : 'Give its key'}
+                      </button>
+                    </>
+                  }
                 >
-                  {key().trim() === '' ? "Use the files' key" : 'Save'}
-                </button>
-                <button type="button" class="btn tiny ghost" onClick={() => setKeyOf(null)}>
-                  Cancel
-                </button>
-              </Show>
-            </div>
-          )}
+                  <input
+                    class="field"
+                    aria-label={`SonarQube project key for ${projectName(projectId)}`}
+                    placeholder="Project key, such as acme:shop-web"
+                    value={key()}
+                    onInput={(event) => setKey(event.currentTarget.value)}
+                    onKeyDown={(event) => event.key === 'Enter' && void saveKey(projectId)}
+                  />
+                  <span class="grow" />
+                  <button type="button" class="btn tiny" disabled={busy()} onClick={() => void saveKey(projectId)}>
+                    {key().trim() === '' ? "Use the files' key" : 'Save'}
+                  </button>
+                  <button type="button" class="btn tiny ghost" onClick={() => setKeyOf(null)}>
+                    Cancel
+                  </button>
+                </Show>
+              </div>
+            );
+          }}
         </For>
         <p class="stage-row plain">
           <span class="grow">
