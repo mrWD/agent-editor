@@ -92,6 +92,17 @@ case "$1 $2" in
     file="$here/state/gh/$owner"_"$name/threads-$number.json"
     if [ -f "$file" ]; then cat "$file"; else echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; fi ;;
   "api --hostname") echo '{}' ;;
+  "api repos/"*"/deployments/"*)
+    # How one deployment stands: what a test wrote for its number, or nothing yet.
+    slug=$(printf '%s' "$2" | sed 's|^repos/||; s|/deployments.*||')
+    number=$(printf '%s' "$2" | sed 's|.*/deployments/||; s|/.*||')
+    file="$here/state/gh/$(flat "$slug")/deploy-$number.json"
+    if [ -f "$file" ]; then cat "$file"; else echo "[]"; fi ;;
+  "api repos/"*"/deployments?"*)
+    # The deployments of a repository: what a test wrote, whatever branch or commit is asked for.
+    slug=$(printf '%s' "$2" | sed 's|^repos/||; s|/deployments.*||')
+    file="$here/state/gh/$(flat "$slug")/deploys.json"
+    if [ -f "$file" ]; then cat "$file"; else echo "[]"; fi ;;
   "run list")
     # The runs of a branch, newest first: what a test wrote, or none.
     if [ -f "$state/runs.json" ]; then cat "$state/runs.json"; else echo "[]"; fi ;;

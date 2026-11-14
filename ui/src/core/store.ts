@@ -738,6 +738,14 @@ export async function startSetup(projectId: string, agentId: string, text: strin
   return info.id;
 }
 
+/** Takes in a task the core has just made for this window, when the event about it has not done so yet. */
+export async function addStartedTask(info: TaskInfo): Promise<void> {
+  if (!state.tasks[info.id]) {
+    addTask(info);
+    await loadHistory(info.id, info.state);
+  }
+}
+
 /** The conversations Claude Code had in a project's folder, newest first. */
 export async function claudeSessions(projectId: string): Promise<ClaudeSession[]> {
   const found = await core.request<{ sessions: ClaudeSession[] }>('import.claude.list', { projectId });
@@ -846,15 +854,31 @@ export function setRuleOffers(projectId: string, on: boolean) {
 export type Finding = {
   id: string;
   projectId: string;
-  category: 'Security' | 'Tests' | 'Pipeline' | 'Housekeeping' | 'Noticed';
+  category: 'Security' | 'Quality' | 'Tests' | 'Pipeline' | 'Housekeeping' | 'Noticed';
   title: string;
   detail: string;
   /** What an agent is told when the user presses "Fix". */
   fix: string;
 };
 
+/** What of SonarQube is connected, and which of its projects each project is. */
+export type SonarStatus = {
+  connected: boolean;
+  url: string;
+  /** When SonarQube was last asked what it found. */
+  checkedAt: number | null;
+  projects: {
+    projectId: string;
+    key: string | null;
+    /** "file": read from the project's own sonar-project.properties. "set": given by the user. */
+    from: 'file' | 'set' | null;
+  }[];
+};
+
 export type Health = {
   findings: Finding[];
+  /** SonarQube, as far as it is connected. */
+  sonar: SonarStatus;
   /** How many findings the user chose not to see. */
   ignored: number;
   /** When the package managers were last asked for their audit. */

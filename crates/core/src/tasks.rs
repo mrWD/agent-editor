@@ -537,22 +537,32 @@ impl Manager {
             // The editor's own tools, for an agent that can reach a tool server by address.
             let can_reach =
                 init.pointer("/agentCapabilities/mcpCapabilities/http").and_then(Value::as_bool).unwrap_or(false);
-            let servers: Vec<Value> =
+            let mut servers: Vec<Value> =
                 if can_reach { self.mcp_server_for(task_id).into_iter().collect() } else { vec![] };
+            // Then the tool servers of the user's own, as far as this agent can reach them.
+            let can_sse =
+                init.pointer("/agentCapabilities/mcpCapabilities/sse").and_then(Value::as_bool).unwrap_or(false);
+            let (own, left_out) = self.tool_servers_for(crate::toolservers::Reach { http: can_reach, sse: can_sse });
+            let given: Vec<Value> = own.iter().filter_map(|server| server.get("name").cloned()).collect();
+            servers.extend(own);
+            let tools = json!({
+                "given": given,
+                "leftOut": left_out.iter().map(|(name, why)| json!({ "name": name, "why": why })).collect::<Vec<_>>()
+            });
             if let (Some(id), true) = (resume, can_load) {
                 // A session the agent no longer has is not an error: a new one is opened below.
                 if let Ok(mut loaded) =
                     conn.request("session/load", json!({ "sessionId": id, "cwd": cwd, "mcpServers": servers })).await
                 {
                     loaded["sessionId"] = json!(id);
-                    return Ok((init, loaded, true));
+                    return Ok((init, loaded, true, tools));
                 }
             }
             let created = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": servers })).await?;
-            Ok::<_, RpcError>((init, created, false))
+            Ok::<_, RpcError>((init, created, false, tools))
         };
 
-        let (init, session, loaded) = match tokio::time::timeout(START_TIMEOUT, handshake).await {
+        let (mut init, session, loaded, tools) = match tokio::time::timeout(START_TIMEOUT, handshake).await {
             Ok(Ok(found)) => found,
             Ok(Err(error)) => {
                 conn.kill().await;
@@ -599,6 +609,8 @@ impl Manager {
         for params in &replayed {
             live.note_config(params.get("update").unwrap_or(&Value::Null));
         }
+        // Which of the user's tool servers this session was given goes back with what the agent said of itself.
+        init["toolServers"] = tools;
         Ok((live, incoming, init, loaded))
     }
 
@@ -798,7 +810,8 @@ impl Manager {
                 "type": "agent_started",
                 "agentId": agent.id,
                 "resumed": false,
-                "agentInfo": init.get("agentInfo").cloned().unwrap_or(Value::Null)
+                "agentInfo": init.get("agentInfo").cloned().unwrap_or(Value::Null),
+                "toolServers": init.get("toolServers").cloned().unwrap_or(Value::Null)
             }),
         );
         self.attach(&id, live, incoming);
@@ -823,7 +836,8 @@ impl Manager {
                 "resumed": true,
                 // True when the agent picked up its own session and so remembers the conversation itself.
                 "loaded": loaded,
-                "agentInfo": init.get("agentInfo").cloned().unwrap_or(Value::Null)
+                "agentInfo": init.get("agentInfo").cloned().unwrap_or(Value::Null),
+                "toolServers": init.get("toolServers").cloned().unwrap_or(Value::Null)
             }),
         );
         self.attach(&row.id, live.clone(), incoming);

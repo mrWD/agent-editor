@@ -88,6 +88,8 @@ struct Session {
     cost: f64,
     /// Where the editor's own tools are, when the editor named them at the start of the session.
     tools: Option<String>,
+    /// Every tool server the session was given, as one line each: its name and how it is reached.
+    servers: Vec<String>,
     /// True once the session has proposed a block for a plan. It does so once.
     proposed: bool,
 }
@@ -95,9 +97,52 @@ struct Session {
 impl Session {
     fn in_folder(params: &Value) -> Self {
         let folder = params.get("cwd").and_then(Value::as_str).map(PathBuf::from).unwrap_or_default();
-        // The editor names its own tool server first.
-        let tools = params.pointer("/mcpServers/0/url").and_then(Value::as_str).map(str::to_string);
-        Self { folder, mode: "ask".into(), model: "practice".into(), used: 0, cost: 0.0, tools, proposed: false }
+        let given = params.get("mcpServers").and_then(Value::as_array).cloned().unwrap_or_default();
+        let word = |server: &Value, key: &str| server.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+        // The editor's own tool server is the one called after it.
+        let tools =
+            given.iter().find(|server| word(server, "name") == "agent-editor").map(|server| word(server, "url"));
+        // The others are the user's: said back by name, with how each is reached and the names of what
+        // it is handed (never the values: those are keys).
+        let servers = given
+            .iter()
+            .filter(|server| word(server, "name") != "agent-editor")
+            .map(|server| {
+                let names = |key: &str| {
+                    let list = server.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+                    list.iter().map(|one| word(one, "name")).collect::<Vec<_>>().join(", ")
+                };
+                match server.get("type").and_then(Value::as_str) {
+                    Some(kind) => format!(
+                        "{} ({kind} {}; headers: {})",
+                        word(server, "name"),
+                        word(server, "url"),
+                        names("headers")
+                    ),
+                    None => {
+                        let args = server.get("args").and_then(Value::as_array).cloned().unwrap_or_default();
+                        let args: Vec<&str> = args.iter().filter_map(Value::as_str).collect();
+                        format!(
+                            "{} (runs {} {}; env: {})",
+                            word(server, "name"),
+                            word(server, "command"),
+                            args.join(" "),
+                            names("env")
+                        )
+                    }
+                }
+            })
+            .collect();
+        Self {
+            folder,
+            mode: "ask".into(),
+            model: "practice".into(),
+            used: 0,
+            cost: 0.0,
+            tools,
+            servers,
+            proposed: false,
+        }
     }
 
     /// The settings as the protocol describes them.
@@ -662,6 +707,12 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         format!("I see {what}: {}. Nothing was changed.", pictures.join(", "))
     } else if let Some(said) = tool_said {
         said
+    } else if asked.contains("which tool servers") {
+        // What the editor handed this session beside its own tools, said back so it can be seen.
+        match known.as_ref().map(|session| session.servers.clone()).filter(|servers| !servers.is_empty()) {
+            Some(servers) => format!("This session was given these tool servers: {}.", servers.join("; ")),
+            None => "This session was given no tool servers of the user's.".to_string(),
+        }
     } else if wants_verdict {
         // A task that asks to be "strict" is sent back once; a second look, and everything else, is fine.
         if text.to_lowercase().contains("strict") && !text.contains("You looked at this change before") {

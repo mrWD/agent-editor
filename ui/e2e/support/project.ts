@@ -182,6 +182,26 @@ export class Project {
     }
   }
 
+  /**
+   * Says where the branches of this project are deployed, as GitHub's deployments: each with the
+   * state and the address of its newest status.
+   */
+  setDeploys(deploys: { id: number; environment: string; state: string; url: string }[]) {
+    if (!this.slug) throw new Error('Only a project with a GitHub address has deployments');
+    const state = ghState(this.core.toolsDir, this.slug);
+    const listed = deploys.map((one) => ({
+      id: one.id,
+      environment: one.environment,
+      sha: '0123456789abcdef0123456789abcdef01234567',
+      created_at: '2026-11-12T19:05:30Z',
+    }));
+    writeFileSync(path.join(state, 'deploys.json'), JSON.stringify(listed));
+    for (const one of deploys) {
+      const status = [{ state: one.state, environment_url: one.url }];
+      writeFileSync(path.join(state, `deploy-${one.id}.json`), JSON.stringify(status));
+    }
+  }
+
   /** Changes the pull request of a branch behind the core's back, as GitHub does when checks or reviews move. */
   changePull(branch: string, change: (pull: string) => string) {
     if (!this.slug) throw new Error('Only a project with a GitHub address has pull requests');

@@ -2245,7 +2245,8 @@ button.search-link:hover {
   background: var(--raised);
   color: var(--text);
 }
-.issues-linear {
+.issues-linear,
+.issues-connect {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2255,7 +2256,8 @@ button.search-link:hover {
   border-radius: 8px;
   font-size: 13px;
 }
-.issues-linear label {
+.issues-linear label,
+.issues-connect label {
   color: var(--text-2);
 }
 .field.narrow {
@@ -3535,6 +3537,11 @@ button.map-step:hover {
   background: var(--red-bg);
   color: var(--red);
 }
+/* What a tool that reads the code for faults found: not as loud as security, louder than housekeeping. */
+.finding-quality {
+  border-color: rgba(245, 181, 68, 0.45);
+  color: var(--accent);
+}
 .project-tag {
   flex: none;
   padding: 0 8px;
@@ -3663,6 +3670,29 @@ button.map-step:hover {
   gap: 8px 16px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line-soft);
+}
+/* Where the branch is deployed: a row of places, each a link, above what runs on this computer. */
+.deploy-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.deploy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.deploy-name {
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+a.deploy-name:hover {
+  text-decoration: underline;
 }
 .preview-bar.tools {
   gap: 8px 14px;
@@ -5422,6 +5452,35 @@ button.picked-source:hover {
 }
 .setting-tried.text-bad {
   color: var(--red);
+}
+/* Tool servers that are ready to be filled in: what each gives, and a button that opens the form with it. */
+.tool-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tool-presets li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.tool-preset-what {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.tool-preset-what .name {
+  color: var(--text);
+  font-weight: 500;
 }
 .setting-form {
   flex: 1 1 100%;

@@ -581,6 +581,12 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         | "notifications.attention" => crate::settings::command(manager, method, params).await,
 
         "ci.get" | "ci.act" => crate::ci::command(manager, method, params).await,
+        "deploys.get" => crate::deploys::command(manager, method, params).await,
+        "sonar.status" | "sonar.connect" | "sonar.key" => crate::sonar::command(manager, method, params).await,
+        "sentry.status" | "sentry.connect" | "sentry.projects" | "sentry.join" | "sentry.issues" | "sentry.start" => {
+            crate::sentry::command(manager, method, params).await
+        }
+        "tools.list" | "tools.save" | "tools.remove" => crate::toolservers::command(manager, method, params).await,
         "import.claude.list" | "import.claude.take" => crate::imports::command(manager, method, params).await,
         "onboarding.get" | "onboarding.set" | "onboarding.project" => {
             crate::onboarding::command(manager, method, params).await

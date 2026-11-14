@@ -1133,3 +1133,52 @@ test.describe('The iOS simulator and the Android emulator', () => {
     await expect.poll(() => core.calls('xcrun')).toContain(`open -a Simulator --args -CurrentDeviceUDID ${PAD}`);
   });
 });
+
+test.describe('Where the branch is deployed', () => {
+  let shop: TestApp;
+  test.beforeEach(async () => {
+    shop = await startPage();
+  });
+  test.afterEach(async () => {
+    await new Promise((resolve) => shop.server.close(resolve));
+  });
+
+  test('PV-41 the previews the host knows of stand at the head of Preview, each a link; a branch that is deployed nowhere has no such row', async ({
+    app,
+    project,
+  }) => {
+    const hosted = await project({ remote: 'github' });
+    hosted.setDeploys([
+      { id: 14, environment: 'Preview', state: 'success', url: 'https://shop-git-fix.example.app' },
+      { id: 13, environment: 'storybook', state: 'in_progress', url: '' },
+      // Replaced by something newer: no place any more.
+      { id: 12, environment: 'old', state: 'inactive', url: 'https://old.example.app' },
+    ]);
+    const preview = await openPreview(app, hosted.dir, shop.address);
+    const row = preview.view.getByRole('region', { name: 'Where this branch is deployed' });
+    const places = row.getByRole('listitem');
+    await expect(places).toHaveCount(2);
+    // A place with an address is a link that opens outside the editor; one that is still being deployed has none yet.
+    const link = places.nth(0).getByRole('link', { name: 'Preview' });
+    await expect(link).toHaveAttribute('href', 'https://shop-git-fix.example.app');
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(places.nth(0)).toContainText('ready');
+    await expect(places.nth(0)).toContainText('01234567');
+    await expect(places.nth(1)).toContainText('storybook');
+    await expect(places.nth(1)).toContainText('being deployed');
+    await expect(places.nth(1).getByRole('link')).toHaveCount(0);
+    // What runs on this computer is shown as before, under that row.
+    await expect(preview.pageIn('Phone 320').getByRole('heading', { name: 'Sign in' })).toBeVisible();
+
+    // "Look again" reads the host anew.
+    hosted.setDeploys([{ id: 15, environment: 'Preview', state: 'failure', url: '' }]);
+    await row.getByRole('button', { name: 'Look again' }).click();
+    await expect(places).toHaveCount(1);
+    await expect(places.nth(0)).toContainText('failed');
+
+    // A project that is on no host, and one whose branch is deployed nowhere: no row at all.
+    const local = await openPreview(app, (await project()).dir, shop.address);
+    await expect(local.pageIn('Phone 320').getByRole('heading', { name: 'Sign in' })).toBeVisible();
+    await expect(local.view.getByRole('region', { name: 'Where this branch is deployed' })).toHaveCount(0);
+  });
+});

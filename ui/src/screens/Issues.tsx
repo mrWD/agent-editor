@@ -1,3 +1,4 @@
+import { SentryIssues } from '../components/SentryIssues';
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
@@ -491,6 +492,8 @@ export function Issues(): JSX.Element {
             </section>
           )}
         </For>
+
+        <SentryIssues agentId={chosenAgent()} onlyFree={filter() === 'free'} />
       </div>
     </main>
   );

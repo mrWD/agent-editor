@@ -1,3 +1,4 @@
+import { SonarCard } from '../components/SonarCard';
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
@@ -82,7 +83,7 @@ export function Health(): JSX.Element {
             type="button"
             class="btn small"
             disabled={Boolean(busy())}
-            title="Asks each project's package manager for known vulnerabilities. This reaches the network."
+            title="Asks each project's package manager for known vulnerabilities, and SonarQube when it is connected. This reaches the network."
             onClick={() => act('audit', async () => setHealth(await auditHealth()))}
           >
             {busy() === 'audit' ? 'Checking' : 'Check now'}
@@ -160,6 +161,8 @@ export function Health(): JSX.Element {
             </p>
           </Show>
         </section>
+
+        <Show when={health()?.sonar}>{(sonar) => <SonarCard status={sonar()} onChanged={() => void load()} />}</Show>
 
         <section class="stage" aria-label="Checks on every task">
           <div class="stage-head">

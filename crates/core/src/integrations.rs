@@ -490,7 +490,9 @@ impl Manager {
             if !body.is_empty() {
                 body.push('\n');
             }
-            body.push_str(&format!("Closes {}.\n", issue.key));
+            // Sentry resolves an issue when a commit that says "Fixes" with its name reaches it.
+            let word = if issue.source == "sentry" { "Fixes" } else { "Closes" };
+            body.push_str(&format!("{word} {}.\n", issue.key));
         }
         (title, body)
     }

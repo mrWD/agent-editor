@@ -131,6 +131,31 @@ scripts/sonar-local.sh
 - **Linear** needs a personal API key, pasted in the Issues section, and a team
   key per project.
 - **Docker** is used by the Run tab when a project has a compose file.
+- **Sentry** needs an auth token that may read events, projects and the
+  organization, pasted on the Issues screen with the organization's name
+  (and the address of your own Sentry, if it is not sentry.io). Each project
+  is then joined to one of Sentry's projects. Its unresolved errors are
+  listed under the tracker's issues, and "Start" makes a task whose first
+  message is the error with its numbers and the stack trace of its newest
+  event. Sentry is only read; it resolves an issue itself when a commit that
+  says "Fixes SHOP-1A" reaches it, which is what the request of such a task
+  says.
+- **SonarQube or SonarCloud** needs its address and a token, given on the
+  Health screen. Which of its projects a project is, is read from
+  `sonar-project.properties` or given there. "Check now" then also reads the
+  quality gate, the worst open findings and the places to review, and Health
+  shows them with the rest; "Fix" starts a task with the rule, the file and
+  the line of each.
+- **Tool servers** (Model Context Protocol) are listed in Settings: a program
+  an agent starts, or an address over HTTP or SSE, with the key each needs.
+  Every agent that speaks the protocol is named them when its session opens.
+  Sentry, Figma, Notion, Linear, Jira and Confluence, Slack, GitHub, Grafana,
+  a browser and library documentation are ready to be filled in. The editor
+  calls none of them itself.
+- **Where a branch is deployed** is asked of the code host: GitHub's
+  deployments (Vercel, Netlify and the like make them) and GitLab's
+  environments and deployments (review apps). Preview shows them as links at
+  its head.
 
 The first time, an agent can do this for you: **Set up with an agent** on the
 home screen starts Claude or Codex with what you say your team uses (for
@@ -295,7 +320,11 @@ screenshot with a real browser, the real iOS simulator and Android emulator
 (this Mac has neither Xcode nor the Android tools; starting an emulator,
 touch through `adb` and `idb`, and light and dark are written from the tools'
 documentation), and a notification of the real system (the tests use
-stand-ins for each); acting on a real pipeline (reading one was tried
+stand-ins for each); Sentry and SonarQube against the real services (each
+is tested against a stand-in server that answers in the documented shapes);
+a tool server with a real agent (the practice agent says back what it was
+given); GitHub's deployments against the real GitHub (GitLab's were read
+from a real project); acting on a real pipeline (reading one was tried
 against a GitLab pipeline of fifty jobs; no job was started or stopped
 there); waking the real Claude in a conversation that was brought in; the
 command-line programs of Codex and Gemini as agents in a terminal (Claude's
