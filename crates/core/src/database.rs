@@ -452,6 +452,8 @@ fn complaint(text: &str) -> String {
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.to_lowercase().contains("using a password on the command line"))
+        // psql repeats the query and points at the place with a caret: the query is on the screen already.
+        .filter(|line| !line.starts_with("LINE ") && !line.chars().all(|sign| sign == '^' || sign == ' '))
         .collect();
     let said = lines.iter().take(4).copied().collect::<Vec<_>>().join(" ");
     let said = said.trim_start_matches("psql:").trim().trim_start_matches("ERROR:").trim().to_string();
@@ -1056,6 +1058,9 @@ mod tests {
             "{said}"
         );
         assert!(said.ends_with(READ_ONLY_HINT));
+        let wrong =
+            "ERROR:  relation \"nowhere\" does not exist\nLINE 1: select * from nowhere\n                      ^\n";
+        assert_eq!(complaint(wrong), "relation \"nowhere\" does not exist");
         assert_eq!(
             complaint(
                 "mysql: [Warning] Using a password on the command line interface can be insecure.\nERROR 1146 (42S02): Table 'shop.x' doesn't exist"

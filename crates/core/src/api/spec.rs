@@ -505,6 +505,9 @@ mod tests {
         let spec = read(yaml).unwrap();
         assert_eq!(operations(&spec)[0].id, "GET /ping");
         assert_eq!(operations(&spec)[0].responses, ["200"]);
+        // A status written without quotes is a number to YAML; it is the same status.
+        let bare = b"swagger: '2.0'\npaths:\n  /ping:\n    get:\n      responses:\n        200:\n          description: OK\n        404: {}\n";
+        assert_eq!(operations(&read(bare).unwrap())[0].responses, ["200", "404"]);
     }
 
     #[test]

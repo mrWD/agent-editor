@@ -44,7 +44,6 @@ async fn the_jobs_of_a_project_are_listed_with_the_ones_the_task_touched_first()
     let project = git_project(&sandbox);
     std::fs::create_dir_all(project.join("shop")).unwrap();
     std::fs::write(project.join("shop/__init__.py"), "").unwrap();
-    std::fs::write(project.join("requirements.txt"), "celery\n").unwrap();
     std::fs::write(project.join("shop/celery.py"), "from celery import Celery\napp = Celery('shop')\n").unwrap();
     std::fs::write(project.join("shop/tasks.py"), TASKS).unwrap();
     std::fs::write(

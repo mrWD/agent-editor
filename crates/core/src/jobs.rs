@@ -371,6 +371,7 @@ pub fn celery_app(root: &Path) -> Option<String> {
     found
 }
 
+/// The same, read from the files now, with nothing believed from before.
 fn find_celery_app(root: &Path) -> Option<String> {
     let walk = ignore::WalkBuilder::new(root).hidden(true).max_depth(Some(8)).build();
     let mut found: Vec<String> = Vec::new();
@@ -536,7 +537,8 @@ fn handle(
             }
             // What the task touched comes first; the rest keeps its order.
             jobs.sort_by_key(|job| !job.changed);
-            let app = jobs.iter().any(|job| job.kind == "celery").then(|| celery_app(root)).flatten();
+            // Tasks of Celery were found, so there is an app to find: it is looked for whatever the folder looks like.
+            let app = jobs.iter().any(|job| job.kind == "celery").then(|| find_celery_app(root)).flatten();
             let folder = jobs.first().map(|job| job.folder.clone()).unwrap_or_default();
             let defaults = default_templates(root, &folder, app.as_deref());
             let settings: BTreeMap<&str, String> = defaults.keys().map(|kind| (*kind, kept(kind))).collect();
@@ -566,7 +568,7 @@ fn handle(
             let set = kept(job.kind);
             let template = match set.is_empty() {
                 true => {
-                    let app = (job.kind == "celery").then(|| celery_app(root)).flatten();
+                    let app = (job.kind == "celery").then(|| find_celery_app(root)).flatten();
                     default_templates(root, &job.folder, app.as_deref()).remove(job.kind).unwrap_or_default()
                 }
                 false => set,
