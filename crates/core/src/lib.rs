@@ -13,6 +13,7 @@ pub mod changes;
 pub mod checkpoints;
 pub mod checks;
 pub mod ci;
+pub mod database;
 pub mod deploys;
 pub mod devices;
 pub mod fileops;

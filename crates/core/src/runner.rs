@@ -17,6 +17,7 @@ pub mod env;
 pub mod resources;
 
 pub use commands::command;
+pub(crate) use commands::place_of;
 
 use crate::terminals::{Terminals, strip_codes};
 use anyhow::{Context, Result, anyhow, bail};
@@ -206,7 +207,7 @@ impl Place {
         }
     }
 
-    fn compose_project(&self) -> String {
+    pub(crate) fn compose_project(&self) -> String {
         compose_project(&self.project, &self.task_id)
     }
 }
@@ -352,7 +353,7 @@ pub fn free_ports(config: &mut Value, is_free: &dyn Fn(u16) -> bool) -> Vec<(Str
 
 /// The name of an image without where it comes from and which version it is:
 /// `ghcr.io/acme/postgres:16` is `postgres`.
-fn image_name(image: &str) -> &str {
+pub(crate) fn image_name(image: &str) -> &str {
     let last = image.rsplit('/').next().unwrap_or(image);
     last.split([':', '@']).next().unwrap_or(last)
 }
@@ -459,7 +460,7 @@ impl Runner {
     /// filled in. It is read as the task's own compose project, so the names
     /// Docker gives its volumes and its network carry the task's name, and
     /// with the task's environment, which the file may refer to.
-    fn resolved(&self, place: &Place, file: &Path) -> Result<Value> {
+    pub(crate) fn resolved(&self, place: &Place, file: &Path) -> Result<Value> {
         let project = place.compose_project();
         let args = ["compose", "-p", &project, "-f", &file.to_string_lossy(), "config", "--format", "json"];
         let text = self.docker_with(&args, &place.root, &place.env)?;
@@ -477,7 +478,7 @@ impl Runner {
     }
 
     /// The compose arguments that point at the task's project.
-    fn compose_args(&self, project: &str, task_id: &str) -> Vec<String> {
+    pub(crate) fn compose_args(&self, project: &str, task_id: &str) -> Vec<String> {
         vec![
             "compose".into(),
             "-p".into(),
@@ -495,7 +496,7 @@ impl Runner {
     }
 
     /// The containers of a compose project, as `docker compose ps` lists them.
-    fn containers(&self, project: &str, root: &Path) -> Vec<Value> {
+    pub(crate) fn containers(&self, project: &str, root: &Path) -> Vec<Value> {
         let Ok(text) = self.docker(&["compose", "-p", project, "ps", "--all", "--format", "json"], root) else {
             return vec![];
         };
@@ -1027,7 +1028,7 @@ impl Runner {
 }
 
 /// Wraps a word so a shell reads it as one word.
-fn quote(word: &str) -> String {
+pub(crate) fn quote(word: &str) -> String {
     if !word.is_empty() && word.chars().all(|c| c.is_ascii_alphanumeric() || "-_./:=".contains(c)) {
         return word.to_string();
     }
