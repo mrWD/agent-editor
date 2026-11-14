@@ -854,15 +854,31 @@ export function setRuleOffers(projectId: string, on: boolean) {
 export type Finding = {
   id: string;
   projectId: string;
-  category: 'Security' | 'Tests' | 'Pipeline' | 'Housekeeping' | 'Noticed';
+  category: 'Security' | 'Quality' | 'Tests' | 'Pipeline' | 'Housekeeping' | 'Noticed';
   title: string;
   detail: string;
   /** What an agent is told when the user presses "Fix". */
   fix: string;
 };
 
+/** What of SonarQube is connected, and which of its projects each project is. */
+export type SonarStatus = {
+  connected: boolean;
+  url: string;
+  /** When SonarQube was last asked what it found. */
+  checkedAt: number | null;
+  projects: {
+    projectId: string;
+    key: string | null;
+    /** "file": read from the project's own sonar-project.properties. "set": given by the user. */
+    from: 'file' | 'set' | null;
+  }[];
+};
+
 export type Health = {
   findings: Finding[];
+  /** SonarQube, as far as it is connected. */
+  sonar: SonarStatus;
   /** How many findings the user chose not to see. */
   ignored: number;
   /** When the package managers were last asked for their audit. */
