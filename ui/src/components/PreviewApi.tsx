@@ -29,7 +29,7 @@ import { headersText, parseHeaders } from '../core/toolservers';
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** A sentence of the core with the names it put in code marks shown as code. */
-function Marked(props: { text: string }): JSX.Element {
+export function Marked(props: { text: string }): JSX.Element {
   return (
     <span>
       <For each={props.text.split('`')}>

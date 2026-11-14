@@ -17,6 +17,7 @@ import { createKept } from '../core/kept';
 import { Icon, clock } from '../components/bits';
 import { addPictures, pictureCount } from '../components/Pictures';
 import { ApiView } from '../components/PreviewApi';
+import { DatabaseView } from '../components/PreviewDatabase';
 import { DeviceView } from '../components/PreviewDevice';
 import { core } from '../core/client';
 import { MAX_PICTURES } from '../core/pictures';
@@ -63,7 +64,7 @@ const FROM_PAGE = 'ae-preview-page';
 
 type Relay = { port: number; target: string };
 type Tool = 'none' | 'pick' | 'draw';
-type Kind = 'web' | 'ios' | 'android' | 'api';
+type Kind = 'web' | 'ios' | 'android' | 'api' | 'db';
 
 /** What is known about the page in one frame. */
 type FrameState = {
@@ -220,7 +221,7 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   // What was looked at last is what opens next: a task on a service is not looked at as a page.
   const [kind, setKind] = createKept<Kind>(`task:${taskId}:preview.kind`, 'web');
   /** Whether what is on show is data of the task's service, not a screen of its app. */
-  const isData = () => kind() === 'api';
+  const isData = () => kind() === 'api' || kind() === 'db';
   const [tool, setTool] = createSignal<Tool>('none');
   const [adding, setAdding] = createSignal(false);
   const [widthProblem, setWidthProblem] = createSignal<string | null>(null);
@@ -842,6 +843,9 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           <button type="button" aria-pressed={kind() === 'api'} onClick={() => setKind('api')}>
             API
           </button>
+          <button type="button" aria-pressed={kind() === 'db'} onClick={() => setKind('db')}>
+            Database
+          </button>
         </div>
         <Show when={kind() === 'web' && loaded()}>
           <div class="preview-widths" role="group" aria-label="Widths">
@@ -1035,6 +1039,9 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       </Show>
       <Show when={kind() === 'api'}>
         <ApiView taskId={taskId} guess={serving()} />
+      </Show>
+      <Show when={kind() === 'db'}>
+        <DatabaseView taskId={taskId} />
       </Show>
 
       <div class="preview-stage" ref={stageEl} hidden={isData()}>

@@ -4119,6 +4119,155 @@ button.api-change-op:hover {
   align-items: center;
   gap: 8px;
 }
+/* ---------- Preview of a service: its database ---------- */
+
+.db-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 14px 16px 24px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+.db-part {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.db-part + .db-part {
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.db-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.db-head [data-tone='good'] {
+  color: var(--green);
+}
+.db-head [data-tone='bad'] {
+  color: var(--red);
+}
+.banner.db-flat {
+  margin: 0;
+}
+.db-migrations,
+.db-steps,
+.db-ran {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.db-migrations {
+  gap: 12px;
+}
+.db-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.db-steps {
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+}
+.db-steps li.danger {
+  margin-left: -16px;
+  padding-left: 14px;
+  border-left: 2px solid var(--red);
+}
+.db-trial {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.db-ran li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.db-ran details {
+  flex: 1 1 100%;
+}
+.db-ran code {
+  overflow-wrap: anywhere;
+}
+.db-table summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  cursor: default;
+}
+.db-table summary::before {
+  content: '▸';
+  color: var(--text-3);
+}
+.db-table[open] summary::before {
+  content: '▾';
+}
+.db-table summary::-webkit-details-marker {
+  display: none;
+}
+.db-table summary .btn {
+  margin-left: auto;
+}
+.db-grid {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.db-table .db-grid {
+  margin: 2px 0 6px 18px;
+}
+.db-grid td,
+.db-grid th {
+  padding: 3px 14px 3px 0;
+  text-align: left;
+  vertical-align: top;
+}
+.db-rows {
+  max-height: 60vh;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--ground-deep);
+  overflow: auto;
+}
+.db-grid.rows td,
+.db-grid.rows th {
+  max-width: 48ch;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.db-grid.rows th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  color: var(--text-2);
+  font-weight: 500;
+}
+.db-grid.rows td.nothing {
+  color: var(--text-3);
+}
+.db-write {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* A text of the Preview that goes along with the next message: an answer, rows, an output. */
 .card.shown {
   display: flex;
