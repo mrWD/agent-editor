@@ -738,6 +738,14 @@ export async function startSetup(projectId: string, agentId: string, text: strin
   return info.id;
 }
 
+/** Takes in a task the core has just made for this window, when the event about it has not done so yet. */
+export async function addStartedTask(info: TaskInfo): Promise<void> {
+  if (!state.tasks[info.id]) {
+    addTask(info);
+    await loadHistory(info.id, info.state);
+  }
+}
+
 /** The conversations Claude Code had in a project's folder, newest first. */
 export async function claudeSessions(projectId: string): Promise<ClaudeSession[]> {
   const found = await core.request<{ sessions: ClaudeSession[] }>('import.claude.list', { projectId });
