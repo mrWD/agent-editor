@@ -10,7 +10,15 @@ import {
   sourcePath,
   type PickedElement,
 } from '../core/preview';
-import { askForParent, clearPointed, pointedOf, removeDrawing, setDrawingNote } from '../core/previewState';
+import {
+  askForParent,
+  clearPointed,
+  pointedOf,
+  removeDrawing,
+  removeShown,
+  setDrawingNote,
+  setShownNote,
+} from '../core/previewState';
 import type { Task } from '../core/store';
 
 /** `<p> “Too many attempts.”`: an element named by what it is and what it reads. */
@@ -39,7 +47,9 @@ export function PreviewPointed(props: {
 
   return (
     <>
-      <Show when={onPreview() && now().live && !now().picked && now().drawings.length === 0}>
+      <Show
+        when={onPreview() && now().live && !now().picked && now().drawings.length === 0 && now().shown.length === 0}
+      >
         <section class="card pinned" aria-label="The preview is live">
           <h2>The preview is live</h2>
           <p>
@@ -137,6 +147,32 @@ export function PreviewPointed(props: {
           </section>
         )}
       </For>
+      <For each={now().shown}>
+        {(shown) => (
+          <section class="card pinned shown" aria-label={`From the preview: ${shown.title}`}>
+            <label for={`shown-note-${taskId()}-${shown.n}`}>
+              <span class="grow">{shown.title}</span>
+              <button
+                type="button"
+                class="btn tiny ghost"
+                aria-label={`Leave out ${shown.title}`}
+                onClick={() => removeShown(taskId(), shown.n)}
+              >
+                Remove
+              </button>
+            </label>
+            <pre class="shown-text mono">{shown.text}</pre>
+            <input
+              id={`shown-note-${taskId()}-${shown.n}`}
+              type="text"
+              class="field"
+              placeholder="Say what is wrong here"
+              value={shown.note}
+              onInput={(event) => setShownNote(taskId(), shown.n, event.currentTarget.value)}
+            />
+          </section>
+        )}
+      </For>
     </>
   );
 }
@@ -150,12 +186,13 @@ export function PointedChips(props: { taskId: string }): JSX.Element {
     return [...new Set(widths)].sort((a, b) => a - b);
   };
   return (
-    <Show when={now().picked || now().drawings.length > 0}>
+    <Show when={now().picked || now().drawings.length > 0 || now().shown.length > 0}>
       <div class="quote pointed" aria-label="Goes along with your message">
         <span class="grow pointed-chips">
           <Show when={now().picked}>{(picked) => <span class="tag mono">{elementName(picked().element)}</span>}</Show>
           <For each={now().drawings}>{(drawing) => <span class="tag mono">drawing {drawing.n}</span>}</For>
           <For each={frames()}>{(width) => <span class="tag mono">{frameLabel(width)}</span>}</For>
+          <For each={now().shown}>{(shown) => <span class="tag mono">{shown.title}</span>}</For>
         </span>
         <button type="button" class="btn tiny" onClick={() => clearPointed(props.taskId)}>
           Leave it out

@@ -16,6 +16,7 @@ import { createStore, unwrap } from 'solid-js/store';
 import { createKept } from '../core/kept';
 import { Icon, clock } from '../components/bits';
 import { addPictures, pictureCount } from '../components/Pictures';
+import { ApiView } from '../components/PreviewApi';
 import { DeviceView } from '../components/PreviewDevice';
 import { core } from '../core/client';
 import { MAX_PICTURES } from '../core/pictures';
@@ -62,7 +63,7 @@ const FROM_PAGE = 'ae-preview-page';
 
 type Relay = { port: number; target: string };
 type Tool = 'none' | 'pick' | 'draw';
-type Kind = 'web' | 'ios' | 'android';
+type Kind = 'web' | 'ios' | 'android' | 'api';
 
 /** What is known about the page in one frame. */
 type FrameState = {
@@ -216,7 +217,10 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   const [run, setRun] = createKept<RunState | null>(`task:${taskId}:preview.run`, null);
   const [relay, setRelay] = createSignal<Relay | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
-  const [kind, setKind] = createSignal<Kind>('web');
+  // What was looked at last is what opens next: a task on a service is not looked at as a page.
+  const [kind, setKind] = createKept<Kind>(`task:${taskId}:preview.kind`, 'web');
+  /** Whether what is on show is data of the task's service, not a screen of its app. */
+  const isData = () => kind() === 'api';
   const [tool, setTool] = createSignal<Tool>('none');
   const [adding, setAdding] = createSignal(false);
   const [widthProblem, setWidthProblem] = createSignal<string | null>(null);
@@ -263,6 +267,15 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   /** A dev script that is up and has not yet said where it serves. */
   const waiting = () => commands().find((service) => service.state === 'running' && !service.address) ?? null;
   const address = () => settings.address ?? served();
+  /** Every address a service of the task answers at, for the views that ask a service and not a page. */
+  const serving = createMemo(
+    () =>
+      (run()?.services ?? [])
+        .filter((service) => service.state === 'running' && service.address && service.web)
+        .map((service) => service.address!),
+    [] as string[],
+    { equals: (a, b) => a.join(' ') === b.join(' ') },
+  );
   const parts = createMemo(() => {
     const now = address();
     return now ? splitAddress(now) : null;
@@ -826,6 +839,9 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           <button type="button" aria-pressed={kind() === 'android'} onClick={() => setKind('android')}>
             Android emulator
           </button>
+          <button type="button" aria-pressed={kind() === 'api'} onClick={() => setKind('api')}>
+            API
+          </button>
         </div>
         <Show when={kind() === 'web' && loaded()}>
           <div class="preview-widths" role="group" aria-label="Widths">
@@ -926,7 +942,7 @@ export function PreviewView(props: { task: Task }): JSX.Element {
             <span class="fine">{scaleLabel(layout().scale)}</span>
           </Show>
         </Show>
-        <Show when={loaded()}>
+        <Show when={loaded() && !isData()}>
           <Show when={kind() !== 'web'}>
             <span class="grow" />
           </Show>
@@ -1012,17 +1028,21 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           </span>
         </div>
       </Show>
-      <Show when={widthProblem() ?? problem()}>
+      <Show when={!isData() && (widthProblem() ?? problem())}>
         <p class="banner danger flush" role="alert">
           <span class="grow">{widthProblem() ?? problem()}</span>
         </p>
       </Show>
+      <Show when={kind() === 'api'}>
+        <ApiView taskId={taskId} guess={serving()} />
+      </Show>
 
-      <div class="preview-stage" ref={stageEl}>
+      <div class="preview-stage" ref={stageEl} hidden={isData()}>
         <Switch>
           <Match when={!loaded()}>
             <p class="bottom-note">Reading the preview of this task</p>
           </Match>
+          <Match when={isData()}>{null}</Match>
           <Match when={kind() !== 'web'}>
             <Show when={kind()} keyed>
               {(device) => (

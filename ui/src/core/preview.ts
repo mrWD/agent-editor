@@ -366,10 +366,29 @@ export function describeDrawing(drawing: Drawing, cwd: string): string {
   return [head, ...whereLines(drawing.element, cwd)].join('\n');
 }
 
+/**
+ * Something of the Preview that is text already and that the user wants the agent to see:
+ * the answer of a request, the rows of a query, what a migration did.
+ */
+export type Shown = {
+  n: number;
+  /** What it is, in a line: "POST /orders answered 500". */
+  title: string;
+  text: string;
+  /** What the user says is wrong with it. */
+  note: string;
+};
+
+function describeShown(shown: Shown): string {
+  const said = shown.note.trim() ? ` They say: "${shown.note.trim()}"` : '';
+  return `The user shows you this from the preview: ${shown.title}.${said}\n\n\`\`\`\n${shown.text.replace(/\n$/, '')}\n\`\`\``;
+}
+
 /** Everything the user pointed at in the preview, as the start of a message. Empty when there is nothing. */
-export function describePointed(picked: Picked | null, drawings: Drawing[], cwd: string): string {
+export function describePointed(picked: Picked | null, drawings: Drawing[], cwd: string, shown: Shown[] = []): string {
   const parts = drawings.map((drawing) => describeDrawing(drawing, cwd));
   if (picked) parts.unshift(describePicked(picked, cwd));
+  parts.push(...shown.map(describeShown));
   return parts.join('\n\n');
 }
 
