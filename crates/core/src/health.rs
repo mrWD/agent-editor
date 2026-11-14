@@ -20,16 +20,16 @@ use std::process::{Command, Stdio};
 const IGNORED_KEY: &str = "health.ignored";
 const AUDIT_KEY: &str = "health.audit";
 
-struct Finding {
-    kind: &'static str,
-    category: &'static str,
-    title: String,
-    detail: String,
+pub(crate) struct Finding {
+    pub(crate) kind: &'static str,
+    pub(crate) category: &'static str,
+    pub(crate) title: String,
+    pub(crate) detail: String,
     /// What an agent is told when the user presses "Fix".
-    fix: String,
+    pub(crate) fix: String,
 }
 
-fn finding(kind: &'static str, category: &'static str, title: &str, detail: &str, fix: &str) -> Finding {
+pub(crate) fn finding(kind: &'static str, category: &'static str, title: &str, detail: &str, fix: &str) -> Finding {
     Finding { kind, category, title: title.into(), detail: detail.into(), fix: fix.into() }
 }
 
@@ -242,9 +242,11 @@ impl Manager {
                     "The package manager's audit reports dependencies with known vulnerabilities. Run the audit, update what can be updated without breaking the project, run the tests, and say what could not be updated and why.",
                 ));
             }
+            // What SonarQube said of the project the last time it was asked.
+            found.extend(self.sonar_findings(&project.id));
             // What matters most comes first.
             found.sort_by_key(|one| {
-                ["Security", "Tests", "Pipeline", "Housekeeping"].iter().position(|c| *c == one.category)
+                ["Security", "Quality", "Tests", "Pipeline", "Housekeeping"].iter().position(|c| *c == one.category)
             });
             for one in found {
                 let id = format!("{}:{}", project.id, one.kind);
@@ -290,6 +292,7 @@ impl Manager {
             "ignored": left_out,
             "auditedAt": audit.get("at").cloned().unwrap_or(Value::Null),
             "projects": projects,
+            "sonar": self.sonar_status(),
         }))
     }
 
@@ -309,7 +312,9 @@ impl Manager {
     /// Asks each project's package manager for its audit and keeps the answers.
     /// This reaches the network; it runs only when the user asks.
     pub fn health_audit(&self) -> Result<()> {
-        self.health_audit_with(&npm_audit)
+        self.health_audit_with(&npm_audit)?;
+        // And SonarQube, when it is connected: the same press, the same "this reaches the network".
+        self.sonar_check()
     }
 
     /// The same with the asking given from outside, so it can be tried without a network.

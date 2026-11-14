@@ -43,6 +43,7 @@ pub mod server;
 pub mod settings;
 pub mod setup;
 pub mod shots;
+pub mod sonar;
 pub mod startup;
 pub mod store;
 pub mod tasks;
