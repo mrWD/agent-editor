@@ -38,6 +38,7 @@ pub mod review;
 pub mod rules;
 pub mod runner;
 pub mod search;
+pub mod sentry;
 pub mod server;
 pub mod settings;
 pub mod setup;
