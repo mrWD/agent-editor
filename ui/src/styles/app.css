@@ -5423,6 +5423,35 @@ button.picked-source:hover {
 .setting-tried.text-bad {
   color: var(--red);
 }
+/* Tool servers that are ready to be filled in: what each gives, and a button that opens the form with it. */
+.tool-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tool-presets li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.tool-preset-what {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.tool-preset-what .name {
+  color: var(--text);
+  font-weight: 500;
+}
 .setting-form {
   flex: 1 1 100%;
   margin: 4px 0;

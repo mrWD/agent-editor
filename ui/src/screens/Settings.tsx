@@ -1,3 +1,4 @@
+import { ToolServers } from '../components/ToolServers';
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { recallCopy, rememberCopy } from '../core/kept';
@@ -446,6 +447,8 @@ export function Settings(): JSX.Element {
                   <Show when={editing() === NEW}>{form(null)}</Show>
                 </div>
               </section>
+
+              <ToolServers />
 
               <section class="stage" aria-label="Notifications">
                 <div class="stage-head">
