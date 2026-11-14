@@ -3664,6 +3664,29 @@ button.map-step:hover {
   padding: 8px 12px;
   border-bottom: 1px solid var(--line-soft);
 }
+/* Where the branch is deployed: a row of places, each a link, above what runs on this computer. */
+.deploy-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.deploy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.deploy-name {
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+a.deploy-name:hover {
+  text-decoration: underline;
+}
 .preview-bar.tools {
   gap: 8px 14px;
 }

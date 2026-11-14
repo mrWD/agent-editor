@@ -1,3 +1,4 @@
+import { Deploys } from '../components/Deploys';
 import {
   createEffect,
   createMemo,
@@ -813,6 +814,7 @@ export function PreviewView(props: { task: Task }): JSX.Element {
 
   return (
     <section class="center preview" aria-label="Preview">
+      <Deploys taskId={taskId} />
       <div class="preview-bar">
         <div class="switcher" role="group" aria-label="What to preview on">
           <button type="button" aria-pressed={kind() === 'web'} onClick={() => setKind('web')}>
