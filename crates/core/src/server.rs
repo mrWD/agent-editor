@@ -1174,6 +1174,7 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         "preview.state" | "preview.open" | "preview.close" | "preview.remember" => {
             crate::preview::command(&state.previews, manager, method, params).await
         }
+        "api.get" | "api.set" | "api.send" => crate::api::command(state, method, params).await,
         "shots.state" | "shots.take" => crate::shots::command(&state.previews, manager, method, params).await,
         "devices.list" | "devices.open" | "devices.screen" | "devices.input" | "devices.scheme" | "devices.front"
         | "devices.close" => crate::devices::command(&state.previews, manager, method, params).await,

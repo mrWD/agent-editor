@@ -6,6 +6,7 @@
 
 pub mod acp;
 pub mod agents;
+pub mod api;
 pub mod automations;
 pub mod awake;
 pub mod changes;
