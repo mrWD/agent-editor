@@ -51,6 +51,15 @@ test.describe('Every screen can be read and used without a mouse', () => {
         // A view reads its data after it is shown: give what it shows a moment to settle.
         await app.page.waitForTimeout(400);
         expect.soft(await problemsOn(app.page), view).toEqual([]);
+        if (view !== 'Preview') continue;
+        // Preview is six things to look at; the three for a service are read too, each as it opens for this project.
+        const kinds = app.page.getByRole('group', { name: 'What to preview on' });
+        for (const kind of ['API', 'Database', 'Jobs'] as const) {
+          await kinds.getByRole('button', { name: kind, exact: true }).click();
+          await app.page.waitForTimeout(400);
+          expect.soft(await problemsOn(app.page), `Preview, ${kind}`).toEqual([]);
+        }
+        await kinds.getByRole('button', { name: 'Web', exact: true }).click();
       }
 
       for (const section of ['Issues', 'Health', 'Automations', 'Agents'] as const) {
