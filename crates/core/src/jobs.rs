@@ -23,17 +23,17 @@
 //! A job put on a queue is done by the project's worker: its output is in the
 //! Run tab, where the worker runs.
 
-use crate::database::migrations::python_prefix;
 use crate::gitops;
-use crate::runner::{self, quote};
+use crate::runner::{self, python_prefix, quote};
 use crate::server::AppState;
 use crate::terminals::{Terminals, strip_codes};
 use anyhow::{Result, anyhow, bail};
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 /// How many files of a project are read, and how long one may be.
 const MOST_FILES: usize = 6000;
@@ -342,8 +342,36 @@ pub fn scan(root: &Path) -> Vec<Job> {
     found
 }
 
-/// Where the project makes its Celery app, as `celery -A` wants it: `shop.celery:app`.
+/// The files that say a folder holds a Python project.
+const PYTHON_MARKS: [&str; 8] =
+    ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile", "manage.py", "uv.lock", "poetry.lock"];
+/// How long an answer about a project's Celery app is believed: the Run tab asks often, and reading
+/// every file each time would be felt.
+const APP_BELIEVED: Duration = Duration::from_secs(20);
+
+/// The answer for each folder asked about, with when it was given.
+type Believed = HashMap<PathBuf, (Instant, Option<String>)>;
+
+/// Where the project makes its Celery app, as `celery -A` wants it: `shop.celery:app`. Looked for
+/// only in a folder that holds a Python project, or has one right under it.
 pub fn celery_app(root: &Path) -> Option<String> {
+    static KNOWN: OnceLock<Mutex<Believed>> = OnceLock::new();
+    let known = KNOWN.get_or_init(Mutex::default);
+    if let Some((at, found)) = known.lock().unwrap().get(root)
+        && at.elapsed() < APP_BELIEVED
+    {
+        return found.clone();
+    }
+    let python = |folder: &Path| PYTHON_MARKS.iter().any(|mark| folder.join(mark).is_file());
+    let is_python = python(root)
+        || std::fs::read_dir(root)
+            .is_ok_and(|all| all.flatten().take(200).any(|one| one.path().is_dir() && python(&one.path())));
+    let found = if is_python { find_celery_app(root) } else { None };
+    known.lock().unwrap().insert(root.to_path_buf(), (Instant::now(), found.clone()));
+    found
+}
+
+fn find_celery_app(root: &Path) -> Option<String> {
     let walk = ignore::WalkBuilder::new(root).hidden(true).max_depth(Some(8)).build();
     let mut found: Vec<String> = Vec::new();
     for entry in walk.flatten().take(MOST_FILES) {
@@ -612,6 +640,7 @@ mod tests {
     fn the_tasks_of_celery_and_the_actors_of_dramatiq_are_found_by_their_decorators() {
         let project = Folder::new("python");
         project.write("backend/shop/__init__.py", "");
+        project.write("backend/pyproject.toml", "");
         project.write("backend/shop/celery.py", "from celery import Celery\n\napp = Celery(\"shop\")\n");
         project.write(
             "backend/shop/tasks.py",

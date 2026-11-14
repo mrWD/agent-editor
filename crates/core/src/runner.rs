@@ -233,14 +233,103 @@ fn package_json(root: &Path) -> Option<Value> {
     serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).ok()?).ok()
 }
 
-/// The scripts of `package.json` that start something long-running.
+/// What runs a Python program of a project: the project's own environment when it has one.
+pub(crate) fn python_prefix(folder: &Path, program: &str) -> String {
+    if folder.join("uv.lock").is_file() {
+        return format!("uv run {program}");
+    }
+    if folder.join("poetry.lock").is_file() {
+        return format!("poetry run {program}");
+    }
+    if folder.join("Pipfile").is_file() {
+        return format!("pipenv run {program}");
+    }
+    for env in [".venv", "venv"] {
+        if folder.join(env).join("bin").join(program).is_file() {
+            return format!("{env}/bin/{program}");
+        }
+    }
+    program.to_string()
+}
+
+/// The files a Python web app is usually made in, with the module each is imported as.
+const PYTHON_APPS: [(&str, &str); 7] = [
+    ("main.py", "main"),
+    ("app.py", "app"),
+    ("app/main.py", "app.main"),
+    ("src/main.py", "src.main"),
+    ("api/main.py", "api.main"),
+    ("app/__init__.py", "app"),
+    ("wsgi.py", "wsgi"),
+];
+
+/// The name a file gives to what `made(` makes, as in `app = FastAPI(`. With the module it is in.
+fn python_app(root: &Path, made: &str) -> Option<String> {
+    PYTHON_APPS.iter().find_map(|(file, module)| {
+        let text = std::fs::read_to_string(root.join(file)).ok()?;
+        let line = text
+            .lines()
+            .find(|line| line.split_once('=').is_some_and(|(_, right)| right.trim_start().starts_with(made)))?;
+        let name = line.split('=').next()?.split(':').next()?.trim();
+        (!name.is_empty() && name.chars().all(|sign| sign.is_alphanumeric() || sign == '_'))
+            .then(|| format!("{module}:{name}"))
+    })
+}
+
+/// The lines of a `Procfile`: a name and the command that runs under it.
+fn procfile(root: &Path) -> Vec<Script> {
+    let Ok(text) = std::fs::read_to_string(root.join("Procfile")) else { return vec![] };
+    text.lines()
+        .filter_map(|line| line.split_once(':'))
+        .map(|(name, command)| (name.trim(), command.trim()))
+        // "release" is run once at a deploy; it is not something that stays up.
+        .filter(|(name, command)| {
+            !name.is_empty()
+                && !command.is_empty()
+                && *name != "release"
+                && name.chars().all(|sign| sign.is_alphanumeric() || "-_".contains(sign))
+        })
+        .map(|(name, command)| Script { name: name.to_string(), command: command.to_string() })
+        .collect()
+}
+
+/// What a project that is a service in one of the usual frameworks is started with, when it does
+/// not say so itself. The port can be moved with `PORT` in the task's own values, so two tasks of
+/// one project can run side by side.
+fn framework(root: &Path) -> Vec<Script> {
+    let has = |name: &str| root.join(name).is_file();
+    let script = |name: &str, command: String| Script { name: name.to_string(), command };
+    let mut found = Vec::new();
+    if has("manage.py") {
+        found.push(script("web", format!("{} manage.py runserver ${{PORT:-8000}}", python_prefix(root, "python"))));
+    } else if let Some(app) = python_app(root, "FastAPI(") {
+        found.push(script("api", format!("{} {app} --reload --port ${{PORT:-8000}}", python_prefix(root, "uvicorn"))));
+    } else if let Some(app) = python_app(root, "Flask(") {
+        found.push(script(
+            "web",
+            format!("{} --app {app} run --debug --port ${{PORT:-5000}}", python_prefix(root, "flask")),
+        ));
+    } else if has("bin/rails") {
+        found.push(script("web", "bin/rails server -p ${PORT:-3000}".into()));
+    } else if has("artisan") {
+        found.push(script("web", "php artisan serve --port=${PORT:-8000}".into()));
+    } else if has("go.mod") && has("main.go") {
+        found.push(script("server", "go run .".into()));
+    }
+    if let Some(app) = crate::jobs::celery_app(root) {
+        found.push(script("worker", format!("{} -A {app} worker --loglevel=info", python_prefix(root, "celery"))));
+    }
+    found
+}
+
+/// What of a project can be started and stays up: the scripts of `package.json` that start
+/// something long-running, the lines of a `Procfile`, and, for a service in one of the usual
+/// frameworks that names neither, the command the framework is started with.
 pub fn scripts(root: &Path) -> Vec<Script> {
-    let Some(package) = package_json(root) else {
-        return vec![];
-    };
     let manager = package_manager(root);
-    let mut found: Vec<Script> = package
-        .get("scripts")
+    let mut found: Vec<Script> = package_json(root)
+        .as_ref()
+        .and_then(|package| package.get("scripts"))
         .and_then(Value::as_object)
         .into_iter()
         .flatten()
@@ -255,6 +344,14 @@ pub fn scripts(root: &Path) -> Vec<Script> {
         .collect();
     // "dev" first: it is what people start most.
     found.sort_by_key(|script| (script.name != "dev", script.name.clone()));
+    // What the project says itself comes before what is guessed from its framework, and a name is taken once.
+    let said = procfile(root);
+    let more = if said.is_empty() { framework(root) } else { said };
+    for script in more {
+        if !found.iter().any(|known| known.name == script.name) {
+            found.push(script);
+        }
+    }
     found
 }
 
@@ -1073,6 +1170,57 @@ mod tests {
         std::fs::write(dir.join("package.json"), "not json").unwrap();
         assert!(scripts(&dir).is_empty());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_service_without_a_package_json_is_started_the_way_its_framework_is() {
+        let named =
+            |dir: &Path| scripts(dir).into_iter().map(|script| (script.name, script.command)).collect::<Vec<_>>();
+        let pair = |name: &str, command: &str| (name.to_string(), command.to_string());
+
+        let fastapi = folder("fastapi");
+        std::fs::create_dir_all(fastapi.join("app")).unwrap();
+        std::fs::write(fastapi.join("app/__init__.py"), "").unwrap();
+        std::fs::write(
+            fastapi.join("app/main.py"),
+            "from fastapi import FastAPI\n\napi: FastAPI = FastAPI(title='Shop')\n",
+        )
+        .unwrap();
+        std::fs::write(fastapi.join("app/queue.py"), "from celery import Celery\ncelery = Celery('shop')\n").unwrap();
+        std::fs::write(fastapi.join("uv.lock"), "").unwrap();
+        assert_eq!(crate::jobs::celery_app(&fastapi).as_deref(), Some("app.queue:celery"));
+        assert_eq!(
+            named(&fastapi),
+            [
+                pair("api", "uv run uvicorn app.main:api --reload --port ${PORT:-8000}"),
+                pair("worker", "uv run celery -A app.queue:celery worker --loglevel=info")
+            ]
+        );
+
+        let django = folder("django");
+        std::fs::write(django.join("manage.py"), "").unwrap();
+        assert_eq!(named(&django), [pair("web", "python manage.py runserver ${PORT:-8000}")]);
+
+        // What the project says itself stands instead of the guess, and beside its package scripts.
+        std::fs::write(
+            django.join("Procfile"),
+            "web: gunicorn shop.wsgi\nrelease: python manage.py migrate\n\nworker:celery -A shop worker\n",
+        )
+        .unwrap();
+        std::fs::write(django.join("package.json"), r#"{"scripts":{"dev":"vite","worker":"node worker.js"}}"#).unwrap();
+        assert_eq!(
+            named(&django),
+            [pair("dev", "npm run dev"), pair("worker", "npm run worker"), pair("web", "gunicorn shop.wsgi")]
+        );
+
+        let go = folder("go");
+        std::fs::write(go.join("go.mod"), "module shop\n").unwrap();
+        assert!(named(&go).is_empty(), "a module without a main is a library");
+        std::fs::write(go.join("main.go"), "package main\n").unwrap();
+        assert_eq!(named(&go), [pair("server", "go run .")]);
+        for dir in [fastapi, django, go] {
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     #[test]

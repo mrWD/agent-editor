@@ -13,6 +13,7 @@
 //! recognise it leaves out, and SQL written by hand inside a migration is
 //! read as SQL where it can be.
 
+use crate::runner::python_prefix;
 use serde::Serialize;
 use std::path::Path;
 
@@ -87,25 +88,6 @@ impl Tool {
             }
         }
     }
-}
-
-/// What runs a Python program of the project: its own environment when it has one.
-pub fn python_prefix(folder: &Path, program: &str) -> String {
-    if folder.join("uv.lock").is_file() {
-        return format!("uv run {program}");
-    }
-    if folder.join("poetry.lock").is_file() {
-        return format!("poetry run {program}");
-    }
-    if folder.join("Pipfile").is_file() {
-        return format!("pipenv run {program}");
-    }
-    for env in [".venv", "venv"] {
-        if folder.join(env).join("bin").join(program).is_file() {
-            return format!("{env}/bin/{program}");
-        }
-    }
-    program.to_string()
 }
 
 fn has_sql(folder: &Path, end: &str) -> bool {
