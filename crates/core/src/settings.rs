@@ -64,7 +64,7 @@ impl Command {
     }
 
     /// Reads a command the interface sent, and says in words what is wrong with it.
-    fn read(params: &Value) -> Result<Self> {
+    pub(crate) fn read(params: &Value) -> Result<Self> {
         let program = params.get("program").and_then(Value::as_str).unwrap_or_default().trim().to_string();
         if program.is_empty() {
             bail!("Give the program that starts the agent");

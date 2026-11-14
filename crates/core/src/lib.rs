@@ -47,6 +47,7 @@ pub mod tasks;
 pub mod team;
 pub mod terminals;
 pub mod tools;
+pub mod toolservers;
 pub mod usage;
 
 pub use notify::Notice;
