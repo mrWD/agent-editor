@@ -187,11 +187,17 @@ fn walk(spec: &Value, schema: &Value, at: &str, required: bool, loose: bool, dep
 
 /// A value that fits a schema, to start a request from: the author's own example where there is one.
 pub fn sample(spec: &Value, schema: &Value) -> Value {
-    sample_at(spec, schema, 0)
+    let mut left = MOST_PLACES;
+    sample_at(spec, schema, 0, &mut left)
 }
 
-fn sample_at(spec: &Value, schema: &Value, depth: usize) -> Value {
+/// `left` is how many more values may be made: schemas that hold one another would make millions.
+fn sample_at(spec: &Value, schema: &Value, depth: usize, left: &mut usize) -> Value {
     let schema = resolve(spec, schema);
+    if *left == 0 {
+        return Value::Null;
+    }
+    *left -= 1;
     if let Some(given) = schema.get("example").or_else(|| schema.get("default")).or_else(|| schema.get("const")) {
         return given.clone();
     }
@@ -203,7 +209,7 @@ fn sample_at(spec: &Value, schema: &Value, depth: usize) -> Value {
     }
     let mut whole = Map::new();
     for part in list(schema, "allOf") {
-        if let Value::Object(fields) = sample_at(spec, part, depth + 1) {
+        if let Value::Object(fields) = sample_at(spec, part, depth + 1, left) {
             whole.extend(fields);
         }
     }
@@ -211,7 +217,7 @@ fn sample_at(spec: &Value, schema: &Value, depth: usize) -> Value {
         for (name, child) in properties {
             // What only the service writes is not for a request.
             if resolve(spec, child).get("readOnly").and_then(Value::as_bool) != Some(true) {
-                whole.insert(name.clone(), sample_at(spec, child, depth + 1));
+                whole.insert(name.clone(), sample_at(spec, child, depth + 1, left));
             }
         }
     }
@@ -220,7 +226,11 @@ fn sample_at(spec: &Value, schema: &Value, depth: usize) -> Value {
     }
     let alternatives = list(schema, "oneOf").iter().chain(list(schema, "anyOf"));
     if let Some(part) = alternatives.clone().find(|part| part.get("type") != Some(&json!("null"))) {
-        return sample_at(spec, part, depth + 1);
+        return sample_at(spec, part, depth + 1, left);
+    }
+    // A list is told before anything is said of what it holds: "integer (int64)[]" is a list all the same.
+    if schema.get("items").is_some() || schema.get("type").and_then(Value::as_str) == Some("array") {
+        return json!([sample_at(spec, schema.get("items").unwrap_or(&NOTHING), depth + 1, left)]);
     }
     let kind = kind_of(spec, schema);
     let (kind, format) = match kind.split_once(" (") {
@@ -229,7 +239,7 @@ fn sample_at(spec: &Value, schema: &Value, depth: usize) -> Value {
     };
     match (kind.split(" or ").next().unwrap_or_default(), format) {
         (kind, _) if kind.ends_with("[]") => {
-            json!([sample_at(spec, schema.get("items").unwrap_or(&NOTHING), depth + 1)])
+            json!([sample_at(spec, schema.get("items").unwrap_or(&NOTHING), depth + 1, left)])
         }
         ("string", "date-time") => json!("2026-01-01T00:00:00Z"),
         ("string", "date") => json!("2026-01-01"),
@@ -457,6 +467,10 @@ pub fn operations(spec: &Value) -> Vec<Operation> {
 mod tests {
     use super::*;
 
+    fn spec_of() -> Value {
+        json!({})
+    }
+
     fn shop() -> Value {
         json!({
             "openapi": "3.0.3",
@@ -544,6 +558,14 @@ mod tests {
         assert_eq!(made["state"], "open");
         assert_eq!(made["placed"], "2026-01-01T00:00:00Z");
         assert_eq!(made["lines"][0], json!({ "sku": "string", "count": 1 }));
+        // A list of things that have a format is a list, and a shape that holds itself ends.
+        let ids = json!({ "type": "object", "properties": { "ids": { "type": "array", "items": { "type": "integer", "format": "int64" } } } });
+        assert_eq!(sample(&spec_of(), &ids), json!({ "ids": [0] }));
+        let tree = json!({ "components": { "schemas": { "Node": { "type": "object", "properties": {
+            "a": { "$ref": "#/components/schemas/Node" }, "b": { "$ref": "#/components/schemas/Node" },
+            "c": { "$ref": "#/components/schemas/Node" }, "d": { "$ref": "#/components/schemas/Node" } } } } } });
+        let made = sample(&tree, &json!({ "$ref": "#/components/schemas/Node" })).to_string();
+        assert!(made.len() < 100_000, "it came to {} signs", made.len());
     }
 
     #[test]

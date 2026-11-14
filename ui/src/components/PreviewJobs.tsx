@@ -18,6 +18,7 @@ import {
 import { createKept } from '../core/kept';
 import { addShown } from '../core/previewState';
 import type { RunService } from '../core/store';
+import { SETTLE } from './PreviewApi';
 
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -74,6 +75,12 @@ export function JobsView(props: { taskId: string; services: RunService[] }): JSX
   const shownIds = createMemo(() => matchingJobs(jobs(), filter()).map((job) => job.id));
   /** The job on show: the one picked, else the first, so the view never opens on nothing. */
   const job = (): Job | null => byId().get(picked()) ?? jobs()[0] ?? null;
+  // The first job is picked for good once it is shown: the list is put in another order when the
+  // task touches a job, and what is being filled in must not change under the user's hands.
+  createEffect(() => {
+    const first = jobs()[0];
+    if (!byId().has(picked()) && first) setPicked(first.id);
+  });
   const draft = (): Draft => (job() ? drafts()[job()!.id] : undefined) ?? { args: '', kwargs: '' };
   const change = (next: Partial<Draft>) => {
     const one = job();
@@ -86,12 +93,25 @@ export function JobsView(props: { taskId: string; services: RunService[] }): JSX
 
   /** Asks how a job stands, and keeps asking while it runs and is the one on show. */
   let watching: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The runs the user stopped, each as it stood at that moment. Of a run that was stopped the core
+   * keeps nothing, and it may take a moment to die: what it had printed stays on show from here.
+   */
+  const stopping = new Map<string, JobRun>();
   const watch = async (id: string) => {
     clearTimeout(watching);
     try {
-      const now = await core.request<JobRun>('jobs.state', { taskId, id });
-      setRuns((before) => ({ ...before, [id]: now }));
-      if (now.running && job()?.id === id) watching = setTimeout(() => void watch(id), 700);
+      let now = await core.request<JobRun>('jobs.state', { taskId, id });
+      const stopped = stopping.get(id);
+      if (stopped && now.running) stopping.set(id, now);
+      if (stopped && !now.running) {
+        stopping.delete(id);
+        // It may have ended by itself in the same moment: then how it ended is what there is to say.
+        if (now.exit === null) now = { ...stopped, running: false, termId: null, exit: null, stopped: true };
+      }
+      const whole = now;
+      setRuns((before) => ({ ...before, [id]: whole }));
+      if (now.running && job()?.id === id) watching = setTimeout(() => void watch(id), stopped ? 200 : 700);
     } catch {
       // The task may be gone; the next look says so.
     }
@@ -106,7 +126,7 @@ export function JobsView(props: { taskId: string; services: RunService[] }): JSX
       // A job is written in a file of the task.
       if (['files.changed', 'review.changed', 'git.changed'].includes(event.event)) {
         clearTimeout(soon);
-        soon = setTimeout(() => void load(), 600);
+        soon = setTimeout(() => void load(), SETTLE);
       }
     });
     onCleanup(() => {
@@ -135,6 +155,7 @@ export function JobsView(props: { taskId: string; services: RunService[] }): JSX
     setBusy(true);
     setProblem(null);
     setHanded(null);
+    stopping.delete(one.id);
     try {
       const started = await core.request<{ command: string }>('jobs.run', { taskId, id: one.id, ...draft() });
       setCommands((before) => ({ ...before, [one.id]: started.command }));
@@ -150,14 +171,10 @@ export function JobsView(props: { taskId: string; services: RunService[] }): JSX
     const one = job();
     if (!one) return;
     const before = run();
+    if (before) stopping.set(one.id, before);
     try {
       await core.request('jobs.stop', { taskId, id: one.id });
       await watch(one.id);
-      // Of a run that was stopped the core keeps nothing: what it had printed until then stays on show here.
-      if (before && !run()?.running && (run()?.exit ?? null) === null) {
-        const kept: JobRun = { ...before, running: false, termId: null, exit: null, stopped: true };
-        setRuns((all) => ({ ...all, [one.id]: kept }));
-      }
     } catch (error) {
       setProblem(said(error));
     }

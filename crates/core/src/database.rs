@@ -52,6 +52,10 @@ const SQLITE_FOLDERS: [&str; 7] = ["", "data", "db", "instance", "prisma", "var"
 const SQLITE_ENDS: [&str; 3] = [".sqlite3", ".sqlite", ".db"];
 /// How many rows of an answer are given. More are said to be there.
 const MOST_ROWS: usize = 500;
+/// How many rows the tables of a database may come to when they are read whole: a column or an index each.
+const MOST_SCHEMA_ROWS: usize = 60_000;
+/// A migration longer than this is not read.
+const MAX_MIGRATION: u64 = 400 * 1024;
 /// How much of what a client printed is read.
 const MOST_OUTPUT: usize = 8 * 1024 * 1024;
 /// How long one query may take, and how long one run of the migrations.
@@ -389,11 +393,10 @@ pub fn parse_csv(text: &str) -> Vec<Vec<String>> {
                 any = true;
             }
             (false, '\r') => {}
+            // Every line is a row: one empty text in the only column is printed as an empty line.
             (false, '\n') => {
-                if any || !cell.is_empty() {
-                    row.push(std::mem::take(&mut cell));
-                    rows.push(std::mem::take(&mut row));
-                }
+                row.push(std::mem::take(&mut cell));
+                rows.push(std::mem::take(&mut row));
                 any = false;
             }
             (false, other) => cell.push(other),
@@ -436,13 +439,13 @@ pub fn parse_tsv(text: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
-fn rows_of(mut table: Vec<Vec<String>>) -> Rows {
+fn rows_of(mut table: Vec<Vec<String>>, most: usize) -> Rows {
     if table.is_empty() {
         return Rows { said: Some("Done. It gave no rows.".into()), ..Rows::default() };
     }
     let columns = table.remove(0);
-    let more = table.len() > MOST_ROWS;
-    table.truncate(MOST_ROWS);
+    let more = table.len() > most;
+    table.truncate(most);
     Rows { columns, rows: table, more, said: None }
 }
 
@@ -476,15 +479,27 @@ fn pg_options(write: bool) -> String {
     if write { patience } else { format!("{patience} -c default_transaction_read_only=on") }
 }
 
-fn sqlite_query(file: &Path, sql: &str, write: bool) -> Result<Rows> {
+fn sqlite_query(file: &Path, sql: &str, write: bool, most: usize) -> Result<Rows> {
     use rusqlite::types::ValueRef;
     use rusqlite::{Connection, OpenFlags};
     let flags = if write { OpenFlags::SQLITE_OPEN_READ_WRITE } else { OpenFlags::SQLITE_OPEN_READ_ONLY };
     let conn = Connection::open_with_flags(file, flags | OpenFlags::SQLITE_OPEN_NO_MUTEX)
         .map_err(|error| anyhow!("{} could not be opened: {error}", file.display()))?;
     conn.busy_timeout(Duration::from_secs(5))?;
+    // A query that goes on for ever is stopped from another thread; when this one is done first, that thread ends.
+    let interrupt = conn.get_interrupt_handle();
+    let (done, waiting) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if matches!(waiting.recv_timeout(QUERY_PATIENCE), Err(std::sync::mpsc::RecvTimeoutError::Timeout)) {
+            interrupt.interrupt();
+        }
+    });
+    let _done = done;
     let said = |error: rusqlite::Error| match error {
         rusqlite::Error::MultipleStatement => anyhow!("One statement at a time, please"),
+        other if other.to_string().to_lowercase().contains("interrupt") => {
+            anyhow!("The query did not end in {} seconds and was stopped", QUERY_PATIENCE.as_secs())
+        }
         other => anyhow!("{}", complaint(&other.to_string())),
     };
     let mut statement = conn.prepare(sql).map_err(said)?;
@@ -500,7 +515,7 @@ fn sqlite_query(file: &Path, sql: &str, write: bool) -> Result<Rows> {
     let mut found = statement.query([]).map_err(said)?;
     let mut more = false;
     while let Some(row) = found.next().map_err(said)? {
-        if rows.len() == MOST_ROWS {
+        if rows.len() == most {
             more = true;
             break;
         }
@@ -519,8 +534,13 @@ fn sqlite_query(file: &Path, sql: &str, write: bool) -> Result<Rows> {
     Ok(Rows { columns, rows, more, said: None })
 }
 
-/// Asks a database one thing.
+/// Asks a database one thing, for a person to look at: the first rows of the answer.
 fn query(runner: &Runner, place: &Place, db: &Db, sql: &str, write: bool) -> Result<Rows> {
+    ask(runner, place, db, sql, write, MOST_ROWS)
+}
+
+/// Asks a database one thing and gives at most `most` rows of the answer.
+fn ask(runner: &Runner, place: &Place, db: &Db, sql: &str, write: bool, most: usize) -> Result<Rows> {
     if !db.ready {
         bail!("{}", db.note.clone().unwrap_or_else(|| format!("{} cannot be asked right now", db.name)));
     }
@@ -529,7 +549,7 @@ fn query(runner: &Runner, place: &Place, db: &Db, sql: &str, write: bool) -> Res
         bail!("Write a query first");
     }
     let (mut command, csv) = match (&db.way, db.engine) {
-        (Way::File(file), _) => return sqlite_query(file, sql.trim_end_matches(';'), write),
+        (Way::File(file), _) => return sqlite_query(file, sql.trim_end_matches(';'), write, most),
         (Way::Compose { service }, engine) => {
             let mut command = Command::new(&runner.docker);
             command.args(runner.compose_args(&place.compose_project(), &place.task_id)).args(["exec", "-T"]);
@@ -583,7 +603,7 @@ fn query(runner: &Runner, place: &Place, db: &Db, sql: &str, write: bool) -> Res
         bail!("{}", runner::env::scrub(&complaint(&ran.err), &place.secrets));
     }
     let text = String::from_utf8_lossy(&ran.out);
-    Ok(rows_of(if csv { parse_csv(&text) } else { parse_tsv(&text) }))
+    Ok(rows_of(if csv { parse_csv(&text) } else { parse_tsv(&text) }, most))
 }
 
 // ----- the tables -----
@@ -628,7 +648,15 @@ fn schema(runner: &Runner, place: &Place, db: &Db) -> Result<Vec<Table>> {
         Engine::Other => bail!("{}", db.note.clone().unwrap_or_default()),
     };
     let mut tables: BTreeMap<String, Table> = BTreeMap::new();
-    for row in query(runner, place, db, columns, false)?.rows {
+    // Every column of every table is wanted here, not the first screenful.
+    let all = |sql: &str| -> Result<Vec<Vec<String>>> {
+        let found = ask(runner, place, db, sql, false, MOST_SCHEMA_ROWS)?;
+        if found.more {
+            bail!("{} has more tables than can be read here", db.name);
+        }
+        Ok(found.rows)
+    };
+    for row in all(columns)? {
         let [table, name, kind, nullable, default] = &row[..] else { continue };
         let table = tables.entry(table.clone()).or_insert_with(|| Table {
             name: table.clone(),
@@ -642,7 +670,7 @@ fn schema(runner: &Runner, place: &Place, db: &Db) -> Result<Vec<Table>> {
             default: if default == NOTHING { String::new() } else { default.clone() },
         });
     }
-    for row in query(runner, place, db, indexes, false)?.rows {
+    for row in all(indexes)? {
         let [table, name, on, not_unique] = &row[..] else { continue };
         let Some(table) = tables.get_mut(table) else { continue };
         // Postgres writes the whole index out; what is worth showing of it is what comes after "USING".
@@ -759,7 +787,9 @@ fn plan(manager: &Manager, place: &Place, project_id: &str) -> Result<Plan> {
         }
         (Some(tool), Some(start)) => {
             for (path, change) in gitops::changed_since(root, start)?.into_iter().filter(|(path, _)| tool.owns(path)) {
-                let text = std::fs::read_to_string(root.join(&path)).unwrap_or_default();
+                let short = std::fs::metadata(root.join(&path)).is_ok_and(|meta| meta.len() <= MAX_MIGRATION);
+                let text =
+                    if short { std::fs::read_to_string(root.join(&path)).unwrap_or_default() } else { String::new() };
                 found.push(Migration {
                     steps: if change == "deleted" { Vec::new() } else { migrations::read(&path, &text) },
                     way_back: if change == "deleted" { None } else { migrations::has_way_back(&path, &text) },
@@ -770,7 +800,14 @@ fn plan(manager: &Manager, place: &Place, project_id: &str) -> Result<Plan> {
         }
     }
     let added = found.iter().filter(|one| one.change == "added").count();
-    let mut down = tool.as_ref().map(|tool| tool.down.replace("{n}", &added.max(1).to_string())).unwrap_or_default();
+    // Only what the task added is ever taken back: with nothing added there is no way back to try,
+    // and "the last one" would be a migration of somebody else.
+    let mut down = match (&tool, added) {
+        (None, _) | (Some(_), 0) => String::new(),
+        // Knex takes back one migration at a time, or a whole batch, which may be every migration there is.
+        (Some(tool), count) if tool.kind == "knex" => vec![tool.down.as_str(); count].join(" && "),
+        (Some(tool), count) => tool.down.replace("{n}", &count.to_string()),
+    };
     // Django takes an app back to a migration by name: the last one each app had where the branch started.
     if let (Some(tool), Some(start)) = (tool.as_ref().filter(|tool| tool.kind == "django"), &start) {
         let mut apps: BTreeMap<String, String> = BTreeMap::new();
@@ -788,10 +825,14 @@ fn plan(manager: &Manager, place: &Place, project_id: &str) -> Result<Plan> {
     }
     Ok(Plan {
         up: if set_up.is_empty() { tool.as_ref().map(|tool| tool.up.clone()).unwrap_or_default() } else { set_up },
-        down: if set_down.is_empty() { down } else { set_down },
+        // The project's own way back stands in for the tool's, under the same rule.
+        down: if set_down.is_empty() || (tool.is_some() && start.is_some() && added == 0) { down } else { set_down },
+        note: note.or_else(|| {
+            (tool.is_some() && start.is_some() && added == 0)
+                .then(|| "This task added no migrations of its own, so a trial takes nothing back.".to_string())
+        }),
         tool,
         migrations: found,
-        note,
     })
 }
 
@@ -863,7 +904,10 @@ fn try_migrations(
         Some(id) => Some(found.iter().find(|db| db.id == id).ok_or_else(|| anyhow!("This task has no database {id}"))?),
         None => found.iter().find(|db| db.ready),
     };
-    if let Some(shared) = db.filter(|db| db.shared) {
+    // The commands go wherever the task's environment points, whichever database is looked at:
+    // an address there that is not on this computer is refused as well.
+    let elsewhere = found.iter().find(|db| db.shared && matches!(db.way, Way::Client { .. }));
+    if let Some(shared) = db.filter(|db| db.shared).or(elsewhere) {
         bail!(
             "{} may hold the rows of other tasks too, and a trial takes migrations back, which loses what they added. \
              It is not tried from here.",
@@ -907,14 +951,16 @@ fn try_migrations(
             // Whether taking them back undid them can be told only when they were not applied before the trial.
             if let (Some(start), Some(head), Some(back)) = (&at_start, &at_head, &taken_back) {
                 let left = schema_changes(start, back);
-                result["back"] = json!(if start == head {
-                    "unknown"
-                } else if left.is_empty() {
-                    "same"
-                } else {
-                    "differs"
-                });
-                result["left"] = json!(if start == head { Vec::new() } else { left });
+                // Taken back further than the start means some of them were in already: then only
+                // things are missing against the start, and whether the way back is clean is not known.
+                let before_start = !left.is_empty() && left.iter().all(|line| line.ends_with(" is gone"));
+                let verdict = match (start == head || before_start, left.is_empty()) {
+                    (true, _) => "unknown",
+                    (false, true) => "same",
+                    (false, false) => "differs",
+                };
+                result["back"] = json!(verdict);
+                result["left"] = json!(if verdict == "differs" { left } else { Vec::new() });
             }
             base = taken_back;
             steps.push(migrate(place, &folder, "up again", &plan.up));
@@ -1045,9 +1091,12 @@ mod tests {
             parse_tsv("id\tnote\n1\ta\\tb\\nc\n2\tNULL\n"),
             [vec!["id", "note"], vec!["1", "a\tb\nc"], vec!["2", "∅"]]
         );
-        let rows = rows_of(parse_csv("n\n1\n2\n"));
+        // One empty text in the only column is a row, printed as an empty line.
+        assert_eq!(parse_csv("note\n\na\n∅\n"), [vec!["note"], vec![""], vec!["a"], vec!["∅"]]);
+        let rows = rows_of(parse_csv("n\n1\n2\n"), 500);
         assert_eq!((rows.columns, rows.rows.len(), rows.more), (vec!["n".to_string()], 2, false));
-        assert_eq!(rows_of(Vec::new()).said.as_deref(), Some("Done. It gave no rows."));
+        assert_eq!(rows_of(Vec::new(), 500).said.as_deref(), Some("Done. It gave no rows."));
+        assert!(rows_of(parse_csv("n\n1\n2\n"), 1).more);
     }
 
     #[test]

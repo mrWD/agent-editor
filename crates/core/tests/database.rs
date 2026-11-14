@@ -351,3 +351,50 @@ async fn migrations_are_not_tried_on_a_database_other_tasks_may_use() {
             .is_ok()
     );
 }
+
+#[tokio::test]
+async fn a_trial_takes_back_only_what_the_task_added_and_never_runs_against_another_computer() {
+    let sandbox = Sandbox::new("database-guards");
+    let project = git_project(&sandbox);
+    std::fs::create_dir_all(project.join("migrations")).unwrap();
+    std::fs::write(project.join("migrations/0001_start.sql"), "create table orders (id integer primary key);\n")
+        .unwrap();
+    std::fs::write(project.join(".gitignore"), "app.db\nran.log\n.env\n").unwrap();
+    git(&project, &["add", "."]);
+    git(&project, &["commit", "-q", "-m", "Keep migrations"]);
+    let state = AppState::new(sandbox.manager());
+    let added = state.manager.add_project(&project.to_string_lossy(), None).unwrap();
+    let task_id = idle_task(&state, &added.id).await;
+    let folder = state.manager.cwd(&task_id).unwrap();
+    shop_db(&folder.join("app.db"), false);
+    asked(&state, "db.set", json!({ "taskId": task_id, "up": "echo up >> ran.log", "down": "echo down >> ran.log" }))
+        .await
+        .unwrap();
+
+    // The task added no migration: "the last one" would be somebody else's, so nothing is taken back.
+    let plain = asked(&state, "db.get", json!({ "taskId": task_id })).await.unwrap();
+    assert_eq!(
+        (plain["down"].as_str(), plain["note"].as_str()),
+        (Some(""), Some("This task added no migrations of its own, so a trial takes nothing back."))
+    );
+    let tried = asked(&state, "db.try", json!({ "taskId": task_id })).await.unwrap();
+    assert_eq!(tried["steps"].as_array().unwrap().len(), 1);
+    assert_eq!(std::fs::read_to_string(folder.join("ran.log")).unwrap(), "up\n");
+
+    // With one of its own, the way back is the project's.
+    std::fs::write(folder.join("migrations/0002_gifts.sql"), "create table gifts (id integer primary key);\n").unwrap();
+    assert_eq!(asked(&state, "db.get", json!({ "taskId": task_id })).await.unwrap()["down"], "echo down >> ran.log");
+
+    // The commands go where the task's environment points. An address there that is on another
+    // computer is refused, whichever database is on show.
+    std::fs::write(folder.join(".env"), "DATABASE_URL=postgresql://shop:pw@db.example.com:5432/shop\n").unwrap();
+    let listed = asked(&state, "db.get", json!({ "taskId": task_id })).await.unwrap();
+    let remote = listed["databases"].as_array().unwrap().iter().find(|db| db["id"] == "env:DATABASE_URL").unwrap();
+    assert_eq!(remote["shared"], true);
+    let refused = asked(&state, "db.try", json!({ "taskId": task_id, "database": "file:app.db" })).await.unwrap_err();
+    assert!(
+        refused.to_string().starts_with("shop at db.example.com (DATABASE_URL) may hold the rows of other tasks too"),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(folder.join("ran.log")).unwrap(), "up\n", "nothing was run");
+}

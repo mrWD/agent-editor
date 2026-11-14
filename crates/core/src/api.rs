@@ -103,18 +103,18 @@ enum Asked {
     Silent(String),
 }
 
-fn agent(patience: Duration) -> ureq::Agent {
-    ureq::Agent::config_builder()
-        .timeout_global(Some(patience))
+/// Asks one address for a description. `follow` lets the answer send the question on to another
+/// address: never for the task's own service, which is asked with the headers kept for the project,
+/// and those must not leave this computer.
+fn ask(url: &str, headers: &[(String, String)], follow: bool) -> Asked {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(SPEC_PATIENCE))
         .http_status_as_error(false)
-        .max_redirects(3)
+        .max_redirects(if follow { 3 } else { 0 })
+        .max_redirects_will_error(false)
         .build()
-        .into()
-}
-
-/// Asks one address for a description.
-fn ask(url: &str, headers: &[(String, String)]) -> Asked {
-    let mut request = agent(SPEC_PATIENCE).get(url).header("Accept", "application/json, application/yaml, */*");
+        .into();
+    let mut request = agent.get(url).header("Accept", "application/json, application/yaml, */*");
     for (name, value) in headers {
         request = request.header(name, value);
     }
@@ -137,13 +137,18 @@ fn ask(url: &str, headers: &[(String, String)]) -> Asked {
 
 /// Looks for the description of a running service: at the one path given, or at the usual ones.
 /// `Err` when nothing answers at the address.
-fn from_service(origin: &str, path: Option<&str>, headers: &[(String, String)]) -> Result<Option<(String, Value)>> {
+fn from_service(
+    origin: &str,
+    path: Option<&str>,
+    headers: &[(String, String)],
+    follow: bool,
+) -> Result<Option<(String, Value)>> {
     let paths: Vec<&str> = match path {
         Some(one) => vec![one],
         None => SERVICE_PATHS.to_vec(),
     };
     for path in paths {
-        match ask(&format!("{origin}{path}"), headers) {
+        match ask(&format!("{origin}{path}"), headers, follow) {
             Asked::Found(found) => return Ok(Some((path.to_string(), found))),
             Asked::NotThere => {}
             Asked::Silent(why) => bail!("{why}"),
@@ -251,7 +256,8 @@ fn get(manager: &Manager, params: &Value) -> Result<Value> {
         (manager.store().setting(&address_key(task_id))?.unwrap_or_default(), kept("spec"), kept("base"));
     let headers = kept_headers(manager, project_id);
 
-    // Where requests go: what the user gave, else the first of the running services that answers at all.
+    // Where requests go: what the user gave, else the one of the running services that describes
+    // itself, else the first of them.
     let guesses: Vec<String> = params
         .get("guess")
         .and_then(Value::as_array)
@@ -287,9 +293,16 @@ fn get(manager: &Manager, params: &Value) -> Result<Value> {
             address = Some(target.authority());
         }
         if found.is_some() || in_file.is_some() {
-            break;
+            // The description is a file. Of the services that run, the one that describes itself is
+            // the API; a page of the same project may run beside it, and requests are not for that.
+            let describes = || matches!(from_service(&target.origin(), None, &headers, false), Ok(Some(_)));
+            if set_address.is_empty() && describes() {
+                address = Some(target.authority());
+                break;
+            }
+            continue;
         }
-        match from_service(&target.origin(), on_service, &headers) {
+        match from_service(&target.origin(), on_service, &headers, false) {
             Ok(Some((path, spec))) => {
                 address = Some(target.authority());
                 found = Some((Source::Service(path), spec));
@@ -336,7 +349,7 @@ fn get(manager: &Manager, params: &Value) -> Result<Value> {
     let mut against: Option<(String, Option<Value>)> = None;
     if !set_base.is_empty() {
         match base_address(&set_base).and_then(|(origin, path)| {
-            from_service(&origin, path.as_deref(), &[])
+            from_service(&origin, path.as_deref(), &[], true)
                 .map_err(|why| anyhow!("Nothing answers at {set_base}, where the base should run ({why})"))?
                 .ok_or_else(|| anyhow!("The service at {set_base} gave no description of its API"))
         }) {

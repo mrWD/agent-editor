@@ -121,7 +121,7 @@ fn tool_in(folder: &Path, within: &str) -> Option<Tool> {
         return tool("laravel", "Laravel", "php artisan migrate".into(), "php artisan migrate:rollback --step={n}");
     }
     if ["knexfile.js", "knexfile.ts", "knexfile.cjs", "knexfile.mjs"].iter().any(|name| has(name)) {
-        return tool("knex", "Knex", "npx knex migrate:latest".into(), "npx knex migrate:rollback");
+        return tool("knex", "Knex", "npx knex migrate:latest".into(), "npx knex migrate:down");
     }
     if has("diesel.toml") {
         return tool("diesel", "Diesel", "diesel migration run".into(), "diesel migration revert -n {n}");
@@ -310,6 +310,20 @@ fn statements(sql: &str) -> Vec<String> {
                 continue;
             }
             None if sign == ';' => found.push(std::mem::take(&mut now)),
+            // Postgres writes the body of a function between `$$` or `$name$`: what is inside is not ours to cut.
+            None if sign == '$' => {
+                let tag_end = (at + 1..signs.len()).find(|index| !is_word(signs[*index]));
+                if let Some(end) = tag_end.filter(|end| signs[*end] == '$') {
+                    let tag: Vec<char> = signs[at..=end].to_vec();
+                    let close = (end + 1..signs.len().saturating_sub(tag.len() - 1))
+                        .find(|from| signs[*from..*from + tag.len()] == tag[..]);
+                    let stop = close.map_or(signs.len(), |from| from + tag.len());
+                    now.extend(&signs[at..stop]);
+                    at = stop;
+                    continue;
+                }
+                now.push(sign);
+            }
             None => {
                 if sign == '\'' || sign == '"' || sign == '`' {
                     quote = Some(sign);
@@ -375,6 +389,17 @@ fn alter(table: &str, action: &str) -> Option<Step> {
     let words: Vec<&str> = action.split(' ').collect();
     let lower = action.to_lowercase();
     let column = |rest: &[&str]| format!("`{}.{}`", table.trim_matches('`'), name_of(rest).trim_matches('`'));
+    // MySQL adds and drops indexes and keys inside `alter table`: they are not columns.
+    let second = words.get(1).map(|word| word.to_lowercase()).unwrap_or_default();
+    let index = matches!(second.as_str(), "index" | "key" | "fulltext" | "spatial");
+    match words[0].to_lowercase().as_str() {
+        "add" if index => return Some(plain(format!("Adds an index to {table}"))),
+        "drop" if index => return Some(plain(format!("Drops an index of {table}"))),
+        "drop" if matches!(second.as_str(), "foreign" | "primary" | "check") => {
+            return Some(plain(format!("Drops a constraint of {table}")));
+        }
+        _ => {}
+    }
     if let Some(rest) = after(&words, &["add"], &["constraint", "primary", "foreign", "unique", "check"])
         .filter(|rest| rest.len() < words.len() - 1)
     {
@@ -526,6 +551,10 @@ fn read_alembic(text: &str) -> Vec<Step> {
         let mut one = |name: &str, make: &Reader| {
             for (at, args) in calls(upgrade, &format!("{via}{name}")) {
                 let mut names = literals(args);
+                // A name left for the database to choose is written `None`: it is a name all the same.
+                if args.trim_start().starts_with("None") {
+                    names.insert(0, String::new());
+                }
                 if batch {
                     names.insert(0, table_at(at).unwrap_or_default());
                 }
@@ -599,7 +628,10 @@ fn read_alembic(text: &str) -> Vec<Step> {
         }
         one("drop_constraint", &|names, _| {
             let (name, table) = if batch { (names.get(1)?, names.first()?) } else { (names.first()?, names.get(1)?) };
-            Some(vec![plain(format!("Drops constraint {} of {}", mark(name), mark(table)))])
+            Some(vec![plain(match name.is_empty() {
+                true => format!("Drops a constraint of {}", mark(table)),
+                false => format!("Drops constraint {} of {}", mark(name), mark(table)),
+            })])
         });
         one("bulk_insert", &|_, _| Some(vec![plain("Adds rows to a table".into())]));
         if !batch {
@@ -738,14 +770,35 @@ fn read_calls(text: &str) -> Vec<Step> {
     found.into_iter().map(|(_, step)| step).collect()
 }
 
+/// Where the way back begins in a migration that holds both ways in one file.
+const BACK_MARKS: [&str; 11] = [
+    "exports.down",
+    "export async function down",
+    "export function down",
+    "export const down",
+    "async down(",
+    "def down",
+    "public function down",
+    "-- +goose Down",
+    "-- +migrate Down",
+    "-- migrate:down",
+    "-- !Downs",
+];
+
+/// The part of a migration that goes forward: what stands before its way back. The way back is the
+/// forward steps undone, and read as steps it would say the migration drops what it has just made.
+fn forward(text: &str) -> &str {
+    BACK_MARKS.iter().filter_map(|mark| text.find(mark)).min().map_or(text, |at| &text[..at])
+}
+
 /// What one migration does, read from its text. `path` says which language it is in.
 pub fn read(path: &str, text: &str) -> Vec<Step> {
     let name = path.rsplit('/').next().unwrap_or_default();
     match name.rsplit('.').next().unwrap_or_default() {
-        "sql" => read_sql(text),
+        "sql" => read_sql(forward(text)),
         "py" if text.contains("migrations.Migration") => read_django(text),
         "py" => read_alembic(text),
-        _ => read_calls(text),
+        _ => read_calls(forward(text)),
     }
 }
 
@@ -818,6 +871,42 @@ mod tests {
                 ("Changes rows of `orders`", false),
                 ("Deletes rows of `sessions`", true),
             ]
+        );
+    }
+
+    #[test]
+    fn the_way_back_and_the_body_of_a_function_are_not_read_as_steps() {
+        let goose = "-- +goose Up\ncreate table gifts (id int);\n-- +goose Down\ndrop table gifts;\n";
+        assert_eq!(texts(&read("migrations/0002_gifts.sql", goose)), [("Creates table `gifts`", false)]);
+        let laravel = "public function up() { Schema::create('gifts', function ($t) {}); }\npublic function down() { Schema::dropIfExists('gifts'); }";
+        assert_eq!(texts(&read("database/migrations/2026_gifts.php", laravel)), [("Creates table `gifts`", false)]);
+        let rails =
+            "def up\n  add_column :orders, :count, :integer\nend\n\ndef down\n  remove_column :orders, :count\nend\n";
+        assert_eq!(texts(&read("db/migrate/1_count.rb", rails)), [("Adds `orders.count` (integer)", false)]);
+
+        let function = "create function tidy() returns void as $body$\nbegin\n  delete from sessions;\n  drop table old;\nend;\n$body$ language plpgsql;\ncreate index ix on orders (sku);";
+        assert_eq!(
+            texts(&read_sql(function)),
+            [("Creates function `tidy`", false), ("Adds index `ix` on `orders`", false)]
+        );
+    }
+
+    #[test]
+    fn indexes_and_keys_of_mysql_inside_alter_table_are_not_taken_for_columns() {
+        let sql = "ALTER TABLE orders ADD INDEX ix_sku (sku), DROP INDEX ix_old, DROP FOREIGN KEY fk_buyer, DROP COLUMN note;";
+        assert_eq!(
+            texts(&read_sql(sql)),
+            [
+                ("Adds an index to `orders`", false),
+                ("Drops an index of `orders`", false),
+                ("Drops a constraint of `orders`", false),
+                ("Drops `orders.note`", true),
+            ]
+        );
+        let alembic = "def upgrade():\n    op.create_foreign_key(None, 'orders', 'users', ['buyer'], ['id'])\n    op.drop_constraint(None, 'orders', type_='foreignkey')\n";
+        assert_eq!(
+            texts(&read("versions/b4.py", alembic)),
+            [("Adds a constraint to `orders`", false), ("Drops a constraint of `orders`", false)]
         );
     }
 

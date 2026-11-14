@@ -316,8 +316,10 @@ fn framework(root: &Path) -> Vec<Script> {
     } else if has("go.mod") && has("main.go") {
         found.push(script("server", "go run .".into()));
     }
-    if let Some(app) = crate::jobs::celery_app(root) {
-        found.push(script("worker", format!("{} -A {app} worker --loglevel=info", python_prefix(root, "celery"))));
+    if let Some((folder, app)) = crate::jobs::celery_app(root) {
+        // The app is imported from the folder its package lives in, which may be one below the top.
+        let line = format!("{} -A {app} worker --loglevel=info", python_prefix(&root.join(&folder), "celery"));
+        found.push(script("worker", if folder.is_empty() { line } else { format!("cd {} && {line}", quote(&folder)) }));
     }
     found
 }
@@ -1188,7 +1190,20 @@ mod tests {
         .unwrap();
         std::fs::write(fastapi.join("app/queue.py"), "from celery import Celery\ncelery = Celery('shop')\n").unwrap();
         std::fs::write(fastapi.join("uv.lock"), "").unwrap();
-        assert_eq!(crate::jobs::celery_app(&fastapi).as_deref(), Some("app.queue:celery"));
+        assert_eq!(crate::jobs::celery_app(&fastapi), Some((String::new(), "app.queue:celery".to_string())));
+
+        // A service one folder down is started from that folder, with that folder's own environment.
+        let split = folder("split");
+        std::fs::create_dir_all(split.join("backend/shop")).unwrap();
+        std::fs::write(split.join("backend/poetry.lock"), "").unwrap();
+        std::fs::write(split.join("backend/shop/__init__.py"), "").unwrap();
+        std::fs::write(split.join("backend/shop/celery.py"), "from celery import Celery\napp = Celery('shop')\n")
+            .unwrap();
+        assert_eq!(
+            named(&split),
+            [pair("worker", "cd backend && poetry run celery -A shop.celery:app worker --loglevel=info")]
+        );
+        std::fs::remove_dir_all(split).unwrap();
         assert_eq!(
             named(&fastapi),
             [

@@ -175,8 +175,20 @@ fn python_jobs(root: &Path, file: &str, text: &str, out: &mut Vec<Job>) {
         // The brackets of a long `def` close some lines down.
         let whole = lines[line_at..(line_at + 30).min(lines.len())].join(" ");
         let open = whole.find('(').map_or(0, |open| open + 1);
-        let close =
-            whole[open..].find("):").or_else(|| whole[open..].find(") ->")).map_or(whole.len(), |close| close + open);
+        // Up to the bracket that closes the one after the name: a default or a type may hold brackets of its own.
+        let mut depth = 1;
+        let mut close = whole.len();
+        for (at, sign) in whole[open..].char_indices() {
+            match sign {
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                close = open + at;
+                break;
+            }
+        }
         let mut takes = parameters(&whole[open..close]);
         // A bound task is handed itself first, under whatever name; `self` is left out already.
         let first = whole[open..close].split(',').next().unwrap_or_default().trim();
@@ -336,6 +348,13 @@ pub fn scan(root: &Path) -> Vec<Job> {
             }
         }
     }
+    // A name becomes part of a command line. One that holds anything a shell would read as more
+    // than a name is not a job to start from here.
+    let plain =
+        |text: &str, more: &str| text.chars().all(|sign| sign.is_alphanumeric() || sign == '_' || more.contains(sign));
+    found.retain(|job| {
+        !job.name.is_empty() && plain(&job.name, ".:-/") && plain(&job.module, ".") && plain(&job.function, "")
+    });
     found.sort_by(|a, b| (a.kind, &a.name).cmp(&(b.kind, &b.name)));
     found.dedup_by(|a, b| a.id == b.id);
     found.truncate(MOST_JOBS);
@@ -350,11 +369,12 @@ const PYTHON_MARKS: [&str; 8] =
 const APP_BELIEVED: Duration = Duration::from_secs(20);
 
 /// The answer for each folder asked about, with when it was given.
-type Believed = HashMap<PathBuf, (Instant, Option<String>)>;
+type Believed = HashMap<PathBuf, (Instant, Option<(String, String)>)>;
 
 /// Where the project makes its Celery app, as `celery -A` wants it: `shop.celery:app`. Looked for
 /// only in a folder that holds a Python project, or has one right under it.
-pub fn celery_app(root: &Path) -> Option<String> {
+/// Gives the folder it is imported from, within `root`, and the app.
+pub fn celery_app(root: &Path) -> Option<(String, String)> {
     static KNOWN: OnceLock<Mutex<Believed>> = OnceLock::new();
     let known = KNOWN.get_or_init(Mutex::default);
     if let Some((at, found)) = known.lock().unwrap().get(root)
@@ -372,9 +392,9 @@ pub fn celery_app(root: &Path) -> Option<String> {
 }
 
 /// The same, read from the files now, with nothing believed from before.
-fn find_celery_app(root: &Path) -> Option<String> {
+fn find_celery_app(root: &Path) -> Option<(String, String)> {
     let walk = ignore::WalkBuilder::new(root).hidden(true).max_depth(Some(8)).build();
-    let mut found: Vec<String> = Vec::new();
+    let mut found: Vec<(String, String)> = Vec::new();
     for entry in walk.flatten().take(MOST_FILES) {
         let path = entry.path();
         if path.extension().is_none_or(|end| end != "py") || entry.metadata().map_or(true, |meta| meta.len() > MAX_FILE)
@@ -394,11 +414,12 @@ fn find_celery_app(root: &Path) -> Option<String> {
             let Ok(file) = path.strip_prefix(root).map(|inside| inside.to_string_lossy().replace('\\', "/")) else {
                 continue;
             };
-            found.push(format!("{}:{name}", python_module(root, &file).1));
+            let (folder, module) = python_module(root, &file);
+            found.push((folder, format!("{module}:{name}")));
         }
     }
     // The shortest way in is the one a person would write.
-    found.sort_by_key(|one| (one.len(), one.clone()));
+    found.sort_by_key(|(_, app)| (app.len(), app.clone()));
     found.into_iter().next()
 }
 
@@ -538,7 +559,12 @@ fn handle(
             // What the task touched comes first; the rest keeps its order.
             jobs.sort_by_key(|job| !job.changed);
             // Tasks of Celery were found, so there is an app to find: it is looked for whatever the folder looks like.
-            let app = jobs.iter().any(|job| job.kind == "celery").then(|| find_celery_app(root)).flatten();
+            let app = jobs
+                .iter()
+                .any(|job| job.kind == "celery")
+                .then(|| find_celery_app(root))
+                .flatten()
+                .map(|(_, app)| app);
             let folder = jobs.first().map(|job| job.folder.clone()).unwrap_or_default();
             let defaults = default_templates(root, &folder, app.as_deref());
             let settings: BTreeMap<&str, String> = defaults.keys().map(|kind| (*kind, kept(kind))).collect();
@@ -568,7 +594,7 @@ fn handle(
             let set = kept(job.kind);
             let template = match set.is_empty() {
                 true => {
-                    let app = (job.kind == "celery").then(|| find_celery_app(root)).flatten();
+                    let app = (job.kind == "celery").then(|| find_celery_app(root)).flatten().map(|(_, app)| app);
                     default_templates(root, &job.folder, app.as_deref()).remove(job.kind).unwrap_or_default()
                 }
                 false => set,
@@ -675,19 +701,30 @@ def not_a_task():
             "import dramatiq\n\n@dramatiq.actor(max_retries=0)\ndef resize(image_id, width=200):\n    ...\n",
         );
         project.write("backend/shop/plain.py", "@task\ndef not_ours():\n    ...\n");
+        // A typed signature, a call with brackets right under it, and a name no shell should ever see.
+        project.write(
+            "backend/shop/typed.py",
+            "from celery import shared_task\n\n@shared_task\ndef typed(order_id: int, tags: list[str] = (\"a\",)) -> None:\n    if check(order_id):\n        ...\n\n@shared_task(name=\"x; rm -rf ~\")\ndef odd():\n    ...\n",
+        );
         let jobs = scan(&project.0);
         assert_eq!(
             named_jobs(&jobs),
-            [("celery", "shop.rebuild_search"), ("celery", "shop.tasks.send_receipt"), ("dramatiq", "resize")]
+            [
+                ("celery", "shop.rebuild_search"),
+                ("celery", "shop.tasks.send_receipt"),
+                ("celery", "shop.typed.typed"),
+                ("dramatiq", "resize")
+            ]
         );
+        assert_eq!(jobs[2].takes, ["order_id", "tags=(\"a\",)"]);
         assert_eq!(jobs[0].takes, ["full=False", "since=\"2026-01-01\""], "a bound task is not asked for itself");
         assert_eq!(jobs[1].takes, ["order_id", "copy_to=None"]);
         assert_eq!(
             (jobs[1].file.as_str(), jobs[1].line, jobs[1].folder.as_str()),
             ("backend/shop/tasks.py", 6, "backend")
         );
-        assert_eq!((jobs[2].module.as_str(), jobs[2].function.as_str()), ("shop.actors", "resize"));
-        assert_eq!(celery_app(&project.0).as_deref(), Some("shop.celery:app"));
+        assert_eq!((jobs[3].module.as_str(), jobs[3].function.as_str()), ("shop.actors", "resize"));
+        assert_eq!(celery_app(&project.0), Some(("backend".to_string(), "shop.celery:app".to_string())));
     }
 
     #[test]

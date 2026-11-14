@@ -18,7 +18,7 @@ import {
 import { tookWords } from '../core/api';
 import { createKept } from '../core/kept';
 import { addShown } from '../core/previewState';
-import { Marked } from './PreviewApi';
+import { Marked, SETTLE } from './PreviewApi';
 
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -34,7 +34,12 @@ export function DatabaseView(props: { taskId: string }): JSX.Element {
   const [picked, setPicked] = createKept<string>(`task:${taskId}:db.picked`, '');
   const [tables, setTables] = createKept<DbTable[] | null>(`task:${taskId}:db.tables`, null);
   const [sql, setSql] = createKept<string>(`task:${taskId}:db.sql`, '');
-  const [rows, setRows] = createKept<{ sql: string; rows: DbRows } | null>(`task:${taskId}:db.rows`, null);
+  /** What the last query gave, with the database it was asked of: rows of one are not shown under another. */
+  const [asked, setAsked] = createKept<{ database: string; sql: string; rows: DbRows } | null>(
+    `task:${taskId}:db.rows`,
+    null,
+  );
+  const rows = () => (asked() && asked()!.database === database()?.id ? asked() : null);
   const [trial, setTrial] = createKept<Trial | null>(`task:${taskId}:db.trial`, null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [tablesProblem, setTablesProblem] = createSignal<string | null>(null);
@@ -48,8 +53,11 @@ export function DatabaseView(props: { taskId: string }): JSX.Element {
 
   const database = () => pickDatabase(db()?.databases ?? [], picked());
 
+  /** Counts the readings of the tables: an answer that comes after a newer question is dropped. */
+  let tablesAsked = 0;
   const loadTables = async () => {
     const now = database();
+    const mine = ++tablesAsked;
     if (!now?.ready) {
       setTables(null);
       setTablesProblem(null);
@@ -57,26 +65,30 @@ export function DatabaseView(props: { taskId: string }): JSX.Element {
     }
     try {
       const found = await core.request<{ tables: DbTable[] }>('db.schema', { taskId, database: now.id });
+      if (mine !== tablesAsked) return;
       setTables(found.tables);
       setTablesProblem(null);
     } catch (error) {
-      setTablesProblem(said(error));
+      if (mine === tablesAsked) setTablesProblem(said(error));
     }
   };
 
   // One reading at a time; one asked for meanwhile follows it.
   let reading = false;
   let again = false;
-  const load = async () => {
+  /** `withTables` is false for a change in the files: a migration is a file, the tables are not. */
+  const load = async (withTables = true) => {
     if (reading) {
       again = true;
       return;
     }
     reading = true;
     try {
+      const before = database()?.id;
+      const ready = database()?.ready;
       setDb(await core.request<DbState>('db.get', { taskId }));
       setProblem(null);
-      await loadTables();
+      if (withTables || database()?.id !== before || database()?.ready !== ready) await loadTables();
     } catch (error) {
       setProblem(said(error));
     } finally {
@@ -95,9 +107,10 @@ export function DatabaseView(props: { taskId: string }): JSX.Element {
       if (event.event === 'link.open') void load();
       if (event.data?.taskId !== taskId) return;
       // A migration is a file of the task; a database comes and goes with what the task runs.
-      if (['files.changed', 'review.changed', 'git.changed', 'run.changed'].includes(event.event)) {
+      const files = ['files.changed', 'review.changed', 'git.changed'].includes(event.event);
+      if (files || event.event === 'run.changed') {
         clearTimeout(soon);
-        soon = setTimeout(() => void load(), 600);
+        soon = setTimeout(() => void load(!files), SETTLE);
       }
     });
     onCleanup(() => {
@@ -105,8 +118,18 @@ export function DatabaseView(props: { taskId: string }): JSX.Element {
       clearTimeout(soon);
     });
   });
-  // Another database picked: its tables are read, and what was asked of the other one is put away.
-  createEffect(on(picked, () => void loadTables(), { defer: true }));
+  // Another database picked: its tables are read, and what was read of the other one is put away.
+  createEffect(
+    on(
+      picked,
+      () => {
+        setTables(null);
+        setQueryProblem(null);
+        void loadTables();
+      },
+      { defer: true },
+    ),
+  );
 
   const run = async (text = sql()) => {
     const now = database();
@@ -116,7 +139,7 @@ export function DatabaseView(props: { taskId: string }): JSX.Element {
     setHanded(null);
     try {
       const got = await core.request<DbRows>('db.query', { taskId, database: now.id, sql: text, write: write() });
-      setRows({ sql: text, rows: got });
+      setAsked({ database: now.id, sql: text, rows: got });
       // What changed rows may have changed the tables too.
       if (write()) void loadTables();
     } catch (error) {
@@ -308,7 +331,9 @@ export function DatabaseView(props: { taskId: string }): JSX.Element {
                     >
                       , takes it back with <code class="mono api-name">{now().down}</code> and runs it again
                     </Show>
-                    <Show when={database()}> on {database()!.name}</Show>. Rows the migrations drop are lost.
+                    . The commands run with the task's environment, on the database the project's own settings point at
+                    <Show when={database()}>; the tables are looked at in {database()!.name}</Show>. Rows the migrations
+                    drop are lost.
                   </span>
                 </p>
               </Show>

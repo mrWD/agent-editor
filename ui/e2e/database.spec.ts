@@ -77,7 +77,7 @@ test.describe('The database of a task', () => {
     // A trial changes the database, so it is asked for twice.
     await migrations.getByRole('button', { name: 'Try them' }).click();
     await expect(migrations.getByRole('status')).toContainText('Rows the migrations drop are lost.');
-    await expect(migrations.getByRole('status')).toContainText('on app.db');
+    await expect(migrations.getByRole('status')).toContainText('the tables are looked at in app.db');
     await migrations.getByRole('button', { name: 'Run the trial' }).click();
     const trial = migrations.getByRole('region', { name: 'The trial of the migrations' });
     await expect(trial.locator('strong')).toHaveText('The migrations ran, came back cleanly and ran again.');

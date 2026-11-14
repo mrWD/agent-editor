@@ -43,6 +43,9 @@ export function Marked(props: { text: string }): JSX.Element {
   );
 }
 
+/** How long the files of a task are left to settle before the view reads again: an agent at work changes them in bursts. */
+export const SETTLE = 1500;
+
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const emptyDraft = (): ApiDraft => ({ values: {}, headers: '', body: '' });
 
@@ -60,6 +63,11 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
   const [picked, setPicked] = createKept<string>(`task:${taskId}:api.picked`, '');
   const [drafts, setDrafts] = createKept<Record<string, ApiDraft>>(`task:${taskId}:api.drafts`, {});
   const [answers, setAnswers] = createKept<Record<string, ApiAnswer>>(`task:${taskId}:api.answers`, {});
+  /** What each answer was the answer to: the draft may have been changed since. */
+  const [sentWith, setSentWith] = createKept<Record<string, { headers: [string, string][]; body: string }>>(
+    `task:${taskId}:api.sent`,
+    {},
+  );
   /** The request that is not in the description. */
   const [free, setFree] = createKept<{ method: string; path: string }>(`task:${taskId}:api.free`, {
     method: 'GET',
@@ -108,7 +116,7 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
       // A description kept as a file changes with the files; one a service gives, when the service starts anew.
       if (['files.changed', 'review.changed', 'git.changed', 'run.changed'].includes(event.event)) {
         clearTimeout(soon);
-        soon = setTimeout(() => void load(), 600);
+        soon = setTimeout(() => void load(), SETTLE);
       }
     });
     onCleanup(() => {
@@ -128,6 +136,13 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
   );
 
   const operations = () => api()?.operations ?? [];
+  // The first operation is on show until another is picked. It is picked for good once it is shown:
+  // the list is put in another order when the task touches an operation, and what is being filled
+  // in must not change under the user's hands.
+  createEffect(() => {
+    const first = operations()[0];
+    if (picked() === '' && first) setPicked(first.id);
+  });
   const byId = createMemo(() => new Map(operations().map((operation) => [operation.id, operation])));
   /** The rows of the list, by name: a row stays the same row when the list is read again. */
   const shownIds = createMemo(() => matching(operations(), filter()).map((operation) => operation.id));
@@ -175,6 +190,7 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
     try {
       const got = await core.request<ApiAnswer>('api.send', { taskId, address, method, path, headers, body });
       setAnswers((before) => ({ ...before, [at]: got }));
+      setSentWith((before) => ({ ...before, [at]: { headers, body } }));
     } catch (error) {
       setSendProblem(said(error));
     } finally {
@@ -185,9 +201,7 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
   const showAgent = () => {
     const got = answer();
     if (!got) return;
-    const body = takesBody() ? draft().body : '';
-    const { headers } = requestHeaders(operation(), { ...draft(), body });
-    const made = answerForAgent(got, { headers, body }, api()?.settings.headers ?? []);
+    const made = answerForAgent(got, sentWith()[key()] ?? { headers: [], body: '' }, api()?.settings.headers ?? []);
     addShown(taskId, made.title, made.text);
     setHanded(made.title);
   };
