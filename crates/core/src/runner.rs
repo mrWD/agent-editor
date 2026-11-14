@@ -225,7 +225,7 @@ fn lock_file(root: &Path) -> Option<(&'static str, &'static str)> {
 }
 
 /// The program that runs a project's scripts, judged by its lock file.
-fn package_manager(root: &Path) -> &'static str {
+pub(crate) fn package_manager(root: &Path) -> &'static str {
     lock_file(root).map_or("npm", |(_, manager)| manager)
 }
 

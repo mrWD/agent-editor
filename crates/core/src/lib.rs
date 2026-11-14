@@ -24,6 +24,7 @@ pub mod health;
 pub mod hosts;
 pub mod imports;
 pub mod integrations;
+pub mod jobs;
 pub mod lsp;
 pub mod map;
 pub mod marks;
