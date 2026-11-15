@@ -52,6 +52,7 @@ const HOST_FILES: &str = "It reads and writes files of the node itself.";
 const PLAIN_SECRET: &str = "A secret written in a file stays in the history of the repository for whoever reads it.";
 const NO_JOB: &str = "What it checked or deployed no longer happens.";
 const NO_FILE: &str = "Whatever was built or deployed from this file no longer is.";
+const BROKEN: &str = "Whatever applies this file fails on it.";
 
 /// How many steps of one file are said, and how many names one step lists.
 const MOST_STEPS: usize = 60;
@@ -76,6 +77,11 @@ fn listed<'a>(names: impl IntoIterator<Item = &'a String>) -> String {
 pub fn read(tool: &str, path: &str, before: Option<&str>, after: Option<&str>) -> Vec<Step> {
     let (old, new) = (before.unwrap_or_default(), after.unwrap_or_default());
     let name = path.rsplit('/').next().unwrap_or(path);
+    // A file that stopped being YAML has not lost its objects: it cannot be read, and that is what is said.
+    let yaml = matches!(tool, "kubernetes" | "compose" | "ci") || (tool == "helm" && !is_template(path));
+    if yaml && let Some(problem) = after.and_then(yaml_problem) {
+        return vec![risky(format!("It cannot be read as YAML: {problem}"), BROKEN)];
+    }
     let mut steps = match tool {
         "terraform" if name.ends_with(".tfvars") => values_file(old, new),
         "terraform" => terraform(old, new),
@@ -123,6 +129,10 @@ fn is_secret_name(name: &str) -> bool {
 fn plain_secrets(old: &str, new: &str) -> Vec<String> {
     let before: BTreeSet<&str> = old.lines().map(str::trim).collect();
     let mut found: Vec<String> = Vec::new();
+    // A sealed secret and a file encrypted by SOPS are made to be kept in a repository.
+    if new.lines().any(|line| tidy(line) == "kind: SealedSecret" || line.starts_with("sops:")) {
+        return found;
+    }
     for line in new.lines().map(str::trim).filter(|line| !before.contains(line)) {
         if line.starts_with('#') || line.starts_with("//") {
             continue;
@@ -154,6 +164,8 @@ fn plain_secrets(old: &str, new: &str) -> Vec<String> {
         let points = inside.len() < 3
             || inside.starts_with(['$', '<', '*', '&', '!', '|', '>', '{', '[', '%'])
             || ["${", "{{", "$(", "%{"].iter().any(|sign| inside.contains(sign))
+            // Encrypted where it stands, or the address of a secret kept elsewhere.
+            || ["ENC[", "vault:", "ref+", "sm://", "arn:"].iter().any(|start| inside.starts_with(start))
             || matches!(inside, "null" | "true" | "false" | "none" | "None");
         if !points && !found.iter().any(|one| one == name) {
             found.push(name.to_string());
@@ -422,6 +434,14 @@ fn terraform(old: &str, new: &str) -> Vec<Step> {
         };
         let holds = kind == "resource"
             && name.split('.').next().is_some_and(|kind| kind.split('_').any(|word| STORES.contains(&word)));
+        // A variable that is a secret by its name, with what it is by default written out.
+        let default = |body: Option<&String>| {
+            said_in(body?).remove("default").filter(|value| value.starts_with('"') && value.len() > 4)
+        };
+        let written = default(new.get(key));
+        if kind == "variable" && is_secret_name(name) && written.is_some() && written != default(old.get(key)) {
+            steps.push(risky(format!("The default of variable {} is written in plain text", mark(name)), PLAIN_SECRET));
+        }
         match (old.get(key), new.get(key)) {
             (None, Some(_)) => steps.push(plain(format!("Adds {what}"))),
             (Some(_), None) => steps.push(match kind.as_str() {
@@ -441,6 +461,33 @@ fn terraform(old: &str, new: &str) -> Vec<Step> {
         }
     }
     steps
+}
+
+/// Terraform reads the files of a folder as one: a block taken out of one file and put into another
+/// of the same folder is moved, not destroyed. Given the steps of two files of one folder and the
+/// names of the files, says so in both, in place of "Removes" in the first and "Adds" in the second.
+pub fn settle_moves(from: &mut [Step], from_name: &str, to: &mut [Step], to_name: &str) {
+    for removed in from.iter_mut() {
+        let Some(what) = removed.text.strip_prefix("Removes ").map(str::to_string) else { continue };
+        let Some(added) = to.iter_mut().find(|step| step.text.strip_prefix("Adds ") == Some(what.as_str())) else {
+            continue;
+        };
+        *removed = plain(format!("Moves {what} to {}", mark(to_name)));
+        *added = plain(format!("Takes {what} from {}", mark(from_name)));
+    }
+}
+
+/// What is said of a file that was moved with nothing in it changed: at the place it left, and at the one it came to.
+pub fn moved_whole(from: &str, to: &str) -> (Vec<Step>, Vec<Step>) {
+    (
+        vec![plain(format!("Moved to {}, with nothing in it changed", mark(to)))],
+        vec![plain(format!("Moved from {}, with nothing in it changed", mark(from)))],
+    )
+}
+
+/// What is said of a file that is too long to be read.
+pub fn too_long() -> Vec<Step> {
+    vec![plain("It is too long to be read here".to_string())]
 }
 
 /// A file of values for Terraform's variables: which are set, set anew or no longer set.
@@ -480,6 +527,19 @@ fn to_json(yaml: serde_yaml_ng::Value) -> Value {
         ),
         Yaml::Tagged(tagged) => to_json(tagged.value),
     }
+}
+
+/// Why a text is not YAML, in the words of the parser. `None` when it is.
+fn yaml_problem(text: &str) -> Option<String> {
+    serde_yaml_ng::Deserializer::from_str(text)
+        .take(400)
+        .find_map(|document| serde_yaml_ng::Value::deserialize(document).err())
+        .map(|error| error.to_string())
+}
+
+/// Whether a file of a chart is one of its templates, which are not YAML until Helm has filled them in.
+fn is_template(path: &str) -> bool {
+    path.contains("/templates/") || path.starts_with("templates/")
 }
 
 /// The documents of a YAML file that are maps. Reading stops at one that is not YAML.
@@ -989,7 +1049,7 @@ fn helm(path: &str, before: Option<&str>, after: Option<&str>) -> Vec<Step> {
         }
         return steps;
     }
-    if !path.contains("/templates/") && !path.starts_with("templates/") {
+    if !is_template(path) {
         // A file of values.
         let (mut was, mut now) = (BTreeMap::new(), BTreeMap::new());
         flat(&first_document(old), "", &mut was);
@@ -1441,6 +1501,32 @@ output "queue" {
             ]
         );
         assert!(terraform(new, new).is_empty(), "the same text is no change");
+        // A secret that a variable is by default is marked; one that is only declared is not.
+        let secret = "variable \"db_password\" {\n  default = \"hunter2hunter2\"\n}\nvariable \"api_token\" {\n  sensitive = true\n}\n";
+        let steps = terraform("", secret);
+        assert_eq!(
+            said(&steps),
+            [
+                ("", "Adds variable `api_token`", false),
+                ("", "The default of variable `db_password` is written in plain text", true),
+                ("", "Adds variable `db_password`", false),
+            ]
+        );
+        assert!(!format!("{steps:?}").contains("hunter2"));
+
+        // A resource taken out of one file and put into another of the same folder is moved, not destroyed.
+        let bucket = "resource \"aws_s3_bucket\" \"assets\" {}\n";
+        let mut left = terraform(&format!("{bucket}resource \"aws_sqs_queue\" \"old\" {{}}\n"), "");
+        let mut came = terraform("", bucket);
+        settle_moves(&mut left, "main.tf", &mut came, "storage.tf");
+        assert_eq!(
+            said(&left),
+            [
+                ("", "Moves resource `aws_s3_bucket.assets` to `storage.tf`", false),
+                ("", "Removes resource `aws_sqs_queue.old`", true),
+            ]
+        );
+        assert_eq!(said(&came), [("", "Takes resource `aws_s3_bucket.assets` from `main.tf`", false)]);
         // A text between marks may hold brackets of its own, and a comment a bracket that closes nothing.
         let odd = "resource \"a_b\" \"c\" {\n  policy = <<EOF\n{ \"x\": \"}\" }\nEOF\n  # }\n  n = 1\n}\nresource \"a_b\" \"d\" {}\n";
         assert_eq!(
@@ -1485,6 +1571,14 @@ ENV NPM_TOKEN abcdef
 token: ""
 "#;
         assert_eq!(plain_secrets(old, new), ["client_secret", "STRIPE_SECRET_KEY", "NPM_TOKEN"]);
+        // What is encrypted where it stands is made to be kept in a repository.
+        assert!(
+            plain_secrets("", "password: ENC[AES256_GCM,data:abc]\napi_token: vault:secret/data/shop#token\n")
+                .is_empty()
+        );
+        let sealed = "kind: SealedSecret\nspec:\n  encryptedData:\n    password: AgBy3i4OJSWK\n";
+        assert!(plain_secrets("", sealed).is_empty());
+        assert!(plain_secrets("", "db_password: AgBy3i4OJSWK\nsops:\n  version: 3.8.1\n").is_empty());
     }
 
     const WEB: &str = r#"apiVersion: apps/v1
@@ -1644,8 +1738,14 @@ spec:
             [("", "Adds Secret `keys`", false), ("", "Keeps what the Secret holds in the repository", true)]
         );
         assert!(!format!("{steps:?}").contains("sk_live"));
-        // A file that is not YAML at all says nothing and breaks nothing.
-        assert!(kubernetes("", "kind: [\n").is_empty());
+        // A file that stopped being YAML has not lost its objects: it is said to be unreadable, and marked.
+        let broken = read("kubernetes", "k8s/web.yaml", Some(WEB), Some("kind: [\nmetadata: {\n"));
+        assert_eq!(broken.len(), 1, "{broken:?}");
+        assert!(broken[0].text.starts_with("It cannot be read as YAML: "), "{broken:?}");
+        assert!(broken[0].danger.is_some());
+        // A template of a chart is not YAML before Helm fills it in, and is not held to it.
+        let template = read("helm", "c/templates/x.yaml", None, Some("{{- if .Values.on }}\nkind: Job\n{{- end }}\n"));
+        assert_eq!(said(&template), [("", "Adds the template of Job", false)]);
     }
 
     #[test]

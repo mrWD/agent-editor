@@ -216,6 +216,52 @@ async fn what_a_task_changes_in_the_infrastructure_is_read_tool_by_tool_with_the
 }
 
 #[tokio::test]
+async fn what_was_only_moved_is_not_read_as_removed() {
+    let sandbox = Sandbox::new("infra-moves");
+    let project = git_project(&sandbox);
+    write(&project, "infra/main.tf", MAIN_TF);
+    write(&project, "k8s/web.yaml", WEB_YAML);
+    write(&project, "Dockerfile", "FROM node:18-alpine\n");
+    git(&project, &["add", "."]);
+    git(&project, &["commit", "-q", "-m", "Infrastructure"]);
+    let state = state_with(&sandbox, missing("terraform"), missing("helm"));
+    let added = state.manager.add_project(&project.to_string_lossy(), None).unwrap();
+    let task_id = idle_task(&state, &added.id).await;
+    let folder = state.manager.cwd(&task_id).unwrap();
+
+    // The bucket goes into a file of its own in the same folder; the manifest goes into another
+    // folder as it is; the Dockerfile goes into another folder and gets another base on the way.
+    let (database, bucket) = MAIN_TF.split_at(MAIN_TF.find("resource \"aws_s3_bucket\"").unwrap());
+    write(&folder, "infra/main.tf", database);
+    write(&folder, "infra/storage.tf", bucket);
+    std::fs::remove_file(folder.join("k8s/web.yaml")).unwrap();
+    write(&folder, "deploy/web.yaml", WEB_YAML);
+    std::fs::remove_file(folder.join("Dockerfile")).unwrap();
+    write(&folder, "docker/Dockerfile", "FROM node:20-alpine\n");
+
+    let found = asked(&state, "infra.get", json!({ "taskId": task_id })).await.unwrap();
+    assert_eq!(
+        steps_of(&found, "infra/main.tf"),
+        [step("", "Moves resource `aws_s3_bucket.exports` to `storage.tf`", false)]
+    );
+    assert_eq!(
+        steps_of(&found, "infra/storage.tf"),
+        [step("", "Takes resource `aws_s3_bucket.exports` from `main.tf`", false)]
+    );
+    assert_eq!(
+        steps_of(&found, "k8s/web.yaml"),
+        [step("", "Moved to `deploy/web.yaml`, with nothing in it changed", false)]
+    );
+    assert_eq!(
+        steps_of(&found, "deploy/web.yaml"),
+        [step("", "Moved from `k8s/web.yaml`, with nothing in it changed", false)]
+    );
+    // A file that changed on the way is read as one that went and one that came.
+    assert_eq!(steps_of(&found, "Dockerfile"), [step("", "Removes the Dockerfile", true)]);
+    assert_eq!(steps_of(&found, "docker/Dockerfile"), [step("image", "base `node:20-alpine`", false)]);
+}
+
+#[tokio::test]
 async fn a_project_without_infrastructure_has_none_and_a_task_without_a_base_says_so() {
     let sandbox = Sandbox::new("infra-none");
     // Not a git repository: there is no base to tell the task's changes from.

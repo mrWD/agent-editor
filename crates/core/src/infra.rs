@@ -202,14 +202,16 @@ pub fn changed(root: &Path, start: &str, found: &Found) -> Result<Vec<Changed>> 
     // A chart the task removed is a chart still, for the files that went with it.
     let mut charts = found.charts.clone();
     charts.extend(charts_among(all.iter().map(|(path, _)| path.as_str())));
-    let mut files = Vec::new();
+    let mut files: Vec<Changed> = Vec::new();
+    // Each file as it was and as it is, to tell one that was only moved.
+    let mut texts: Vec<(Option<String>, Option<String>)> = Vec::new();
     for (path, change) in all {
-        let before = match change {
+        let was = match change {
             "added" => None,
-            _ => gitops::bytes_at(root, start, &path)?
-                .filter(|bytes| bytes.len() as u64 <= MAX_FILE)
-                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+            _ => gitops::bytes_at(root, start, &path)?,
         };
+        let long = was.as_ref().is_some_and(|bytes| bytes.len() as u64 > MAX_FILE);
+        let before = was.filter(|_| !long).map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
         let on_disk = root.join(&path);
         let short = std::fs::metadata(&on_disk).is_ok_and(|meta| meta.len() <= MAX_FILE);
         let after = match change {
@@ -222,19 +224,63 @@ pub fn changed(root: &Path, start: &str, found: &Found) -> Result<Vec<Changed>> 
         let Some(tool) = tool_by_name(&path, &charts).or_else(|| manifest().then_some("kubernetes")) else {
             continue;
         };
-        let steps = if change != "deleted" && after.is_none() {
-            vec![Step { text: "It is too long to be read here".into(), field: None, danger: None }]
+        let steps = if long || (change != "deleted" && after.is_none()) {
+            read::too_long()
         } else {
             read::read(tool, &path, before.as_deref(), after.as_deref())
         };
         files.push(Changed { path, tool, change, steps });
+        texts.push((before, after));
         if files.len() >= MOST_CHANGED {
             break;
         }
     }
+    settle_moves(&mut files, &texts);
     let order = |tool: &str| TOOLS.iter().position(|one| *one == tool).unwrap_or(TOOLS.len());
     files.sort_by(|a, b| (order(a.tool), &a.path).cmp(&(order(b.tool), &b.path)));
     Ok(files)
+}
+
+fn folder_of(path: &str) -> &str {
+    path.rsplit_once('/').map_or("", |(folder, _)| folder)
+}
+
+fn name_of(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+/// Says of what was only moved that it was moved, so that it is not read as removed in one place and
+/// new in another. `texts` holds each file as it was and as it is.
+fn settle_moves(files: &mut [Changed], texts: &[(Option<String>, Option<String>)]) {
+    for from in 0..files.len() {
+        for to in 0..files.len() {
+            if from == to || files[from].tool != files[to].tool {
+                continue;
+            }
+            let (left, came) = match from < to {
+                true => {
+                    let (head, tail) = files.split_at_mut(to);
+                    (&mut head[from], &mut tail[0])
+                }
+                false => {
+                    let (head, tail) = files.split_at_mut(from);
+                    (&mut tail[0], &mut head[to])
+                }
+            };
+            if left.tool == "terraform" {
+                // Terraform reads a folder as one: what counts is whether a block left the folder.
+                if folder_of(&left.path) == folder_of(&came.path) {
+                    read::settle_moves(&mut left.steps, name_of(&left.path), &mut came.steps, name_of(&came.path));
+                }
+            } else if left.change == "deleted"
+                && came.change == "added"
+                && texts[from].0.is_some()
+                && texts[from].0 == texts[to].1
+            {
+                (left.steps, came.steps) = read::moved_whole(&left.path, &came.path);
+            }
+        }
+    }
 }
 
 // ----- the checks -----
