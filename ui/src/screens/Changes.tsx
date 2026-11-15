@@ -163,6 +163,8 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
   const spanOf = (): Span | null =>
     tab() === 'ahead' ? 'ahead' : tab() === 'request' && tabCount('request', git()) > 0 ? 'pushed' : null;
   const span = createSpan(taskId, spanOf);
+  // A part that is picked shows what is true now: another program may have changed the files.
+  createEffect(on(tab, () => void props.git.reload(), { defer: true }));
   // A commit or a push moves the ends of what is compared without touching a file.
   createEffect(
     on(
@@ -286,6 +288,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
     if (busy()) return;
     setBusy(name);
     setProblem(null);
+    const from = tab();
     try {
       await work();
     } catch (error) {
@@ -299,7 +302,8 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
       } catch {
         void props.git.reload();
       }
-      settle();
+      // Somebody who went to another part meanwhile is left where they went.
+      if (tab() === from) settle();
     }
   };
 

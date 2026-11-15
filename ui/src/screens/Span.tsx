@@ -1,4 +1,15 @@
-import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type Accessor, type JSX } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+  type Accessor,
+  type JSX,
+} from 'solid-js';
 import { recall, remember } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, span as lengthOf, whenLabel } from '../components/bits';
@@ -172,7 +183,10 @@ export type SpanWatch = {
  * What the span showed last time is there at once; it is read anew behind that. With `from` at
  * `null` nothing is read: there is nothing to compare.
  */
-export function createSpan(taskId: string, from: Accessor<Span | null>): SpanWatch {
+export function createSpan(taskId: string, which: Accessor<Span | null>): SpanWatch {
+  // Held as a value: what `which` reads may change many times while the span stays the same, and
+  // the files on show must not be folded away each time.
+  const from = createMemo(which);
   const kept = (span: Span) => `task:${taskId}:span.${span}`;
   const [files, setFiles] = createSignal<SpanFile[] | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
