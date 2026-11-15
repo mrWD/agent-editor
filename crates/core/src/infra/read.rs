@@ -47,6 +47,8 @@ const VOLUME: &str = "A volume holds data: what was in the old one does not foll
 const NO_VOLUME: &str = "What the volume held is no longer mounted anywhere.";
 const DATABASE: &str = "It looks like a database: a restart or another image is felt by everything that reads it.";
 const PRIVILEGED: &str = "A privileged container can do on its host whatever root can.";
+const AS_ROOT: &str = "Whatever gets hold of the process is root in the container.";
+const NO_USER: &str = "It runs as whoever its base image runs as, and that is often root.";
 const HOST: &str = "It is no longer kept apart from the node it runs on.";
 const HOST_FILES: &str = "It reads and writes files of the node itself.";
 const PLAIN_SECRET: &str = "A secret written in a file stays in the history of the repository for whoever reads it.";
@@ -1134,24 +1136,95 @@ fn instructions(text: &str) -> Vec<(String, String)> {
     found
 }
 
-/// The images a Dockerfile starts from, and the ports it says it listens on.
-fn image_and_ports(text: &str) -> (Option<String>, Option<String>) {
+/// What a Dockerfile says of the image it builds: what it starts from, the ports it says it
+/// listens on, and who each stage runs as when it ends.
+struct Built {
+    bases: Option<String>,
+    ports: Option<String>,
+    /// By the name of the stage, or by its number for one without a name. `None` for a stage
+    /// that names no user: it runs as whoever its base runs as.
+    users: Vec<(String, Option<String>)>,
+}
+
+/// A value as a Dockerfile writes it, with the `$NAME`, `${NAME}` and `${NAME:-other}` in it
+/// filled in from the values the file itself gives. What the file does not give stays as written:
+/// it comes from whoever builds the image.
+fn filled(text: &str, given: &BTreeMap<String, String>) -> String {
+    let is_name = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find('$') {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + 1..];
+        let (name, fallback, taken) = match after.strip_prefix('{').and_then(|inner| inner.split_once('}')) {
+            Some((inner, _)) => {
+                let (name, fallback) = match inner.split_once(":-") {
+                    Some((name, fallback)) => (name, Some(fallback)),
+                    None => (inner, None),
+                };
+                (name, fallback, inner.len() + 2)
+            }
+            None => {
+                let length = after.find(|c: char| !is_name(c)).unwrap_or(after.len());
+                (&after[..length], None, length)
+            }
+        };
+        let known = given.get(name).filter(|value| !value.is_empty() || fallback.is_none());
+        match (known, fallback) {
+            _ if name.is_empty() || !name.chars().all(is_name) => out.push_str(&rest[at..at + 1 + taken]),
+            (Some(value), _) => out.push_str(value),
+            (None, Some(fallback)) => out.push_str(&filled(fallback, given)),
+            (None, None) => out.push_str(&rest[at..at + 1 + taken]),
+        }
+        rest = &after[taken..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// True for a user that is root: by name or by number, with or without a group.
+fn is_root(user: &str) -> bool {
+    matches!(user.split(':').next().unwrap_or_default(), "root" | "0")
+}
+
+fn built(text: &str) -> Built {
     let mut stages: Vec<String> = Vec::new();
     let mut bases: Vec<String> = Vec::new();
     let mut ports: Vec<String> = Vec::new();
+    let mut users: Vec<(String, Option<String>)> = Vec::new();
+    // The values the file gives its own arguments: an image is often named through one.
+    let mut given: BTreeMap<String, String> = BTreeMap::new();
     for (name, rest) in instructions(text) {
         let mut words = rest.split_whitespace().filter(|word| !word.starts_with("--"));
         match name.as_str() {
+            "ARG" => {
+                for word in rest.split_whitespace() {
+                    if let Some((name, value)) = word.split_once('=') {
+                        let value = filled(value.trim_matches(|c| c == '"' || c == '\''), &given);
+                        given.insert(name.to_string(), value);
+                    }
+                }
+            }
             "FROM" => {
                 let Some(image) = words.next() else { continue };
-                // A stage built on an earlier one starts from no image of its own.
-                if !stages.iter().any(|stage| stage == image) && !bases.iter().any(|base| base == image) {
-                    bases.push(image.to_string());
+                let image = filled(image, &given);
+                // A stage built on an earlier one starts from no image of its own, and runs as that one does.
+                let earlier = users.iter().find(|(stage, _)| *stage == image).map(|(_, user)| user.clone());
+                if !stages.contains(&image) && !bases.contains(&image) {
+                    bases.push(image);
                 }
-                if let (Some(word), Some(stage)) = (words.next(), words.next())
-                    && word.eq_ignore_ascii_case("as")
-                {
-                    stages.push(stage.to_string());
+                let stage = match (words.next(), words.next()) {
+                    (Some(word), Some(stage)) if word.eq_ignore_ascii_case("as") => {
+                        stages.push(stage.to_string());
+                        stage.to_string()
+                    }
+                    _ => format!("#{}", users.len() + 1),
+                };
+                users.push((stage, earlier.flatten()));
+            }
+            "USER" => {
+                if let (Some(user), Some(stage)) = (words.next(), users.last_mut()) {
+                    stage.1 = Some(filled(user, &given));
                 }
             }
             "EXPOSE" => {
@@ -1169,18 +1242,41 @@ fn image_and_ports(text: &str) -> (Option<String>, Option<String>) {
             .then(|| names.iter().map(|name| if marked { mark(name) } else { name.clone() }).collect::<Vec<_>>())
             .map(|names| names.join(", "))
     };
-    (said(bases, true), said(ports, false))
+    Built { bases: said(bases, true), ports: said(ports, false), users }
+}
+
+/// The stages that ran as somebody of their own and now run as root, or as whoever the base runs as.
+fn now_root(new: &Built, old: &Built) -> Vec<Step> {
+    let only = new.users.len() == 1;
+    new.users
+        .iter()
+        .filter_map(|(stage, user)| {
+            let (_, was) = old.users.iter().find(|(name, _)| name == stage)?;
+            let was = was.as_deref().filter(|was| !is_root(was))?;
+            let who = if only { "The image".to_string() } else { format!("Stage {}", mark(stage)) };
+            match user.as_deref() {
+                Some(user) if is_root(user) => {
+                    Some(risky(format!("{who} runs as {}, was {}", mark(user), mark(was)), AS_ROOT))
+                }
+                None => Some(risky(format!("{who} no longer says who it runs as, was {}", mark(was)), NO_USER)),
+                Some(_) => None,
+            }
+        })
+        .collect()
 }
 
 fn dockerfile(before: Option<&str>, after: Option<&str>) -> Vec<Step> {
     let Some(new) = after else {
         return vec![risky("Removes the Dockerfile".to_string(), NO_FILE)];
     };
-    let (image, ports) = image_and_ports(new);
-    let was = before.map(image_and_ports);
+    let now = built(new);
+    let was = before.map(built);
     let mut steps = Vec::new();
-    steps.extend(field("image", "base ", image, was.as_ref().map(|(image, _)| image.clone())));
-    steps.extend(field("ports", "exposes ", ports, was.map(|(_, ports)| ports)));
+    steps.extend(field("image", "base ", now.bases.clone(), was.as_ref().map(|was| was.bases.clone())));
+    steps.extend(field("ports", "exposes ", now.ports.clone(), was.as_ref().map(|was| was.ports.clone())));
+    if let Some(was) = &was {
+        steps.extend(now_root(&now, was));
+    }
     if steps.is_empty() && before.is_some() {
         steps.push(plain("Changes how the image is built, on the same base and with the same ports".to_string()));
     }
@@ -1769,6 +1865,67 @@ spec:
             [("", "Changes how the image is built, on the same base and with the same ports", false)]
         );
         assert_eq!(said(&dockerfile(Some("FROM a\n"), None)), [("", "Removes the Dockerfile", true)]);
+    }
+
+    #[test]
+    fn an_image_named_through_an_argument_is_read_by_what_the_argument_holds() {
+        let file = |node: &str| {
+            format!(
+                "ARG IMAGE_PREFIX=\nARG NODE_BASE_IMAGE=library/node:{node}-bookworm\nARG NGINX=nginxinc/nginx-unprivileged:slim\n\
+                 FROM ${{IMAGE_PREFIX}}${{NODE_BASE_IMAGE}} AS setup\nRUN npm ci\nFROM setup AS build\n\
+                 FROM ${{IMAGE_PREFIX}}$NGINX AS production\nFROM scratch AS export\n"
+            )
+        };
+        // The line that starts the stage is the same; the image it stands for is not.
+        assert_eq!(
+            said(&dockerfile(Some(&file("24.14.1")), Some(&file("25.0.0")))),
+            [(
+                "image",
+                "base `library/node:25.0.0-bookworm`, `nginxinc/nginx-unprivileged:slim`, `scratch`, was `library/node:24.14.1-bookworm`, `nginxinc/nginx-unprivileged:slim`, `scratch`",
+                false
+            )]
+        );
+        // What the file does not give stays as it is written; a value to fall back on is used.
+        let given = BTreeMap::from([("TAG".to_string(), "1.2".to_string()), ("EMPTY".to_string(), String::new())]);
+        assert_eq!(filled("app:${TAG}-$TAG.${OTHER}", &given), "app:1.2-1.2.${OTHER}");
+        assert_eq!(filled("${REGISTRY:-docker.io}/app:${EMPTY:-latest}$", &given), "docker.io/app:latest$");
+        assert_eq!(filled("${EMPTY}app", &given), "app");
+    }
+
+    #[test]
+    fn a_stage_that_starts_to_run_as_root_is_marked() {
+        let old = "FROM node:20 AS setup\nUSER app\nFROM setup AS build\nRUN npm ci\nFROM nginx AS production\nUSER root\nRUN chmod 755 /x\nUSER nginx\n";
+        // The last word of the stage is root now.
+        let new = old.replace("USER nginx", "USER 0:0");
+        assert_eq!(
+            said(&dockerfile(Some(old), Some(&new))),
+            [("", "Stage `production` runs as `0:0`, was `nginx`", true)]
+        );
+        // The stage it is built on stops naming a user: the one built on it goes with it.
+        let new = old.replace("USER app\n", "");
+        assert_eq!(
+            said(&dockerfile(Some(old), Some(&new))),
+            [
+                ("", "Stage `setup` no longer says who it runs as, was `app`", true),
+                ("", "Stage `build` no longer says who it runs as, was `app`", true),
+            ]
+        );
+        // One stage without a name is the image. Another user that is not root is no danger.
+        assert_eq!(
+            said(&dockerfile(Some("FROM a\nUSER app\n"), Some("FROM a\nUSER root\n"))),
+            [("", "The image runs as `root`, was `app`", true)]
+        );
+        assert_eq!(
+            said(&dockerfile(Some("FROM a\nUSER app\n"), Some("FROM a\nUSER web\n"))),
+            [("", "Changes how the image is built, on the same base and with the same ports", false)]
+        );
+        // An image that was root all along, or is new, is not news.
+        assert!(
+            dockerfile(Some("FROM a\nUSER root\n"), Some("FROM a\nUSER root\nRUN x\n"))
+                .iter()
+                .all(|step| step.danger.is_none())
+        );
+        assert!(dockerfile(None, Some("FROM a\nUSER root\n")).iter().all(|step| step.danger.is_none()));
     }
 
     #[test]

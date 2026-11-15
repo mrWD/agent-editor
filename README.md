@@ -257,7 +257,9 @@ as they were and as they are; it runs nothing for that. Terraform resources,
 modules and outputs are told added, changed (with the arguments that differ)
 and removed by their blocks. Kubernetes objects are told by kind and name,
 with the fields a deploy turns on marked: image, replicas, resources, env and
-ports. Of a Dockerfile, the base images and the exposed ports are said; of a
+ports. Of a Dockerfile, the base images and the exposed ports are said: an
+image named through a build argument is read by what the argument holds in
+the file, and a stage that starts to run as root is marked; of a
 compose file, its services; of a pipeline, the jobs added, changed and
 removed; of a chart, its versions and the values that differ.
 
