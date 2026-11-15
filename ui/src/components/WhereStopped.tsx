@@ -92,7 +92,7 @@ export function WhereStopped(props: { task: Task; since: Since; onHide: () => vo
             <a
               class="btn small ghost"
               href={taskHref(id(), 'changes')}
-              onClick={() => setWork(id(), { changes: 'head' })}
+              onClick={() => setWork(id(), { changes: 'request' })}
             >
               Open the merge request
             </a>

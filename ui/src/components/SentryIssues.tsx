@@ -338,11 +338,12 @@ export function SentryIssues(props: {
                                   <button
                                     type="button"
                                     class="btn small"
+                                    title="Start a task on it and open it in the editor: the agent, the code, the changes and the preview"
                                     disabled={busy() !== null || props.agentId === ''}
-                                    aria-label={`Start a task for ${issue.key}`}
+                                    aria-label={`Start a task for ${issue.key} in the editor`}
                                     onClick={() => void start(project.id, issue)}
                                   >
-                                    {busy() === `start:${issue.id}` ? 'Starting' : 'Start'}
+                                    {busy() === `start:${issue.id}` ? 'Starting' : 'Start in editor'}
                                   </button>
                                 </>
                               }
@@ -354,8 +355,12 @@ export function SentryIssues(props: {
                                     <StageGlyph stage={stageOfTask(held())} />
                                     {stageWord(stageOfTask(held()))}
                                   </span>
-                                  <a class="btn small" href={taskHref(held().info.id)}>
-                                    Open
+                                  <a
+                                    class="btn small"
+                                    href={taskHref(held().info.id)}
+                                    title="Open its task in the editor: the agent, the code, the changes and the preview"
+                                  >
+                                    Open in editor
                                   </a>
                                 </>
                               )}

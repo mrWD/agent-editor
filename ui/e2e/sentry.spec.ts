@@ -130,7 +130,7 @@ test.describe('Errors from Sentry', () => {
 
     // On the list it has its task now, and "Without a task" leaves it out.
     await app.page.goto(`${app.core.url}/#/issues`);
-    await expect(row.getByRole('link', { name: 'Open' })).toBeVisible();
+    await expect(row.getByRole('link', { name: 'Open in editor' })).toBeVisible();
     await expect(row.getByRole('button', { name: 'Start a task for SHOP-1A' })).toHaveCount(0);
     await app.page.getByRole('button', { name: 'Without a task' }).click();
     await expect(errors).toContainText('Every unresolved error has a task.');

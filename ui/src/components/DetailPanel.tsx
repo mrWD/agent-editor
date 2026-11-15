@@ -22,7 +22,7 @@ import {
   type Detail,
   type Gate,
 } from '../core/details';
-import { recall, remember } from '../core/kept';
+import { createKept, recall, remember } from '../core/kept';
 import {
   gitDiffOver,
   gitFiles,
@@ -450,6 +450,44 @@ function Checks(props: { taskId: string }): JSX.Element {
       </For>
       <Show when={task()}>{(known) => <PipelineCard task={known()} pushes="" />}</Show>
     </section>
+  );
+}
+
+/**
+ * What was written under a task's request, for the Changes view: read when it is first looked at,
+ * and again when the request changes while it is looked at. What the panel of the request read
+ * last is there at once. Nothing is drawn while nobody has written anything.
+ */
+export function RequestTalk(props: { taskId: string; projectId: string; shown: boolean }): JSX.Element {
+  // eslint-disable-next-line solid/reactivity -- made anew for each task, so the id never changes under it
+  const taskId = props.taskId;
+  const [detail, setDetail] = createKept<Detail | null>(`detail:request:${taskId}`, null);
+  let asked = false;
+  const read = () =>
+    core
+      .request<Detail>('mr.detail', { taskId })
+      .then(setDetail)
+      .catch(() => {
+        // The request's card says how it stands; only what was written under it is missing.
+      });
+  createEffect(() => {
+    if (!props.shown || asked) return;
+    asked = true;
+    void read();
+  });
+  onMount(() => {
+    // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
+    const stop = core.onEvent((event) => {
+      if (event.event === 'mr.changed' && event.data.taskId === taskId && props.shown) void read();
+    });
+    onCleanup(stop);
+  });
+  return (
+    <Show when={(detail()?.notes.length ?? 0) > 0}>
+      <div class="git-block request-talk">
+        <Notes detail={detail()!} projectId={props.projectId} />
+      </div>
+    </Show>
   );
 }
 

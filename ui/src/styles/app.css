@@ -2700,6 +2700,38 @@ button.search-link:hover {
 .span-mode .switcher button {
   font-size: 12px;
 }
+/* The three parts of the Changes view. Each takes what room its name needs; together they may wrap. */
+.changes-tabs {
+  flex: 1 1 auto;
+}
+.changes-tabs button {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+.changes-tabs .count {
+  margin-left: 0;
+}
+.span-mode > .btn[aria-pressed='true'] {
+  background: var(--pressed);
+  color: var(--text);
+}
+/* One part of the column. What it holds lies in the column as if the part were not there. */
+.git-tab {
+  display: contents;
+}
+.git-tab[hidden] {
+  display: none;
+}
+.request-talk .detail-notes {
+  padding: 0;
+}
+/* A long comment, such as a report a bot posts, scrolls in its own box: the column stays short. */
+.request-talk .detail-note {
+  max-height: 220px;
+  overflow-y: auto;
+}
 .away-row {
   display: flex;
   align-items: baseline;
@@ -4027,12 +4059,35 @@ a.deploy-name:hover {
   gap: 8px;
   padding: 10px 8px;
   border-right: 1px solid var(--line-soft);
-  overflow-y: auto;
+  overflow: hidden;
+}
+/* What stands over the list keeps its height: only the list itself scrolls. */
+.api-list > * {
+  flex: none;
 }
 .api-list ul {
+  flex: 1 1 0;
+  min-height: 0;
   margin: 0;
   padding: 0;
   list-style: none;
+  overflow-y: auto;
+}
+.api-scope {
+  flex-wrap: nowrap;
+}
+.api-scope button {
+  flex: 1 1 0;
+  justify-content: center;
+  padding: 0 8px;
+}
+.api-scope .count {
+  margin-left: 0;
+  color: var(--text-3);
+}
+.api-none {
+  margin: 0;
+  padding: 2px 8px;
 }
 .api-row {
   display: flex;

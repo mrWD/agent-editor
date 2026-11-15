@@ -1252,11 +1252,8 @@ function TaskViews(props: { task: Task; view: View }): JSX.Element {
           keyed
           when={commitShown(props.task.info.id)}
           fallback={
-            <Show
-              when={changesMode() === 'head'}
-              fallback={<SpanView task={props.task} mode={changesMode() as 'visit'} />}
-            >
-              <ChangesView task={props.task} git={git} />
+            <Show when={changesMode() === 'visit'} fallback={<ChangesView task={props.task} git={git} />}>
+              <SpanView task={props.task} git={git} />
             </Show>
           }
         >

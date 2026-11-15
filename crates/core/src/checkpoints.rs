@@ -143,13 +143,41 @@ impl Manager {
 
     /// The two points a comparison is between, as (root, from, to).
     /// `from` is "visit" (since the user last left), "branch" (since the task's
-    /// branch started) or "checkpoint:<n>" (what rewinding to it would change).
+    /// branch started), "ahead" (the commits that are not pushed), "pushed"
+    /// (what the branch holds on the remote) or "checkpoint:<n>" (what
+    /// rewinding to it would change).
     fn span(&self, task_id: &str, from: &str) -> Result<(PathBuf, String, String)> {
         let task = self.store().task(task_id)?;
         if task.branch.is_none() {
             bail!("This task works in a folder without git, so there is nothing to compare with");
         }
         let root = PathBuf::from(&task.cwd);
+        // Where the branch left its base: by the name the task remembers, else the usual ones.
+        let start_of = |tip: &str| -> Result<String> {
+            let base = gitops::resolve_base(&root, task.base_branch.as_deref())
+                .ok_or_else(|| anyhow!("The branch this task started from is not known"))?;
+            gitops::common_start(&root, &base, tip)
+                .ok_or_else(|| anyhow!("Could not find where this branch left {base}"))
+        };
+        // Two spans are between commits only: what is not committed is no part of them.
+        match from {
+            "ahead" => {
+                let head = gitops::head_commit(&root).ok_or_else(|| anyhow!("This branch has no commits yet"))?;
+                // A branch that was rewritten after its push has commits on the remote it no
+                // longer holds: what is not pushed starts where the two were last the same.
+                let start = match gitops::pushed_tip(&root) {
+                    Some(pushed) => gitops::common_start(&root, &pushed, &head).unwrap_or(pushed),
+                    None => start_of(&head)?,
+                };
+                return Ok((root, start, head));
+            }
+            "pushed" => {
+                let Some(pushed) = gitops::pushed_tip(&root) else { bail!("This branch is not pushed yet") };
+                let start = start_of(&pushed)?;
+                return Ok((root, start, pushed));
+            }
+            _ => {}
+        }
         let now = gitops::snapshot_tree(&root)?;
         if let Some(n) = from.strip_prefix("checkpoint:") {
             let n: i64 = n.parse().map_err(|_| anyhow!("No such checkpoint"))?;

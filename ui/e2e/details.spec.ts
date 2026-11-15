@@ -139,18 +139,18 @@ test.describe('An issue and a request in full', () => {
     await app.page.goto(`${app.core.url}/#/issues`);
     const row = sectionOf(app, shop).locator('.issue-row').filter({ hasText: '#12' });
     await row.getByRole('button', { name: 'Login allows unlimited attempts' }).click();
-    await panel(app).getByRole('button', { name: 'Start a task on it' }).click();
+    await panel(app).getByRole('button', { name: 'Start in editor' }).click();
     await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);
     await app.turnEnds();
     const taskId = app.taskId();
 
     await app.page.goto(`${app.core.url}/#/issues`);
     await row.getByRole('button', { name: 'Login allows unlimited attempts' }).click();
-    await expect(panel(app).getByRole('link', { name: 'Open its task' })).toHaveAttribute(
+    await expect(panel(app).getByRole('link', { name: 'Open in editor' })).toHaveAttribute(
       'href',
       `#/task/${taskId}/code`,
     );
-    await expect(panel(app).getByRole('button', { name: 'Start a task on it' })).toHaveCount(0);
+    await expect(panel(app).getByRole('button', { name: 'Start in editor' })).toHaveCount(0);
   });
 
   test('ID-05 "Details" on the card of a pull request opens it whole, with what the reviewers said of it', async ({
@@ -267,7 +267,7 @@ test.describe('An issue and a request in full', () => {
     const row = sectionOf(app, shop).locator('.issue-row').filter({ hasText: '#12' });
     // An issue nobody works on has no request to show.
     await expect(row.getByRole('button', { name: /^PR #/ })).toHaveCount(0);
-    await row.getByRole('button', { name: 'Start' }).click();
+    await row.getByRole('button', { name: 'Start in editor' }).click();
     await app.turnEnds();
     const task = await app.core.task(app.taskId());
     writeIn(task.cwd, DEMO_FILE, DEMO_TEXT.replace('limit: 5,', 'limit: 6,'));
@@ -279,15 +279,14 @@ test.describe('An issue and a request in full', () => {
 
     await app.page.goto(`${app.core.url}/#/issues`);
     // Its code: the task, as before.
-    await expect(row.getByRole('link', { name: 'Open', exact: true })).toHaveAttribute(
-      'href',
-      `#/task/${task.id}/code`,
-    );
+    await expect(row.getByRole('link', { name: 'Open in editor' })).toHaveAttribute('href', `#/task/${task.id}/code`);
     // Itself, and its request: two panels, side by side, both open at once.
     await row.getByRole('button', { name: 'Login allows unlimited attempts' }).click();
     await row.getByRole('button', { name: 'PR #128' }).click();
     await expect(panel(app)).toHaveAccessibleName('Details of issue #12');
     await expect(requestPanel(app)).toHaveAccessibleName('Details of request #128');
+    // The issue stands first and its request after it.
+    expect((await panel(app).boundingBox())!.x).toBeLessThan((await requestPanel(app).boundingBox())!.x);
     await expect(panel(app).getByRole('heading', { level: 2 })).toHaveText('Login allows unlimited attempts');
     await expect(requestPanel(app).getByRole('heading', { level: 2 })).toHaveText('TITLE');
     // Each opens in the browser from its own head.
@@ -323,5 +322,9 @@ test.describe('An issue and a request in full', () => {
     await panel(app).getByRole('button', { name: 'Close the issue' }).click();
     await expect(panel(app)).toHaveCount(0);
     await expect(requestPanel(app)).toBeVisible();
+    // Opened after its request, the issue still stands before it.
+    await row.getByRole('button', { name: 'Login allows unlimited attempts' }).click();
+    await expect(panel(app)).toBeVisible();
+    expect((await panel(app).boundingBox())!.x).toBeLessThan((await requestPanel(app).boundingBox())!.x);
   });
 });

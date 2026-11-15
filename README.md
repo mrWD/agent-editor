@@ -131,10 +131,12 @@ scripts/sonar-local.sh
 - **Linear** needs a personal API key, pasted in the Issues section, and a team
   key per project.
 - **An issue or a request in full.** On the Issues screen an issue in work
-  opens three ways: "Open" goes to its task with the code, its title opens
-  the issue in a panel at the side, and the name of its request ("PR #128",
+  opens three ways: "Open in editor" goes to its task (the agent, the code,
+  the changes and the preview), its title opens the issue in a panel at the
+  side, and the name of its request ("PR #128",
   "MR !48") opens the request in a panel of its own. Both panels can be open
-  at once, beside the list. Each has in its head a button that opens it in
+  at once, beside the list: the issue first, its request after it. An issue
+  nobody works on has "Start in editor" in place of "Open in editor". Each has in its head a button that opens it in
   the browser. The panel of an issue shows the description, who wrote it and
   who has it, the labels, what is attached, and what was written under it,
   oldest first. The panel of a request has a tab for each part: what it
@@ -198,8 +200,10 @@ things to look at, next to Web and the two devices.
   description with the one of the base: the same file where the branch
   started, or a service that runs the base branch, whose address you give
   under Set up. Each difference is weighed by what it does to a client written
-  against the base: it breaks clients, it is worth a look, or it is safe. The
-  operations the task touched come first in the list.
+  against the base: it breaks clients, it is worth a look, or it is safe. Once
+  there is something to compare with, the list holds only the operations the
+  task added or changed; "All" above it brings the whole API back, with what
+  the task touched first.
 - **Database.** The migrations the task added or changed, read from their
   text and said step by step, with the steps that can lose data or break the
   code that still runs marked and said why. Alembic, Django, Prisma, Rails,
@@ -329,9 +333,20 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   the task's folder. Cmd/Ctrl+K searches tasks, files, conversations, commands
   and the text of the code; with code selected it attaches that code to your
   next message.
-- **M4, git.** The Changes view: what differs from the last commit, ticks on
-  files and on single changes, commit, push, "add to the last commit", the
-  branch's commits with Undo and Revert, updating from the base branch. A pull
+- **M4, git.** The Changes view, in three parts along the path of a change,
+  picked at the head of its column, each with how much it holds. "Not
+  committed": what differs from the last commit, ticks on files and on single
+  changes, the commit, "add to the last commit". "Committed": the commits
+  that are not pushed, with Undo, and the push, alone or with a request
+  opened for it. The third is called "Pushed" until there is a request and
+  by the request's name after ("PR #128", "MR !48"): the request and what
+  stands before its merge, the pipeline, what was written under the request,
+  and the pushed commits with Revert. The middle shows what the part on show
+  changes. The view opens on the first part that holds something and follows
+  a change: a commit of everything leads to the commits, a push to the
+  request; a change made meanwhile is only counted on its part. "Since last
+  visit" stands apart from the three. Updating from the base branch is in
+  every part. A pull
   or merge request is opened from there with its review comments, which go to
   the agent or get a reply; "Merge now" merges it, deletes the branch and the
   working copy and archives the task, and "Merge by itself" does that once the

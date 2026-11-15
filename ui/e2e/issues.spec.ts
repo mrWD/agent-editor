@@ -39,14 +39,17 @@ test.describe('Issues', () => {
     expect(app.core.calls('gh')).toContainEqual(expect.stringContaining(`issue list -R ${shop.slug} --state open`));
 
     // Start a task for one issue, then come back.
-    await rows.nth(0).getByRole('button', { name: 'Start' }).click();
+    await rows.nth(0).getByRole('button', { name: 'Start in editor' }).click();
     await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);
     await app.turnEnds();
     const taskId = app.taskId();
     await app.page.getByRole('link', { name: 'Issues', exact: true }).click();
     await expect(rows.nth(0)).toContainText('your turn');
-    await expect(rows.nth(0).getByRole('link', { name: 'Open' })).toHaveAttribute('href', `#/task/${taskId}/code`);
-    await expect(rows.nth(0).getByRole('button', { name: 'Start' })).toHaveCount(0);
+    await expect(rows.nth(0).getByRole('link', { name: 'Open in editor' })).toHaveAttribute(
+      'href',
+      `#/task/${taskId}/code`,
+    );
+    await expect(rows.nth(0).getByRole('button', { name: 'Start in editor' })).toHaveCount(0);
 
     const filter = app.page.getByRole('group', { name: 'Which issues to show' });
     await filter.getByRole('button', { name: 'Without a task' }).click();
@@ -65,7 +68,7 @@ test.describe('Issues', () => {
     const projectId = await app.addProject(shop.dir);
     await openIssues(app);
     const rows = sectionOf(app, shop).locator('.issue-row');
-    await rows.filter({ hasText: '#12' }).getByRole('button', { name: 'Start' }).click();
+    await rows.filter({ hasText: '#12' }).getByRole('button', { name: 'Start in editor' }).click();
     await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);
     await app.turnEnds();
     const taskId = app.taskId();

@@ -55,7 +55,11 @@ test.describe('Changes: what goes into a commit', () => {
       '3',
     );
     await expect(app.git.getByText('Ticked files go into the commit')).toBeVisible();
-    await expect(app.git.getByText('No commits yet since main.')).toBeVisible();
+    // Three files wait for a commit; nothing is committed or pushed yet.
+    await expect(app.changesTab('Not committed')).toHaveText('Not committed3');
+    await expect(app.changesTab('Not committed')).toHaveAttribute('aria-pressed', 'true');
+    await expect(app.changesTab('Committed')).toHaveText('Committed');
+    await expect(app.git.getByText('No commits yet since main.')).toBeAttached();
 
     // The diff of one file: what was taken out and put in, with the numbers of the lines and who wrote them.
     await app.git.getByRole('button', { name: new RegExp(`^${DEMO_FILE}`) }).click();
@@ -115,7 +119,7 @@ test.describe('Changes: what goes into a commit', () => {
     await fileBox(app, DEMO_FILE).check();
 
     await commitButton(app).click();
-    await expect(commits(app)).toHaveText([/^Take the limit from config.*Test, just now.*not pushed/]);
+    await expect(commits(app)).toHaveText([/^Take the limit from config.*Test, just now/]);
     await expect(app.git.locator('.git-file')).toHaveCount(1);
     await expect(fileRow(app, APP_FILE)).toBeVisible();
     await expect(app.activities.filter({ hasText: 'committed' })).toContainText('Take the limit from config');
@@ -178,7 +182,8 @@ test.describe('Changes: what goes into a commit', () => {
     await app.commit('Allow six attempts and note orders');
 
     await expect(commits(app)).toHaveCount(1);
-    await expect(app.git.getByText('Everything is committed.')).toBeVisible();
+    await expect(app.changesTab('Committed')).toHaveText('Committed1');
+    await expect(app.git.getByText('Everything is committed.')).toBeAttached();
     expect(shop.git(['log', '--format=%s', `main..${task.branch}`])).toBe('Allow six attempts and note orders');
     expect(shop.git(['show', '--format=', '--name-only', task.branch!]).split('\n')).toEqual([APP_FILE, DEMO_FILE]);
   });
@@ -192,11 +197,14 @@ test.describe('Changes: what goes into a commit', () => {
     writeIn(task.cwd, DEMO_FILE, changed);
     await app.showView('Changes');
     await app.commit('Allow six attempts');
-    await expect(app.git.getByText('Everything is committed.')).toBeVisible();
+    // With everything committed the view is on the commits, where the newest can be undone.
+    await expect(app.changesTab('Committed')).toHaveAttribute('aria-pressed', 'true');
+    await expect(app.git.getByText('Everything is committed.')).toBeAttached();
 
     await app.commitRow('Allow six attempts').getByRole('button', { name: 'Undo' }).click();
     await expect(commits(app)).toHaveCount(0);
-    await expect(app.git.getByText('No commits yet since main.')).toBeVisible();
+    // Its changes are files again, and the view goes back to them.
+    await expect(app.changesTab('Not committed')).toHaveAttribute('aria-pressed', 'true');
     await expect(fileRow(app, DEMO_FILE)).toBeVisible();
     await expect(app.activities.filter({ hasText: 'undid the commit' })).toContainText('Allow six attempts');
     expect(shop.git(['log', '--format=%s', `main..${task.branch}`])).toBe('');
@@ -300,7 +308,10 @@ test.describe('Changes: the branch and its remote', () => {
     await expect(commitButton(app)).toHaveText('Commit 1 file and push');
     await app.commit('Allow six attempts');
     const first = app.commitRow('Allow six attempts');
-    await expect(first).toContainText(/Test, just now\s*pushed/);
+    // Pushed with its commit, the view is on what is pushed.
+    await expect(app.changesTab('Pushed')).toHaveAttribute('aria-pressed', 'true');
+    await expect(first).toContainText('Test, just now');
+    await expect(first).toBeVisible();
     expect(shop.remoteBranches()).toEqual([task.branch]);
     expect(shop.git(['log', '--format=%s', '-1', task.branch!], shop.bare!)).toBe('Allow six attempts');
     await expect(app.activities.filter({ hasText: 'pushed' }).last()).toBeVisible();
@@ -312,15 +323,19 @@ test.describe('Changes: the branch and its remote', () => {
     await first.getByRole('button', { name: 'Revert' }).click();
     await first.getByRole('button', { name: 'Really revert?' }).click();
     const revert = app.commitRow('Revert "Allow six attempts"');
-    await expect(revert).toContainText('not pushed');
+    await expect(revert).toBeAttached();
     await expect(commits(app)).toHaveCount(2);
     expect(readIn(task.cwd, DEMO_FILE)).toBe(DEMO_TEXT);
 
-    // The branch says one commit is not pushed, and pushes it.
+    // The new commit waits on its own part, which says one is not pushed, and pushes it.
+    await expect(app.changesTab('Committed')).toHaveText('Committed1');
+    await app.showChanges('Committed');
     await expect(app.git.getByText('1 not pushed')).toBeVisible();
+    await expect(revert).toBeVisible();
     await app.git.getByRole('button', { name: 'Push', exact: true }).click();
     await expect(app.git.getByText('1 not pushed')).toBeHidden();
-    await expect(revert).not.toContainText('not pushed');
+    await expect(app.changesTab('Committed')).toHaveText('Committed');
+    await expect(app.changesTab('Pushed')).toHaveAttribute('aria-pressed', 'true');
     expect(shop.git(['log', '--format=%s', '-1', task.branch!], shop.bare!)).toBe('Revert "Allow six attempts"');
   });
 
