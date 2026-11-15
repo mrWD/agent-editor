@@ -277,8 +277,20 @@ unreadable, not read as empty. The reading is by eye, not by the tools' own pars
 not recognise it leaves out, and it does not know what a provider would
 replace rather than update.
 
-**Show it to the agent** puts the whole reading before the agent with your
-next message.
+A switch above the list says which files are on show. **Changed** is the
+above: only what the task touched. **All** is every infrastructure file of the
+project as it stands in the folder of the task, tool by tool, each with what
+it holds: the resources and modules of a Terraform file, the objects of a
+manifest with their images, replicas, resources and ports, the services of a
+compose file, the jobs of a pipeline, the base images and ports of a
+Dockerfile and who its image runs as. A file the task touched says so. What
+deserves a second look in a file as it stands is marked the same way: a
+privileged container, a secret written in plain text, an image that runs as
+root. Until you pick one, the view shows what the task changed when it
+changed something, and all of it otherwise.
+
+**Show it to the agent** puts the whole reading that is on show before the
+agent with your next message.
 
 Under the reading are the checks, for the folders the task touched first:
 `terraform validate` and `terraform plan -lock=false -refresh=false
