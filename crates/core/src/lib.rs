@@ -15,6 +15,7 @@ pub mod checks;
 pub mod ci;
 pub mod database;
 pub mod deploys;
+pub mod details;
 pub mod devices;
 pub mod fileops;
 pub mod files;

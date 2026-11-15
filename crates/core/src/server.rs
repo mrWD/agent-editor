@@ -191,6 +191,7 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .route("/ws", get(upgrade))
         .route("/mcp/{key}", axum::routing::post(mcp))
         .route("/api/picture/{task}/{id}", get(picture))
+        .route("/api/tracker/picture", get(tracker_picture))
         .with_state(state);
     match ui_dir {
         Some(dir) => {
@@ -278,6 +279,36 @@ async fn picture(
         )
             .into_response(),
         Err(_) => (axum::http::StatusCode::NOT_FOUND, "No such picture").into_response(),
+    }
+}
+
+/// What names a picture of a tracker: the project it belongs to and the address the text gave.
+#[derive(serde::Deserialize)]
+struct TrackerPicture {
+    project: String,
+    src: String,
+}
+
+/// A picture named in an issue or a request, fetched from the tracker with the user's own sign-in.
+async fn tracker_picture(
+    State(state): State<AppState>,
+    axum::extract::Query(asked): axum::extract::Query<TrackerPicture>,
+) -> axum::response::Response {
+    let manager = state.manager.clone();
+    let fetched = tokio::task::spawn_blocking(move || manager.tracker_picture(&asked.project, &asked.src)).await;
+    match fetched {
+        Ok(Ok((bytes, kind))) => (
+            [
+                (axum::http::header::CONTENT_TYPE, kind),
+                // The tracker may take the picture back or change who may see it: it is not kept for long.
+                (axum::http::header::CACHE_CONTROL, "private, max-age=600"),
+                (axum::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        Ok(Err(error)) => (axum::http::StatusCode::NOT_FOUND, format!("{error:#}")).into_response(),
+        Err(_) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "The picture could not be fetched").into_response(),
     }
 }
 
@@ -900,6 +931,7 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             .await?;
             Ok(json!({ "projects": projects?, "linear": linear }))
         }
+        "issues.detail" | "mr.detail" => crate::details::command(manager, method, params).await,
         "issues.start" => {
             let (project, key, agent) =
                 (text_param(params, "projectId")?, text_param(params, "key")?, text_param(params, "agentId")?);

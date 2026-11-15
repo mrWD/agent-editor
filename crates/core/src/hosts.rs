@@ -539,6 +539,11 @@ impl Hosts {
     /// Runs one of the tools against one server and returns what it printed, or its complaint as the error. Without it `gh` asks github.com and `glab` asks gitlab.com,
     /// whatever server the project lives on: a company's own GitLab answers "not found" and "not signed in".
     pub(crate) fn run_at(&self, kind: HostKind, host: Option<&str>, args: &[&str]) -> Result<String> {
+        Ok(String::from_utf8_lossy(&self.run_bytes_at(kind, host, args)?).into_owned())
+    }
+
+    /// The same, giving what the tool printed as it is: for an answer that is not text, such as a picture.
+    pub(crate) fn run_bytes_at(&self, kind: HostKind, host: Option<&str>, args: &[&str]) -> Result<Vec<u8>> {
         let tool = self.tool(kind);
         let name = if kind == HostKind::GitHub { "gh" } else { "glab" };
         let mut command = Command::new(tool);
@@ -562,7 +567,7 @@ impl Hosts {
                 if complaint.trim().is_empty() { String::from_utf8_lossy(&output.stdout) } else { complaint };
             bail!("{}", complaint.trim());
         }
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        Ok(output.stdout)
     }
 
     /// Whether the tool for a host is installed and signed in to every server the projects live on.
@@ -671,6 +676,22 @@ impl Hosts {
                 parse_gitlab_issues(&json)
             }
         }
+    }
+
+    /// Where what is uploaded to Linear is kept, when Linear is not the real one: a stand-in keeps
+    /// its uploads beside itself. Empty for the real Linear, whose place for uploads is known.
+    pub(crate) fn linear_uploads(&self) -> String {
+        if self.linear_url.starts_with("https://api.linear.app/") {
+            return String::new();
+        }
+        let scheme_end = self.linear_url.find("://").map_or(0, |at| at + 3);
+        let origin_end = self.linear_url[scheme_end..].find('/').map_or(self.linear_url.len(), |at| at + scheme_end);
+        format!("{}/uploads/", &self.linear_url[..origin_end])
+    }
+
+    /// Asks Linear one question, for the parts of the core that have questions of their own.
+    pub(crate) fn linear_ask(&self, key: &str, query: &str, variables: Value) -> Result<Value> {
+        self.linear(key, query, variables)
     }
 
     fn linear(&self, key: &str, query: &str, variables: Value) -> Result<Value> {
