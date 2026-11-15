@@ -54,14 +54,17 @@ test.describe('The merge request of a task', () => {
     writeIn(task.cwd, DEMO_FILE, DEMO_TEXT.replace('limit: 5,', 'limit: 6,'));
     await app.showView('Changes');
 
-    // Nothing is committed: there is nothing to ask a merge for.
+    // Nothing is committed: there is nothing to ask a merge for. The request lives where what is pushed is.
+    await app.showChanges('Pushed');
     await expect(app.request.getByRole('heading', { name: 'Pull request' })).toBeVisible();
     await expect(app.request).toContainText('none yet');
     const create = app.request.getByRole('button', { name: 'Create' });
     await expect(create).toBeDisabled();
     await expect(create).toHaveAttribute('title', 'Commit something first');
 
+    await app.showChanges('Not committed');
     await app.commit('Take the login limit from config');
+    await app.showChanges('Pushed');
     // The title comes from the one commit, the description from the issue. The card reads them
     // again after a commit; a press within that moment still gets the older words, so look twice.
     const title = app.request.getByRole('textbox', { name: 'Title' });
@@ -95,7 +98,10 @@ test.describe('The merge request of a task', () => {
     expect(app.core.calls('gh')).toContainEqual(
       `pr create -R ${shop.slug} --head ${task.branch} --base main --title Take the login limit from config --body Closes #12.`,
     );
-    await expect(app.commitRow('Take the login limit from config')).not.toContainText('not pushed');
+    // The part is called by the request now, and nothing waits for a push.
+    await expect(app.changesTab('PR #128')).toHaveAttribute('aria-pressed', 'true');
+    await expect(app.changesTab('Committed')).toHaveText('Committed');
+    await expect(app.commitRow('Take the login limit from config')).toBeVisible();
     await expect(app.activities.filter({ hasText: 'opened' })).toContainText('pull request 128');
 
     await expect(app.request.getByRole('heading', { name: 'Before it can merge' })).toBeVisible();

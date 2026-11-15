@@ -1143,7 +1143,11 @@ export function gitDiff(taskId: string, path: string) {
  * ("visit"), since the task's branch started ("branch"), or from now back to
  * a checkpoint ("checkpoint:<n>": what rewinding to it would change).
  */
-export type Span = 'visit' | 'branch' | `checkpoint:${number}`;
+/**
+ * What two moments a comparison is between: since the last visit, the whole branch, the commits
+ * that are not pushed, what the remote holds, or what a rewind to a checkpoint would change.
+ */
+export type Span = 'visit' | 'branch' | 'ahead' | 'pushed' | `checkpoint:${number}`;
 
 /** A changed file over a span. `yours` says it holds lines the user wrote, which a rewind can keep. */
 export type SpanFile = GitFile & { yours: boolean };

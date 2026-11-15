@@ -320,16 +320,31 @@ export class App {
     return this.page.locator(`.diff-row.${kind}`, { hasText: text });
   }
 
-  /** One commit in "On this branch", by its subject. */
+  /** One commit of the branch, by its subject: among the ones that wait for a push, or the pushed ones. */
   commitRow(subject: string): Locator {
     return this.git.locator('.git-commit', { hasText: subject });
   }
 
-  /** Commits what is ticked, with a message of its own. */
+  /** The tab of one part of the Changes view, by how its name starts: "Not committed", "Committed", "Pushed", "PR #". */
+  changesTab(name: string): Locator {
+    const starts = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+    return this.page.getByRole('group', { name: 'Which changes to show' }).getByRole('button', { name: starts });
+  }
+
+  /** Shows one part of the Changes view. */
+  async showChanges(name: string) {
+    await this.changesTab(name).click();
+    await expect(this.changesTab(name)).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  /**
+   * Commits what is ticked, with a message of its own. The view then goes on to the commits, or
+   * stays with the files that were left out: either way the commit is on the branch.
+   */
   async commit(message: string) {
     await this.git.getByRole('textbox', { name: 'Commit message' }).fill(message);
     await this.git.getByRole('button', { name: /^(Commit|Add) \d+ files?/ }).click();
-    await expect(this.commitRow(message)).toBeVisible();
+    await expect(this.commitRow(message).first()).toBeAttached();
   }
 
   // ----- the projects rail -----

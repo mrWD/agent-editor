@@ -54,14 +54,14 @@ test.describe('Coming back to a task', () => {
     await expect(away).toContainText('No file has changed since your last visit.');
     await expect(app.diffRow('add', 'limit: limits.login,')).toBeHidden();
 
-    // The other two ways to look still show the change: it is not committed, and it is on the branch.
+    // The parts of the view still show the change: it is not committed. And the way back is one press.
     await away.getByRole('button', { name: 'Not committed' }).click();
-    await expect(app.git.getByRole('button', { name: 'Not committed' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(app.changesTab('Not committed')).toHaveAttribute('aria-pressed', 'true');
+    await expect(app.changesTab('Not committed')).toHaveText('Not committed1');
     await expect(app.diffRow('add', 'limit: limits.login,')).toBeVisible();
-    await app.git.getByRole('button', { name: 'Branch' }).click();
-    const branch = app.page.getByRole('region', { name: 'What this branch holds' });
-    await expect(branch).toContainText(DEMO_FILE);
-    await expect(app.diffRow('add', 'limit: limits.login,')).toBeVisible();
+    await app.git.getByRole('button', { name: 'Since last visit' }).click();
+    await expect(away.getByRole('button', { name: 'Since last visit' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(away).toContainText('No file has changed since your last visit.');
   });
 
   test('SN-03 the reminder can be hidden, goes away with the next message, and is not shown after a glance', async ({

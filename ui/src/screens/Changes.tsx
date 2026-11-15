@@ -5,8 +5,10 @@ import { createStore } from 'solid-js/store';
 import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, Chip } from '../components/bits';
+import { RequestTalk } from '../components/DetailPanel';
 import { RequestCard } from '../components/RequestCard';
 import { PipelineCard, type PipelineBrief } from '../components/PipelineCard';
+import { firstTab, tabAfter, tabCount, type ChangesTab } from '../core/changesTabs';
 import { CI_WORDS } from '../core/ci';
 import { core } from '../core/client';
 import type { GitWatch } from '../core/gitstate';
@@ -19,6 +21,7 @@ import {
   gitPush,
   gitRevert,
   gitRevertCommit,
+  gitState,
   gitUndoCommit,
   gitUpdate,
   dismissOverlap,
@@ -31,12 +34,14 @@ import {
   type GitFile,
   type Overlap,
   type Pick,
+  type Span,
   type Task,
 } from '../core/store';
-import { stageOfTask } from '../core/requests';
+import { requestName } from '../core/details';
+import { refreshRequests, requests, stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
-import { openInEditor, saveAll, setWork } from '../core/work';
-import { ChangesMode } from './Span';
+import { openInEditor, saveAll, setWork, workOf } from '../core/work';
+import { ChangesTabs, createSpan, SpanCenter, SpanFiles } from './Span';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -106,9 +111,12 @@ function steady<T>(before: T[], now: T[]): T[] {
 type Off = Record<string, 'file' | number[] | undefined>;
 
 /**
- * The Changes view: what differs from the last commit, what goes into the
- * next one, the commit itself, and the branch's commits. The left column runs
- * top to bottom along the path of a change.
+ * The Changes view, in three parts along the path of a change. What is not
+ * committed: the files, what of them goes into the next commit, and the
+ * commit itself. What is committed and not pushed: those commits and the
+ * push. What is pushed: the request, what stands before its merge, what was
+ * written under it, and the pipeline. The column holds one part at a time;
+ * the middle shows what that part changes.
  */
 export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- this component is made anew for each task, so the id never changes under it
@@ -139,12 +147,49 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
     (before) => steady(before, diff()?.path === selected() ? diff()!.hunks : []),
     [],
   );
+  /** The commits that wait for a push, newest first, and the ones the remote has. */
+  const ahead = createMemo(() => commits().filter((made) => !made.pushed));
+  const pushed = createMemo(() => commits().filter((made) => made.pushed));
+  const request = () => requests[taskId]?.request;
+
+  /** The part on show: the one that was picked, else the first that holds something. */
+  const tab = (): ChangesTab => {
+    const picked = workOf(taskId).changes;
+    return picked && picked !== 'visit' ? picked : firstTab(git());
+  };
+  /** After something was done the view follows the change: a part left empty gives way to the next that is not. */
+  const settle = () => setWork(taskId, { changes: tabAfter(tab(), git()) });
+  /** What the middle compares in the second and the third part. Nothing while nothing is pushed. */
+  const spanOf = (): Span | null =>
+    tab() === 'ahead' ? 'ahead' : tab() === 'request' && tabCount('request', git()) > 0 ? 'pushed' : null;
+  const span = createSpan(taskId, spanOf);
+  // A commit or a push moves the ends of what is compared without touching a file.
+  createEffect(
+    on(
+      () => `${git()?.commits[0]?.hash}:${git()?.notPushed}`,
+      () => void span.load(),
+      { defer: true },
+    ),
+  );
   const newest = () => git()?.commits[0];
   const canAmend = () => Boolean(newest() && !newest()!.pushed);
   const canPush = () => Boolean(git()?.remote);
 
   // What the user typed in the code is saved first, so the view shows what they see.
-  onMount(() => void saveAll(taskId).then(() => props.git.reload()));
+  // Then the view opens on the first part that holds something, unless a link asked for one. From
+  // then on the part stays as picked: a change made by somebody else is counted, not jumped to.
+  onMount(
+    () =>
+      void saveAll(taskId)
+        .then(() => props.git.reload())
+        .then(() => {
+          if (workOf(taskId).changes === null) setWork(taskId, { changes: firstTab(git()) });
+        }),
+  );
+  // Left, the view forgets the part: the next time it opens where there is something to look at.
+  onCleanup(() => {
+    if (workOf(taskId).changes !== 'visit') setWork(taskId, { changes: null });
+  });
   onMount(() => void loadOverlaps());
 
   // Whether the project lives on a host where a request can be opened decides what is offered after a commit.
@@ -247,8 +292,34 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
       setProblem(message(error));
     } finally {
       setBusy(null);
-      void props.git.reload();
+      // The state is read here, not left to the watcher: a reading that was already on its way
+      // would be the one from before, and the view would follow a change that is not in it yet.
+      try {
+        props.git.show(await gitState(taskId));
+      } catch {
+        void props.git.reload();
+      }
+      settle();
     }
+  };
+
+  /** Pushes the commits that wait. With `open`, a request is opened for them, said as the commits say it. */
+  const push = (open: boolean) =>
+    // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
+    act(open ? 'push-request' : 'push', async () => {
+      await gitPush(taskId);
+      if (!open) return;
+      const info = await getRequest(taskId, true);
+      if (!info.request)
+        await createRequest(taskId, info.defaults?.title ?? props.task.info.title, info.defaults?.body ?? '');
+      void refreshRequests();
+    });
+  const showPipeline = () => {
+    setWork(taskId, { changes: 'request' });
+    setTimeout(
+      () => column?.querySelector('section.pipeline')?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+      0,
+    );
   };
 
   const commit = () =>
@@ -420,51 +491,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
             ref={column}
             style={{ flex: `0 0 ${sizeOf('changes')}px` }}
           >
-            <ChangesMode taskId={taskId} />
-            <For each={overlaps()}>
-              {(overlap) => (
-                <section class="card overlap" aria-label={`Overlap in ${overlap.path}`}>
-                  <h2>Another task changes the same {overlap.mine.length > 1 ? 'lines' : 'line'}</h2>
-                  <p>
-                    <button type="button" class="link mono" onClick={() => setSelected(overlap.path)}>
-                      {overlap.path}
-                    </button>
-                    , line {overlap.line}, is also changed in:
-                  </p>
-                  <a class="overlap-task" href={taskHref(overlap.task.id, 'changes')}>
-                    <Chip agentId={overlap.task.agentId} short={otherShort(overlap.task.agentId)} flat />
-                    <span class="grow">{overlap.task.title}</span>
-                    <span class="fine">{otherStage(overlap.task.id)}</span>
-                  </a>
-                  <Show
-                    when={overlap.theirs.length > 0}
-                    fallback={<p class="fine">That task takes these lines out.</p>}
-                  >
-                    <span class="fine">Their line {overlap.theirLine}</span>
-                    <pre class="overlap-lines">{overlap.theirs.join('\n')}</pre>
-                  </Show>
-                  <p class="fine">Whichever merges second gets the conflict. You can commit as it is.</p>
-                  <div class="actions">
-                    <button
-                      type="button"
-                      class="btn small"
-                      disabled={Boolean(busy()) || !canAsk()}
-                      onClick={() => act('combine', () => sendPrompt(taskId, combinePrompt(overlap)))}
-                    >
-                      Ask {agentName()} to combine them
-                    </button>
-                    <button
-                      type="button"
-                      class="btn small ghost"
-                      disabled={Boolean(busy())}
-                      onClick={() => act('dismiss', () => dismissOverlap(taskId, overlap.mark).then(loadOverlaps))}
-                    >
-                      Not a problem
-                    </button>
-                  </div>
-                </section>
-              )}
-            </For>
+            <ChangesTabs taskId={taskId} git={state()} tab={tab()} pipeline={pipeBrief()?.state} />
             <div class="git-branch">
               <span class="mono">{state().branch ?? 'no branch'}</span>
               <Show
@@ -484,17 +511,10 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
                 </button>
               </Show>
             </div>
-            {/* How the pipeline stands, said here because its card is at the foot of the column. */}
-            <Show when={pipeBrief()}>
+            {/* How the pipeline stands, said here because its card is in the third part. */}
+            <Show when={tab() !== 'request' && pipeBrief()}>
               {(brief) => (
-                <button
-                  type="button"
-                  class="pipe-brief"
-                  title="Show the pipeline"
-                  onClick={() =>
-                    column?.querySelector('section.pipeline')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-                  }
-                >
+                <button type="button" class="pipe-brief" title="Show the pipeline" onClick={showPipeline}>
                   <span class={`pipe-dot ${brief().state}`} aria-hidden="true" />
                   <span>
                     Pipeline {CI_WORDS[brief().state]}: {brief().words}
@@ -512,204 +532,302 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
               </p>
             </Show>
 
-            <section class="git-block">
-              <div class="git-head">
-                <h2 class="pane-title grow">Not committed</h2>
-                <Show when={files().length > 0}>
-                  <span class="fine">Ticked files go into the commit</span>
-                </Show>
-              </div>
-              <Show when={files().length === 0}>
-                <p class="fine">Everything is committed.</p>
-              </Show>
-              <For each={files()}>
-                {(file) => (
-                  <div class="git-file" aria-current={file.path === selected() ? 'true' : undefined}>
-                    <input
-                      type="checkbox"
-                      checked={fileTicked(file.path)}
-                      ref={(el) =>
-                        createEffect(
-                          () => (el.indeterminate = fileTicked(file.path) && offChanges(file.path).length > 0),
-                        )
-                      }
-                      aria-label={`Put ${file.path} into the commit`}
-                      onChange={() => toggleFile(file.path)}
-                    />
-                    <button type="button" class="git-file-name" onClick={() => setSelected(file.path)}>
-                      <span class="path">{file.path}</span>
-                      <span class="git-file-meta">
-                        <Show when={file.added > 0}>
-                          <span class="plus">+{file.added}</span>
-                        </Show>
-                        <Show when={file.removed > 0}>
-                          <span class="minus">−{file.removed}</span>
-                        </Show>
-                        <Show when={file.kind !== 'modified'}>
-                          <span class="word">{file.kind === 'added' ? 'new' : 'deleted'}</span>
-                        </Show>
-                        {badges(file.path)}
-                        <Show when={file.changes > 1 && fileTicked(file.path) && offChanges(file.path).length > 0}>
-                          <span class="word">
-                            {tickedChanges(file)} of {file.changes} changes ticked
-                          </span>
-                        </Show>
-                      </span>
-                    </button>
-                    <Sure
-                      label="Revert"
-                      sure="Really revert?"
-                      disabled={Boolean(busy())}
-                      title={`Put ${file.path} back as it is in the last commit`}
-                      onSure={() => act('revert', () => gitRevert(taskId, file.path))}
-                    />
-                  </div>
+            <div class="git-tab" hidden={tab() !== 'head'}>
+              <For each={overlaps()}>
+                {(overlap) => (
+                  <section class="card overlap" aria-label={`Overlap in ${overlap.path}`}>
+                    <h2>Another task changes the same {overlap.mine.length > 1 ? 'lines' : 'line'}</h2>
+                    <p>
+                      <button type="button" class="link mono" onClick={() => setSelected(overlap.path)}>
+                        {overlap.path}
+                      </button>
+                      , line {overlap.line}, is also changed in:
+                    </p>
+                    <a class="overlap-task" href={taskHref(overlap.task.id, 'changes')}>
+                      <Chip agentId={overlap.task.agentId} short={otherShort(overlap.task.agentId)} flat />
+                      <span class="grow">{overlap.task.title}</span>
+                      <span class="fine">{otherStage(overlap.task.id)}</span>
+                    </a>
+                    <Show
+                      when={overlap.theirs.length > 0}
+                      fallback={<p class="fine">That task takes these lines out.</p>}
+                    >
+                      <span class="fine">Their line {overlap.theirLine}</span>
+                      <pre class="overlap-lines">{overlap.theirs.join('\n')}</pre>
+                    </Show>
+                    <p class="fine">Whichever merges second gets the conflict. You can commit as it is.</p>
+                    <div class="actions">
+                      <button
+                        type="button"
+                        class="btn small"
+                        disabled={Boolean(busy()) || !canAsk()}
+                        onClick={() => act('combine', () => sendPrompt(taskId, combinePrompt(overlap)))}
+                      >
+                        Ask {agentName()} to combine them
+                      </button>
+                      <button
+                        type="button"
+                        class="btn small ghost"
+                        disabled={Boolean(busy())}
+                        onClick={() => act('dismiss', () => dismissOverlap(taskId, overlap.mark).then(loadOverlaps))}
+                      >
+                        Not a problem
+                      </button>
+                    </div>
+                  </section>
                 )}
               </For>
-            </section>
-
-            <Show when={files().length > 0 || amend()}>
               <section class="git-block">
-                <label class="pane-title" for={`commit-${taskId}`}>
-                  Commit message
-                </label>
-                <textarea
-                  id={`commit-${taskId}`}
-                  class="git-message"
-                  rows="2"
-                  value={text()}
-                  onInput={(event) => {
-                    setTouched(true);
-                    setText(event.currentTarget.value);
-                  }}
-                />
                 <div class="git-head">
-                  <span class="grow fine">
-                    {awaited() !== null
-                      ? `${agentName()} is writing it`
-                      : touched()
-                        ? ''
-                        : "Taken from the task's title. Edit it freely."}
-                  </span>
-                  <button
-                    type="button"
-                    class="btn tiny ghost"
-                    disabled={Boolean(busy()) || !canAsk() || awaited() !== null}
-                    title={`${agentName()} reads the changes and writes the message. It is a turn of the conversation.`}
-                    onClick={() => void askForMessage()}
-                  >
-                    Ask {agentName()} to write it
-                  </button>
+                  <h2 class="pane-title grow">Not committed</h2>
+                  <Show when={files().length > 0}>
+                    <span class="fine">Ticked files go into the commit</span>
+                  </Show>
                 </div>
+                <Show when={files().length === 0}>
+                  <p class="fine">Everything is committed.</p>
+                </Show>
+                <For each={files()}>
+                  {(file) => (
+                    <div class="git-file" aria-current={file.path === selected() ? 'true' : undefined}>
+                      <input
+                        type="checkbox"
+                        checked={fileTicked(file.path)}
+                        ref={(el) =>
+                          createEffect(
+                            () => (el.indeterminate = fileTicked(file.path) && offChanges(file.path).length > 0),
+                          )
+                        }
+                        aria-label={`Put ${file.path} into the commit`}
+                        onChange={() => toggleFile(file.path)}
+                      />
+                      <button type="button" class="git-file-name" onClick={() => setSelected(file.path)}>
+                        <span class="path">{file.path}</span>
+                        <span class="git-file-meta">
+                          <Show when={file.added > 0}>
+                            <span class="plus">+{file.added}</span>
+                          </Show>
+                          <Show when={file.removed > 0}>
+                            <span class="minus">−{file.removed}</span>
+                          </Show>
+                          <Show when={file.kind !== 'modified'}>
+                            <span class="word">{file.kind === 'added' ? 'new' : 'deleted'}</span>
+                          </Show>
+                          {badges(file.path)}
+                          <Show when={file.changes > 1 && fileTicked(file.path) && offChanges(file.path).length > 0}>
+                            <span class="word">
+                              {tickedChanges(file)} of {file.changes} changes ticked
+                            </span>
+                          </Show>
+                        </span>
+                      </button>
+                      <Sure
+                        label="Revert"
+                        sure="Really revert?"
+                        disabled={Boolean(busy())}
+                        title={`Put ${file.path} back as it is in the last commit`}
+                        onSure={() => act('revert', () => gitRevert(taskId, file.path))}
+                      />
+                    </div>
+                  )}
+                </For>
+              </section>
 
-                <fieldset class="git-after">
-                  <legend>After the commit</legend>
-                  <label>
-                    <input
-                      type="radio"
-                      name={`after-${taskId}`}
-                      checked={after() === 'stop'}
-                      onChange={() => setAfter('stop')}
-                    />
-                    Stop there
+              <Show when={files().length > 0 || amend()}>
+                <section class="git-block">
+                  <label class="pane-title" for={`commit-${taskId}`}>
+                    Commit message
                   </label>
-                  <label classList={{ dim: !canPush() }}>
-                    <input
-                      type="radio"
-                      name={`after-${taskId}`}
-                      checked={after() === 'push'}
-                      disabled={!canPush()}
-                      onChange={() => setAfter('push')}
-                    />
-                    Push
-                    <Show when={!canPush()}>
-                      <span class="fine">this project has no remote</span>
-                    </Show>
-                  </label>
-                  <Show when={canPush() && host()}>
+                  <textarea
+                    id={`commit-${taskId}`}
+                    class="git-message"
+                    rows="2"
+                    value={text()}
+                    onInput={(event) => {
+                      setTouched(true);
+                      setText(event.currentTarget.value);
+                    }}
+                  />
+                  <div class="git-head">
+                    <span class="grow fine">
+                      {awaited() !== null
+                        ? `${agentName()} is writing it`
+                        : touched()
+                          ? ''
+                          : "Taken from the task's title. Edit it freely."}
+                    </span>
+                    <button
+                      type="button"
+                      class="btn tiny ghost"
+                      disabled={Boolean(busy()) || !canAsk() || awaited() !== null}
+                      title={`${agentName()} reads the changes and writes the message. It is a turn of the conversation.`}
+                      onClick={() => void askForMessage()}
+                    >
+                      Ask {agentName()} to write it
+                    </button>
+                  </div>
+
+                  <fieldset class="git-after">
+                    <legend>After the commit</legend>
                     <label>
                       <input
                         type="radio"
                         name={`after-${taskId}`}
-                        checked={after() === 'request'}
-                        onChange={() => setAfter('request')}
+                        checked={after() === 'stop'}
+                        onChange={() => setAfter('stop')}
                       />
-                      Push and open a {host()!.word}
+                      Stop there
                     </label>
-                  </Show>
-                </fieldset>
+                    <label classList={{ dim: !canPush() }}>
+                      <input
+                        type="radio"
+                        name={`after-${taskId}`}
+                        checked={after() === 'push'}
+                        disabled={!canPush()}
+                        onChange={() => setAfter('push')}
+                      />
+                      Push
+                      <Show when={!canPush()}>
+                        <span class="fine">this project has no remote</span>
+                      </Show>
+                    </label>
+                    <Show when={canPush() && host()}>
+                      <label>
+                        <input
+                          type="radio"
+                          name={`after-${taskId}`}
+                          checked={after() === 'request'}
+                          onChange={() => setAfter('request')}
+                        />
+                        Push and open a {host()!.word}
+                      </label>
+                    </Show>
+                  </fieldset>
 
-                <button
-                  type="button"
-                  class="btn primary tall"
-                  disabled={Boolean(busy()) || picks().length === 0 || text().trim() === ''}
-                  onClick={commit}
-                >
-                  {busy() === 'commit' ? 'Committing' : commitLabel()}
-                </button>
-                <label class="git-amend" classList={{ dim: !canAmend() }}>
-                  <input
-                    type="checkbox"
-                    checked={amend()}
-                    disabled={!canAmend()}
-                    onChange={(event) => setAmend(event.currentTarget.checked)}
-                  />
-                  Add to the last commit, not a new one
-                </label>
-              </section>
-            </Show>
-
-            <section class="git-block">
-              <div class="git-head">
-                <h2 class="pane-title grow">On this branch</h2>
-                <Show when={state().notPushed > 0}>
-                  <span class="fine accent">{state().notPushed} not pushed</span>
-                </Show>
-                <Show when={state().notPushed > 0 && canPush()}>
                   <button
                     type="button"
-                    class="btn tiny"
-                    disabled={Boolean(busy())}
-                    onClick={() => act('push', () => gitPush(taskId))}
+                    class="btn primary tall"
+                    disabled={Boolean(busy()) || picks().length === 0 || text().trim() === ''}
+                    onClick={commit}
                   >
-                    {busy() === 'push' ? 'Pushing' : 'Push'}
+                    {busy() === 'commit' ? 'Committing' : commitLabel()}
                   </button>
-                </Show>
-              </div>
-              <Show when={state().commits.length === 0}>
-                <p class="fine">No commits yet{state().base ? ` since ${state().base}` : ''}.</p>
+                  <label class="git-amend" classList={{ dim: !canAmend() }}>
+                    <input
+                      type="checkbox"
+                      checked={amend()}
+                      disabled={!canAmend()}
+                      onChange={(event) => setAmend(event.currentTarget.checked)}
+                    />
+                    Add to the last commit, not a new one
+                  </label>
+                </section>
               </Show>
-              <For each={commits()}>
-                {(made, index) => (
-                  <div class="git-commit">
-                    <div class="grow">
-                      <span class="subject">{made.subject}</span>
-                      <span class="git-commit-meta">
-                        <span class="mono">{made.short}</span>
-                        <span>
-                          {made.author}, {ago(made.at)}
+            </div>
+
+            <div class="git-tab" hidden={tab() !== 'ahead'}>
+              <section class="git-block">
+                <div class="git-head">
+                  <h2 class="pane-title grow">Committed</h2>
+                  <Show when={ahead().length > 0}>
+                    <span class="fine accent">{ahead().length} not pushed</span>
+                  </Show>
+                </div>
+                <Show when={ahead().length === 0}>
+                  <p class="fine">
+                    {pushed().length > 0
+                      ? 'Every commit is pushed.'
+                      : `No commits yet${state().base ? ` since ${state().base}` : ''}.`}
+                  </p>
+                </Show>
+                <For each={ahead()}>
+                  {(made, index) => (
+                    <div class="git-commit">
+                      <div class="grow">
+                        <span class="subject">{made.subject}</span>
+                        <span class="git-commit-meta">
+                          <span class="mono">{made.short}</span>
+                          <span>
+                            {made.author}, {ago(made.at)}
+                          </span>
                         </span>
-                        <span classList={{ accent: !made.pushed }}>{made.pushed ? 'pushed' : 'not pushed'}</span>
-                      </span>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn tiny ghost"
+                        disabled={Boolean(busy()) || index() !== 0}
+                        title={
+                          index() === 0
+                            ? 'Take the commit off the branch and keep its changes in the files'
+                            : 'Undo the commits above this one first'
+                        }
+                        onClick={() => act('undo', () => gitUndoCommit(taskId, made.hash))}
+                      >
+                        Undo
+                      </button>
                     </div>
-                    <Show
-                      when={made.pushed}
-                      fallback={
-                        <button
-                          type="button"
-                          class="btn tiny ghost"
-                          disabled={Boolean(busy()) || index() !== 0}
-                          title={
-                            index() === 0
-                              ? 'Take the commit off the branch and keep its changes in the files'
-                              : 'Undo the commits above this one first'
-                          }
-                          onClick={() => act('undo', () => gitUndoCommit(taskId, made.hash))}
-                        >
-                          Undo
-                        </button>
-                      }
+                  )}
+                </For>
+                <Show when={ahead().length > 0}>
+                  <Show when={canPush()} fallback={<p class="fine">There is no remote to push them to.</p>}>
+                    <button
+                      type="button"
+                      class="btn primary tall"
+                      disabled={Boolean(busy())}
+                      onClick={() => void push(false)}
                     >
+                      {busy() === 'push' ? 'Pushing' : 'Push'}
+                    </button>
+                    <Show when={host() && !request()}>
+                      <button type="button" class="btn tall" disabled={Boolean(busy())} onClick={() => void push(true)}>
+                        {busy() === 'push-request' ? 'Opening' : `Push and open a ${host()!.word}`}
+                      </button>
+                    </Show>
+                  </Show>
+                </Show>
+              </section>
+              <SpanFiles span={span} title="What they change" none="Nothing waits for a push." />
+            </div>
+
+            <div class="git-tab" hidden={tab() !== 'request'}>
+              <RequestCard
+                task={props.task}
+                commits={state().commits.length}
+                overlaps={overlaps().length}
+                onChanged={() => void props.git.reload()}
+              />
+              <PipelineCard
+                task={props.task}
+                pushes={`${state().commits.length}:${state().notPushed}`}
+                onBrief={setPipeBrief}
+              />
+              <Show when={request()}>
+                <RequestTalk taskId={taskId} projectId={props.task.info.projectId} shown={tab() === 'request'} />
+              </Show>
+              <section class="git-block">
+                <div class="git-head">
+                  <h2 class="pane-title grow">Pushed</h2>
+                  <Show when={pushed().length > 0}>
+                    <span class="fine">{plural(pushed().length, 'commit')}</span>
+                  </Show>
+                </div>
+                <Show when={pushed().length === 0}>
+                  <p class="fine">
+                    {canPush() ? 'Nothing is pushed yet.' : 'There is no remote, so nothing can be pushed.'}
+                  </p>
+                </Show>
+                <For each={pushed()}>
+                  {(made) => (
+                    <div class="git-commit">
+                      <div class="grow">
+                        <span class="subject">{made.subject}</span>
+                        <span class="git-commit-meta">
+                          <span class="mono">{made.short}</span>
+                          <span>
+                            {made.author}, {ago(made.at)}
+                          </span>
+                        </span>
+                      </div>
                       <Sure
                         label="Revert"
                         sure="Really revert?"
@@ -717,158 +835,189 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
                         title="Add a new commit that takes this one back"
                         onSure={() => act('revert-commit', () => gitRevertCommit(taskId, made.hash))}
                       />
-                    </Show>
-                  </div>
-                )}
-              </For>
-            </section>
-
-            <RequestCard
-              task={props.task}
-              commits={state().commits.length}
-              overlaps={overlaps().length}
-              onChanged={() => void props.git.reload()}
-            />
-            <PipelineCard
-              task={props.task}
-              pushes={`${state().commits.length}:${state().notPushed}`}
-              onBrief={setPipeBrief}
-            />
+                    </div>
+                  )}
+                </For>
+              </section>
+              <Show when={pushed().length > 0}>
+                <SpanFiles
+                  span={span}
+                  title="What is pushed changes"
+                  none="No file differs from where the branch started."
+                />
+              </Show>
+            </div>
           </section>
           <Grip name="changes" edge="right" label="Drag to make the column of changes wider or narrower" />
 
-          <section class="center">
-            <Show
-              when={selected()}
-              fallback={
-                <div class="center-note">
-                  <h2>Nothing to show</h2>
-                  <p>There are no changes that are not committed.</p>
-                </div>
-              }
-            >
-              {(path) => {
-                const file = () => files().find((entry) => entry.path === path());
-                return (
-                  <>
-                    <div class="diff-head">
-                      <h2 class="mono">{path()}</h2>
-                      <Show when={file()}>
-                        {(info) => (
-                          <>
-                            <span class="mono small">
-                              <Show when={info().added > 0}>
-                                <span class="plus">+{info().added}</span>{' '}
-                              </Show>
-                              <Show when={info().removed > 0}>
-                                <span class="minus">−{info().removed}</span>
-                              </Show>
-                            </span>
-                            <span class="fine">
-                              {plural(info().changes, 'change')},{' '}
-                              {tickedChanges(info()) === info().changes
-                                ? info().changes === 1
-                                  ? 'in the commit'
-                                  : 'all in the commit'
-                                : tickedChanges(info()) === 0
-                                  ? 'not in the commit'
-                                  : `${tickedChanges(info())} in the commit`}
-                            </span>
-                          </>
-                        )}
+          <Show
+            when={tab() === 'head'}
+            fallback={
+              <Show
+                when={tab() === 'ahead'}
+                fallback={
+                  <SpanCenter
+                    taskId={taskId}
+                    span={span}
+                    title={request() ? `In ${requestName(request()!)}` : 'Pushed'}
+                    beside={
+                      <Show when={state().base && pushed().length > 0}>
+                        <span class="fine">compared with where the branch left {state().base}</span>
                       </Show>
-                      <span class="grow" />
-                      <Show when={file()?.kind !== 'deleted'}>
-                        <button
-                          type="button"
-                          class="btn small ghost"
-                          onClick={() => showInEditor(path(), diff()?.hunks[0]?.fromLine)}
-                        >
-                          Open in the editor
-                        </button>
-                      </Show>
-                      <Sure
-                        class="btn small ghost"
-                        label="Revert this file"
-                        about={path()}
-                        sure="Really revert?"
-                        disabled={Boolean(busy())}
-                        onSure={() => act('revert', () => gitRevert(taskId, path()))}
-                      />
-                    </div>
-
-                    <div class="diff-body">
-                      <Show when={diffProblem()}>
-                        <p class="diff-note">{diffProblem()}</p>
-                      </Show>
-                      <Show when={diff()?.binary}>
-                        <p class="diff-note">
-                          This file is not text, or is too large to show. It can be committed or reverted whole.
-                        </p>
-                      </Show>
-                      <Show when={diff() && !diff()!.binary && diff()!.hunks.length === 0}>
-                        <p class="diff-note">
-                          {diff()!.kind === 'added'
-                            ? 'A new, empty file.'
-                            : 'Only the file itself changed, not its lines.'}
-                        </p>
-                      </Show>
-                      <For each={hunks()}>
-                        {(hunk) => (
-                          <>
-                            <div class="hunk-bar">
-                              <label>
-                                <input
-                                  type="checkbox"
-                                  checked={changeTicked(path(), hunk.index)}
-                                  disabled={!file()}
-                                  onChange={() => file() && toggleChange(file()!, hunk.index)}
-                                />
-                                In the commit
-                              </label>
-                              <span>
-                                {where(hunk)}
-                                {who(hunk)}
+                    }
+                    none={pushed().length === 0 ? 'Nothing is pushed yet.' : 'What is pushed changes no file.'}
+                    foot="What is pushed: what a reviewer sees."
+                  />
+                }
+              >
+                <SpanCenter
+                  taskId={taskId}
+                  span={span}
+                  title="Committed, not pushed"
+                  beside={
+                    <Show when={ahead().length > 0}>
+                      <span class="fine">{plural(ahead().length, 'commit')}</span>
+                    </Show>
+                  }
+                  none={ahead().length === 0 ? 'Nothing waits for a push.' : 'These commits change no file.'}
+                  foot="What the commits that are not pushed change."
+                />
+              </Show>
+            }
+          >
+            <section class="center">
+              <Show
+                when={selected()}
+                fallback={
+                  <div class="center-note">
+                    <h2>Nothing to show</h2>
+                    <p>There are no changes that are not committed.</p>
+                  </div>
+                }
+              >
+                {(path) => {
+                  const file = () => files().find((entry) => entry.path === path());
+                  return (
+                    <>
+                      <div class="diff-head">
+                        <h2 class="mono">{path()}</h2>
+                        <Show when={file()}>
+                          {(info) => (
+                            <>
+                              <span class="mono small">
+                                <Show when={info().added > 0}>
+                                  <span class="plus">+{info().added}</span>{' '}
+                                </Show>
+                                <Show when={info().removed > 0}>
+                                  <span class="minus">−{info().removed}</span>
+                                </Show>
                               </span>
-                              <span class="grow" />
-                              <Sure
-                                label="Revert this change"
-                                sure="Really revert?"
-                                disabled={Boolean(busy())}
-                                onSure={() => act('revert', () => gitRevert(taskId, path(), hunk.index))}
-                              />
-                            </div>
-                            <For each={hunk.lines}>
-                              {(line) => (
-                                <div class={`diff-row ${line.kind}`}>
-                                  <button
-                                    type="button"
-                                    class="no"
-                                    title={`Ask ${agentName()} about this line`}
-                                    onClick={() => ask(path(), line.newNo ?? line.oldNo ?? 1, line.text)}
-                                  >
-                                    {line.newNo ?? line.oldNo}
-                                  </button>
-                                  <span class="sign" aria-hidden="true">
-                                    {line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' '}
-                                  </span>
-                                  <span class="src">{line.text || ' '}</span>
-                                </div>
-                              )}
-                            </For>
-                          </>
-                        )}
-                      </For>
-                    </div>
+                              <span class="fine">
+                                {plural(info().changes, 'change')},{' '}
+                                {tickedChanges(info()) === info().changes
+                                  ? info().changes === 1
+                                    ? 'in the commit'
+                                    : 'all in the commit'
+                                  : tickedChanges(info()) === 0
+                                    ? 'not in the commit'
+                                    : `${tickedChanges(info())} in the commit`}
+                              </span>
+                            </>
+                          )}
+                        </Show>
+                        <span class="grow" />
+                        <Show when={file()?.kind !== 'deleted'}>
+                          <button
+                            type="button"
+                            class="btn small ghost"
+                            onClick={() => showInEditor(path(), diff()?.hunks[0]?.fromLine)}
+                          >
+                            Open in the editor
+                          </button>
+                        </Show>
+                        <Sure
+                          class="btn small ghost"
+                          label="Revert this file"
+                          about={path()}
+                          sure="Really revert?"
+                          disabled={Boolean(busy())}
+                          onSure={() => act('revert', () => gitRevert(taskId, path()))}
+                        />
+                      </div>
 
-                    <div class="statusline">
-                      <span>Click a line number to ask {agentName()} about that line</span>
-                    </div>
-                  </>
-                );
-              }}
-            </Show>
-          </section>
+                      <div class="diff-body">
+                        <Show when={diffProblem()}>
+                          <p class="diff-note">{diffProblem()}</p>
+                        </Show>
+                        <Show when={diff()?.binary}>
+                          <p class="diff-note">
+                            This file is not text, or is too large to show. It can be committed or reverted whole.
+                          </p>
+                        </Show>
+                        <Show when={diff() && !diff()!.binary && diff()!.hunks.length === 0}>
+                          <p class="diff-note">
+                            {diff()!.kind === 'added'
+                              ? 'A new, empty file.'
+                              : 'Only the file itself changed, not its lines.'}
+                          </p>
+                        </Show>
+                        <For each={hunks()}>
+                          {(hunk) => (
+                            <>
+                              <div class="hunk-bar">
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    checked={changeTicked(path(), hunk.index)}
+                                    disabled={!file()}
+                                    onChange={() => file() && toggleChange(file()!, hunk.index)}
+                                  />
+                                  In the commit
+                                </label>
+                                <span>
+                                  {where(hunk)}
+                                  {who(hunk)}
+                                </span>
+                                <span class="grow" />
+                                <Sure
+                                  label="Revert this change"
+                                  sure="Really revert?"
+                                  disabled={Boolean(busy())}
+                                  onSure={() => act('revert', () => gitRevert(taskId, path(), hunk.index))}
+                                />
+                              </div>
+                              <For each={hunk.lines}>
+                                {(line) => (
+                                  <div class={`diff-row ${line.kind}`}>
+                                    <button
+                                      type="button"
+                                      class="no"
+                                      title={`Ask ${agentName()} about this line`}
+                                      onClick={() => ask(path(), line.newNo ?? line.oldNo ?? 1, line.text)}
+                                    >
+                                      {line.newNo ?? line.oldNo}
+                                    </button>
+                                    <span class="sign" aria-hidden="true">
+                                      {line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' '}
+                                    </span>
+                                    <span class="src">{line.text || ' '}</span>
+                                  </div>
+                                )}
+                              </For>
+                            </>
+                          )}
+                        </For>
+                      </div>
+
+                      <div class="statusline">
+                        <span>Click a line number to ask {agentName()} about that line</span>
+                      </div>
+                    </>
+                  );
+                }}
+              </Show>
+            </section>
+          </Show>
         </>
       )}
     </Show>

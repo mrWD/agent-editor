@@ -2700,6 +2700,38 @@ button.search-link:hover {
 .span-mode .switcher button {
   font-size: 12px;
 }
+/* The three parts of the Changes view. Each takes what room its name needs; together they may wrap. */
+.changes-tabs {
+  flex: 1 1 auto;
+}
+.changes-tabs button {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+.changes-tabs .count {
+  margin-left: 0;
+}
+.span-mode > .btn[aria-pressed='true'] {
+  background: var(--pressed);
+  color: var(--text);
+}
+/* One part of the column. What it holds lies in the column as if the part were not there. */
+.git-tab {
+  display: contents;
+}
+.git-tab[hidden] {
+  display: none;
+}
+.request-talk .detail-notes {
+  padding: 0;
+}
+/* A long comment, such as a report a bot posts, scrolls in its own box: the column stays short. */
+.request-talk .detail-note {
+  max-height: 220px;
+  overflow-y: auto;
+}
 .away-row {
   display: flex;
   align-items: baseline;
