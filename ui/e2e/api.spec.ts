@@ -108,12 +108,12 @@ test.describe('The API of a task', () => {
     // Nothing runs and no file describes the API: that is said, and any request can still be written.
     await expect(view.getByRole('status')).toContainText('No description of the API was found among the files');
     const list = view.getByRole('navigation', { name: 'What the API offers' });
-    await expect(list.getByRole('button')).toHaveText(['Any request']);
+    await expect(list.locator('.api-row')).toHaveText(['Any request']);
 
     await view.getByLabel('Address of the service').fill(task.address);
     await view.getByLabel('Address of the service').press('Enter');
     await expect(view).toContainText('Shop 0.3, as the service gives it at /openapi.json');
-    await expect(list.getByRole('button')).toHaveText([
+    await expect(list.locator('.api-row')).toHaveText([
       /GET\s*\/gifts/,
       /GET\s*\/health/,
       /POST\s*\/orders/,
@@ -223,7 +223,7 @@ test.describe('The API of a task', () => {
     await view.getByLabel('Address of the service').fill(task.address);
     await view.getByLabel('Address of the service').press('Enter');
     const list = view.getByRole('navigation', { name: 'What the API offers' });
-    await expect(list.getByRole('button')).toHaveCount(5);
+    await expect(list.locator('.api-row')).toHaveCount(5);
 
     // Without a base there is nothing to compare with, and the view says what to give.
     await view.getByRole('button', { name: 'Contract', exact: true }).click();
@@ -242,14 +242,25 @@ test.describe('The API of a task', () => {
       'GET /giftsIt is new',
     ]);
 
-    // What the task touched stands first in the list and is marked; pressed in the contract, an operation opens.
-    await expect(list.getByRole('button')).toHaveText([
+    // Once there is something to compare with, the list holds only what the task touched, each marked.
+    const scope = list.getByRole('group', { name: 'Which operations to list' });
+    await expect(scope.getByRole('button', { name: 'Changed 2' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(list.locator('.api-row')).toHaveText([
+      /GET\s*\/gifts\s*new/,
+      /POST\s*\/orders\s*changed/,
+      'Any request',
+    ]);
+    // The whole API is one press away: what the task touched stands first in it.
+    await scope.getByRole('button', { name: 'All 4' }).click();
+    await expect(scope.getByRole('button', { name: 'All 4' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(list.locator('.api-row')).toHaveText([
       /GET\s*\/gifts\s*new/,
       /POST\s*\/orders\s*changed/,
       /GET\s*\/health$/,
       /GET\s*\/orders\/\{id\}$/,
       'Any request',
     ]);
+    // Pressed in the contract, an operation opens.
     await contract.getByRole('button', { name: 'POST /orders' }).first().click();
     const request = view.getByRole('region', { name: 'Request' });
     await expect(request.getByRole('heading')).toContainText('POST/orders');
@@ -271,6 +282,13 @@ test.describe('The API of a task', () => {
     await expect(view).toContainText('Shop 0.3, read from docs/openapi.json');
     await expect(view.getByRole('button', { name: 'No change in the contract' })).toBeVisible();
     await expect(view.getByRole('status')).toContainText('No service of this task is running');
+    // With nothing touched the whole API is listed; asked for what changed, the list says there is none.
+    const scope = view.getByRole('group', { name: 'Which operations to list' });
+    await expect(scope.getByRole('button', { name: 'All 3' })).toHaveAttribute('aria-pressed', 'true');
+    await scope.getByRole('button', { name: 'Changed 0' }).click();
+    await expect(view.getByRole('navigation', { name: 'What the API offers' })).toContainText(
+      'This task changes no operation of the API.',
+    );
 
     // The task rewrites the file: the contract says what changed, with nothing committed.
     const folder = await app.folderOf(app.taskId());

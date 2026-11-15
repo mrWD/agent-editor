@@ -77,6 +77,8 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
   });
   const [view, setView] = createKept<'request' | 'contract'>(`task:${taskId}:api.view`, 'request');
   const [filter, setFilter] = createSignal('');
+  /** Which operations the list holds. `null` until the user says: then what the task touched, if anything. */
+  const [scope, setScope] = createKept<'touched' | 'all' | null>(`task:${taskId}:api.scope`, null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [sendProblem, setSendProblem] = createSignal<string | null>(null);
   const [sending, setSending] = createSignal(false);
@@ -146,8 +148,15 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
     if (picked() === '' && first) setPicked(first.id);
   });
   const byId = createMemo(() => new Map(operations().map((operation) => [operation.id, operation])));
+  /** The operations the task added or changed, when the contract was compared with the base. */
+  const touched = createMemo(() => operations().filter((operation) => operation.change !== null));
+  /** Only what the task touched is listed: as chosen, else whenever the task touched something. */
+  const onlyTouched = () =>
+    Boolean(api()?.contract) && (scope() ?? (touched().length > 0 ? 'touched' : 'all')) === 'touched';
   /** The rows of the list, by name: a row stays the same row when the list is read again. */
-  const shownIds = createMemo(() => matching(operations(), filter()).map((operation) => operation.id));
+  const shownIds = createMemo(() =>
+    matching(onlyTouched() ? touched() : operations(), filter()).map((operation) => operation.id),
+  );
   /** The operation on show: the one picked, else the first, so the view never opens on nothing. */
   const operation = (): ApiOperation | null =>
     picked() === ANY ? null : (byId().get(picked()) ?? operations()[0] ?? null);
@@ -643,6 +652,21 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
       <Show when={api()} fallback={<p class="bottom-note">Reading the API of this task</p>}>
         <div class="api-split">
           <nav class="api-list" aria-label="What the API offers" style={{ flex: `0 0 ${sizeOf('list')}px` }}>
+            <Show when={api()?.contract}>
+              <div class="switcher api-scope" role="group" aria-label="Which operations to list">
+                <button
+                  type="button"
+                  aria-pressed={onlyTouched()}
+                  title={`The operations this task added or changed, against ${api()!.contract!.against}`}
+                  onClick={() => setScope('touched')}
+                >
+                  Changed <span class="count">{touched().length}</span>
+                </button>
+                <button type="button" aria-pressed={!onlyTouched()} onClick={() => setScope('all')}>
+                  All <span class="count">{operations().length}</span>
+                </button>
+              </div>
+            </Show>
             <Show when={operations().length > 6}>
               <label class="sr-only" for={`api-filter-${taskId}`}>
                 Find an operation
@@ -655,6 +679,9 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
                 value={filter()}
                 onInput={(event) => setFilter(event.currentTarget.value)}
               />
+            </Show>
+            <Show when={onlyTouched() && touched().length === 0}>
+              <p class="fine api-none">This task changes no operation of the API.</p>
             </Show>
             <ul>
               <For each={shownIds()}>{(id) => <Row id={id} />}</For>
