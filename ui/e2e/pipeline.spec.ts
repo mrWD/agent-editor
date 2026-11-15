@@ -4,11 +4,15 @@ import { DEMO_FILE, DEMO_TEXT, expect, test, unique, writeIn, type App, type Pro
 const card = (app: App) => app.page.getByRole('region', { name: 'Pipeline' });
 const run = (app: App, name: string) => card(app).getByRole('group', { name, exact: true });
 
-/** A task of a project on GitHub, on its Changes view. Nothing is pushed: the stand-in answers for the branch. */
+/**
+ * A task of a project on GitHub, on the part of its Changes view where the pipeline is: what is
+ * pushed. Nothing is pushed: the stand-in answers for the branch.
+ */
 async function taskOn(app: App, shop: Project) {
   await app.openHome();
   const taskId = await app.createTask({ text: unique('Pipeline'), folder: shop.dir });
   await app.showView('Changes');
+  await app.showChanges('Pushed');
   return taskId;
 }
 
@@ -47,12 +51,17 @@ test.describe('The pipeline of a task’s branch', () => {
 
     await expect(card(app).getByRole('heading', { name: 'Pipeline' })).toBeVisible();
     await expect(card(app)).toContainText('failed · commit 01234567');
-    // CI-17: the card stands at the foot of a long column, so the head of the column says how the
-    // pipeline stands, over all its runs, and a press goes down to the card.
+    // CI-17: the card is in the third part, so the tab of that part is marked with how the pipeline
+    // stands, and the other parts say it in a line, over all its runs. A press on the line goes to the card.
+    await expect(app.changesTab('Pushed').getByTitle('Pipeline failed')).toBeVisible();
+    await app.showChanges('Not committed');
+    await expect(card(app)).toBeHidden();
     const brief = app.git.getByRole('button', { name: 'Pipeline failed: 1 failed, 2 passed, 1 skipped' });
     await expect(brief).toBeVisible();
     await brief.click();
+    await expect(app.changesTab('Pushed')).toHaveAttribute('aria-pressed', 'true');
     await expect(card(app)).toBeInViewport();
+    await expect(brief).toHaveCount(0);
     const ci = run(app, 'CI');
     await expect(ci).toContainText('1 failed, 1 passed, 1 skipped');
     await expect(ci.getByRole('link', { name: 'CI' })).toHaveAttribute(
@@ -186,7 +195,9 @@ test.describe('The pipeline of a task’s branch', () => {
     shop.setRuns([{ id: 9100, name: 'CI', state: 'running', jobs: [{ id: 7100, name: 'unit', state: 'running' }] }]);
     const task = await app.core.task(taskId);
     writeIn(task.cwd, DEMO_FILE, DEMO_TEXT.replace('limit: 5,', 'limit: 6,'));
+    await app.showChanges('Not committed');
     await app.commit('Raise the limit');
+    await app.showChanges('Pushed');
     await expect(run(app, 'CI')).toContainText('1 running');
     await expect(card(app)).toContainText('running · commit 01234567');
   });

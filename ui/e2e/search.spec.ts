@@ -336,7 +336,7 @@ test.describe('The search over everything: commits and every project', () => {
 
     // Back to what is not committed, which is nothing now.
     await commit.getByRole('button', { name: 'Back to the changes' }).click();
-    await expect(app.git.getByText('Everything is committed.')).toBeVisible();
+    await expect(app.git.getByText('Everything is committed.')).toBeAttached();
     await expect(app.commitRow(subject)).toBeVisible();
 
     // Leaving the view puts a commit away too: coming back to Changes shows the changes.
@@ -346,7 +346,7 @@ test.describe('The search over everything: commits and every project', () => {
     await expect(commit.getByRole('heading', { name: 'Start' })).toBeVisible();
     await app.showView('Code');
     await app.showView('Changes');
-    await expect(app.git.getByText('Everything is committed.')).toBeVisible();
+    await expect(app.git.getByText('Everything is committed.')).toBeAttached();
     await expect(commit).toHaveCount(0);
   });
 

@@ -283,9 +283,20 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   the task's folder. Cmd/Ctrl+K searches tasks, files, conversations, commands
   and the text of the code; with code selected it attaches that code to your
   next message.
-- **M4, git.** The Changes view: what differs from the last commit, ticks on
-  files and on single changes, commit, push, "add to the last commit", the
-  branch's commits with Undo and Revert, updating from the base branch. A pull
+- **M4, git.** The Changes view, in three parts along the path of a change,
+  picked at the head of its column, each with how much it holds. "Not
+  committed": what differs from the last commit, ticks on files and on single
+  changes, the commit, "add to the last commit". "Committed": the commits
+  that are not pushed, with Undo, and the push, alone or with a request
+  opened for it. The third is called "Pushed" until there is a request and
+  by the request's name after ("PR #128", "MR !48"): the request and what
+  stands before its merge, the pipeline, what was written under the request,
+  and the pushed commits with Revert. The middle shows what the part on show
+  changes. The view opens on the first part that holds something and follows
+  a change: a commit of everything leads to the commits, a push to the
+  request; a change made meanwhile is only counted on its part. "Since last
+  visit" stands apart from the three. Updating from the base branch is in
+  every part. A pull
   or merge request is opened from there with its review comments, which go to
   the agent or get a reply; "Merge now" merges it, deletes the branch and the
   working copy and archives the task, and "Merge by itself" does that once the
