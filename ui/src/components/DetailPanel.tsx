@@ -33,7 +33,9 @@ import {
   type ReviewComment,
   type SpanFile,
 } from '../core/store';
+import { sizeOf } from '../core/sizes';
 import { ago } from './bits';
+import { Grip } from './Grip';
 import { Markdown } from './Markdown';
 import { PipelineCard } from './PipelineCard';
 
@@ -110,6 +112,9 @@ export function createDetails(): Details {
   };
 }
 
+/** The least width left to what a panel stands beside, however wide the panel is dragged. */
+const LEAST_BESIDE = 280;
+
 /** The panels that are open, in the order they were opened: Escape closes the newest. */
 const open: symbol[] = [];
 
@@ -119,8 +124,8 @@ const open: symbol[] = [];
  */
 function Frame(props: {
   details: Details;
-  /** What the panel is of, for whoever cannot see it: "issue", "request". */
-  what: string;
+  /** What the panel is of, for whoever cannot see it: "issue", "request". Its width is kept under the same name. */
+  what: 'issue' | 'request';
   children: JSX.Element;
 }): JSX.Element {
   const me = Symbol('panel');
@@ -144,7 +149,17 @@ function Frame(props: {
   });
 
   return (
-    <aside class="detail" aria-label={`Details of ${props.what} ${detail()?.key ?? title()}`}>
+    <aside
+      class="detail"
+      aria-label={`Details of ${props.what} ${detail()?.key ?? title()}`}
+      style={{ width: `${sizeOf(props.what)}px` }}
+    >
+      <Grip
+        name={props.what}
+        edge="left"
+        label={`Drag to make the panel of the ${props.what} wider or narrower`}
+        room={() => window.innerWidth - LEAST_BESIDE}
+      />
       <div class="detail-head">
         <Show
           when={detail()}

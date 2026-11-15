@@ -300,6 +300,21 @@ test.describe('An issue and a request in full', () => {
     await requestPanel(app).getByRole('tab', { name: 'Changes' }).click();
     await expect(requestPanel(app).getByRole('region', { name: 'Changes' })).toContainText(DEMO_FILE);
 
+    // Each panel is as wide as its own left edge was dragged; the list keeps the room that is left.
+    const issueEdge = app.page.getByRole('separator', {
+      name: 'Drag to make the panel of the issue wider or narrower',
+    });
+    const widthOf = async (side: ReturnType<typeof panel>) => Math.round((await side.boundingBox())!.width);
+    expect(await widthOf(panel(app))).toBe(480);
+    expect(await widthOf(requestPanel(app))).toBe(480);
+    await issueEdge.focus();
+    await app.page.keyboard.press('ArrowRight');
+    await app.page.keyboard.press('ArrowRight');
+    expect(await widthOf(panel(app))).toBe(448);
+    expect(await widthOf(requestPanel(app))).toBe(480);
+    await issueEdge.dblclick();
+    expect(await widthOf(panel(app))).toBe(480);
+
     // Escape closes the one opened last; the other stays. Each closes by its own button too.
     await app.page.keyboard.press('Escape');
     await expect(requestPanel(app)).toHaveCount(0);

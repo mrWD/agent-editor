@@ -33,6 +33,8 @@ import {
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
 import { teamOf, watchTeam } from '../core/team';
 import { createKept } from '../core/kept';
+import { sizeOf } from '../core/sizes';
+import { Grip } from './Grip';
 import { allSteps, foldFailed, foldWords, keepRows, oneLine, rowsOf, setAllSteps, type Row } from '../core/feed';
 import { clearPointed, pointedText, sendsShot, setSendsShot, shooterOf } from '../core/previewState';
 import { hideSince, sinceOf } from '../core/visits';
@@ -90,6 +92,9 @@ function DiffView(props: { diff: Diff }): JSX.Element {
 }
 
 /** "Edit src/a.ts" plus its state becomes "wants to edit", "is editing", "edited". */
+/** The least height the conversation keeps, however tall the box under it is dragged. */
+const LEAST_FEED = 96;
+
 function toolVerb(kind: string, status: string): string {
   const done = status === 'completed';
   const waiting = status === 'pending';
@@ -913,6 +918,13 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         </div>
 
         <section class="composer">
+          {/* The edge between the conversation and the box: dragged up, the box takes room from the conversation. */}
+          <Grip
+            name="composer"
+            edge="top"
+            label="Drag to make the box you type in taller or shorter"
+            room={() => (feedEl?.clientHeight ?? 400) + sizeOf('composer') - LEAST_FEED}
+          />
           <label for={`msg-${props.task.info.id}`}>Message {name()}</label>
           <Show when={work().quote}>
             {(quote) => (
@@ -932,6 +944,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           <textarea
             id={`msg-${props.task.info.id}`}
             rows="2"
+            style={{ height: `${sizeOf('composer')}px` }}
             placeholder={
               work().quote
                 ? `Ask ${name()} about the code you picked`

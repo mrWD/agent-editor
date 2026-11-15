@@ -1,3 +1,5 @@
+import { sizeOf } from '../core/sizes';
+import { Grip } from './Grip';
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { core } from '../core/client';
 import {
@@ -245,7 +247,7 @@ export function JobsView(props: { taskId: string; services: RunService[] }): JSX
           }
         >
           <div class="api-split">
-            <nav class="api-list" aria-label="The jobs of the project">
+            <nav class="api-list" aria-label="The jobs of the project" style={{ flex: `0 0 ${sizeOf('list')}px` }}>
               <Show when={jobs().length > 6}>
                 <label class="sr-only" for={`jobs-filter-${taskId}`}>
                   Find a job
@@ -263,6 +265,7 @@ export function JobsView(props: { taskId: string; services: RunService[] }): JSX
                 <For each={shownIds()}>{(id) => <Row id={id} />}</For>
               </ul>
             </nav>
+            <Grip name="list" edge="right" label="Drag to make the list of jobs wider or narrower" />
             <Show when={job()}>
               {(one) => (
                 <section class="api-one" aria-label="Job">

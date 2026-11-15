@@ -1,3 +1,5 @@
+import { Grip } from '../components/Grip';
+import { sizeOf } from '../core/sizes';
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { createKept } from '../core/kept';
@@ -412,7 +414,12 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
     >
       {(state) => (
         <>
-          <section class="git" aria-label="Git: what goes in, commit, push" ref={column}>
+          <section
+            class="git"
+            aria-label="Git: what goes in, commit, push"
+            ref={column}
+            style={{ flex: `0 0 ${sizeOf('changes')}px` }}
+          >
             <ChangesMode taskId={taskId} />
             <For each={overlaps()}>
               {(overlap) => (
@@ -728,6 +735,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
               onBrief={setPipeBrief}
             />
           </section>
+          <Grip name="changes" edge="right" label="Drag to make the column of changes wider or narrower" />
 
           <section class="center">
             <Show

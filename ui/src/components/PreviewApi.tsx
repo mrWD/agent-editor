@@ -1,3 +1,5 @@
+import { sizeOf } from '../core/sizes';
+import { Grip } from './Grip';
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import {
   ANY,
@@ -640,7 +642,7 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
       </Show>
       <Show when={api()} fallback={<p class="bottom-note">Reading the API of this task</p>}>
         <div class="api-split">
-          <nav class="api-list" aria-label="What the API offers">
+          <nav class="api-list" aria-label="What the API offers" style={{ flex: `0 0 ${sizeOf('list')}px` }}>
             <Show when={operations().length > 6}>
               <label class="sr-only" for={`api-filter-${taskId}`}>
                 Find an operation
@@ -671,6 +673,7 @@ export function ApiView(props: { taskId: string; guess: string[] }): JSX.Element
               </li>
             </ul>
           </nav>
+          <Grip name="list" edge="right" label="Drag to make the list of operations wider or narrower" />
           <Show when={view() === 'contract'} fallback={<Request />}>
             <Contract />
           </Show>
