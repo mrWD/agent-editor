@@ -80,3 +80,53 @@ export function noteAbout(note: Pick<DetailNote, 'kind' | 'about'>): string {
   if (note.about === '') return '';
   return note.kind === 'review' ? note.about : `on ${note.about}`;
 }
+
+/** One thing that stands between a request and its merge: how it stands, what it is about, and a word on it. */
+export type Gate = { state: 'good' | 'wait' | 'bad'; title: string; note: string };
+
+/** What the host says stands between a request and its merge: conflicts, its checks and its review. */
+export function gateOf(
+  request: {
+    mergeable: boolean | null;
+    checks: { state: 'none' | 'pending' | 'passed' | 'failed'; passed: number; failed: number; pending: number };
+    review: 'approved' | 'changes_requested' | 'review_required' | 'none';
+  },
+  host: string,
+): Gate[] {
+  const { checks } = request;
+  return [
+    {
+      state: request.mergeable === false ? 'bad' : request.mergeable === null ? 'wait' : 'good',
+      title: 'Conflicts',
+      note:
+        request.mergeable === false
+          ? 'It conflicts with its target. Update the branch.'
+          : request.mergeable === null
+            ? `${host} is still working it out`
+            : 'None',
+    },
+    {
+      state: checks.state === 'failed' ? 'bad' : checks.state === 'pending' ? 'wait' : 'good',
+      title: 'Checks',
+      note:
+        checks.state === 'none'
+          ? 'This project runs no checks on requests'
+          : `${checks.passed} passed${checks.failed ? `, ${checks.failed} failed` : ''}${checks.pending ? `, ${checks.pending} running` : ''}`,
+    },
+    {
+      state: request.review === 'changes_requested' ? 'bad' : request.review === 'review_required' ? 'wait' : 'good',
+      title: 'Review',
+      note: {
+        approved: 'Approved',
+        changes_requested: 'Changes were asked for',
+        review_required: 'Waiting for a review',
+        none: 'Not required',
+      }[request.review],
+    },
+  ];
+}
+
+/** How a request is called where it lives, by its address: "MR !48" on GitLab, "PR #128" on GitHub. */
+export function requestName(request: { number: number; url: string }): string {
+  return request.url.includes('/merge_requests/') ? `MR !${request.number}` : `PR #${request.number}`;
+}

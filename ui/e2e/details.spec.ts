@@ -48,7 +48,8 @@ const whole = (slug: string) => ({
 
 const sectionOf = (app: App, project: Project) =>
   app.page.locator('section', { has: app.page.getByRole('heading', { level: 2, name: project.name }) });
-const panel = (app: App) => app.page.getByRole('complementary', { name: /^Details of / });
+const panel = (app: App) => app.page.getByRole('complementary', { name: /^Details of issue / });
+const requestPanel = (app: App) => app.page.getByRole('complementary', { name: /^Details of request / });
 
 test.describe('An issue and a request in full', () => {
   test('ID-01 ID-02 ID-03 the title of an issue opens it at the side: the description, the people, the comments and the pictures', async ({
@@ -73,7 +74,7 @@ test.describe('An issue and a request in full', () => {
 
     await rows.filter({ hasText: '#12' }).getByRole('button', { name: 'Login allows unlimited attempts' }).click();
     const side = panel(app);
-    await expect(side).toHaveAccessibleName('Details of #12');
+    await expect(side).toHaveAccessibleName('Details of issue #12');
     await expect(side.getByRole('heading', { level: 2 })).toHaveText('Login allows unlimited attempts');
     await expect(side.locator('.detail-head .tag')).toHaveText('open');
     await expect(side.getByRole('link', { name: 'Open in GitHub' })).toHaveAttribute(
@@ -194,18 +195,50 @@ test.describe('An issue and a request in full', () => {
     });
 
     await app.request.getByRole('button', { name: 'Details', exact: true }).click();
-    const side = panel(app);
-    await expect(side).toHaveAccessibleName('Details of #128');
+    const side = requestPanel(app);
+    await expect(side).toHaveAccessibleName('Details of request #128');
     await expect(side.getByRole('heading', { level: 2 })).toHaveText('Allow six attempts');
     await expect(side.locator('.detail-head .tag')).toHaveText(['open', 'draft']);
+    // The head of the panel opens the request where it lives.
+    await expect(side.getByRole('link', { name: 'Open in GitHub' })).toHaveAttribute(
+      'href',
+      `https://github.com/${shop.slug}/pull/128`,
+    );
+
+    // Four parts, a tab each. The first is what the request says.
+    const tabs = side.getByRole('tablist', { name: 'Parts of the request' });
+    await expect(tabs.getByRole('tab')).toHaveText(['Overview', 'Comments 2', 'Changes', 'Checks']);
+    await expect(tabs.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
     await expect(side.locator('.detail-branch')).toHaveText(`${task.branch} → main`);
     await expect(side.locator('.detail-people')).toContainText('Review asked of cy');
     await expect(side.getByRole('region', { name: 'Description' })).toContainText('Closes #12.');
-    const notes = side.getByRole('region', { name: 'Comments' });
+
+    // What was written under it, with the word each reviewer gave on it as a whole.
+    await tabs.getByRole('tab', { name: 'Comments 2' }).click();
+    const notes = side.getByRole('region', { name: 'Comments', exact: true });
     await expect(notes.getByRole('heading')).toHaveText('1 comment and 1 review');
     await expect(notes.getByRole('article')).toHaveText([
       /^ann[\s\S]*Ready for a look\.\s*$/,
       /^cy\s*asked for changes[\s\S]*Six is too many\.\s*$/,
+    ]);
+
+    // What it changes, file by file; a file opens on its lines.
+    await tabs.getByRole('tab', { name: 'Changes' }).click();
+    const changes = side.getByRole('region', { name: 'Changes' });
+    await expect(changes.getByRole('heading')).toHaveText("1 file changed on this computer's copy of the branch");
+    const file = changes.locator('details', { hasText: DEMO_FILE });
+    await expect(file.locator('summary')).toContainText('+1 −1');
+    await file.locator('summary').click();
+    await expect(file.locator('.diff-line.minus')).toHaveText('−  limit: 5,');
+    await expect(file.locator('.diff-line.plus')).toHaveText('+  limit: 6,');
+
+    // What stands before its merge.
+    await tabs.getByRole('tab', { name: 'Checks' }).click();
+    const checks = side.getByRole('region', { name: 'Checks' });
+    await expect(checks.locator('.gate')).toHaveText([
+      /^✓\s*Conflicts\s*None$/,
+      /^✓\s*Checks\s*1 passed$/,
+      /^✓\s*Review\s*Not required$/,
     ]);
 
     // "Read again" asks the host anew; "Close" puts the panel away and leaves the card as it was.
@@ -216,9 +249,64 @@ test.describe('An issue and a request in full', () => {
       url: 'https://github.com/x/y/pull/128',
     });
     await side.getByRole('button', { name: 'Read again' }).click();
-    await expect(side.getByRole('heading', { level: 2 })).toHaveText('Allow six attempts, for now');
-    await side.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(side.locator('.detail-title')).toHaveText('Allow six attempts, for now');
+    await side.getByRole('button', { name: 'Close the request' }).click();
     await expect(side).toHaveCount(0);
     await expect(app.request.getByRole('link', { name: 'Open on GitHub' })).toBeVisible();
+  });
+
+  test('ID-06 on Issues an issue in work opens three ways: its code, itself at the side, and its request in a panel of its own', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({ remote: 'github', issues: ISSUES });
+    shop.setIssueWhole(12, whole(shop.slug!));
+    shop.setPullTemplate(pullTemplate({ checks: 'passed' }));
+    await app.addProject(shop.dir);
+    await app.page.goto(`${app.core.url}/#/issues`);
+    const row = sectionOf(app, shop).locator('.issue-row').filter({ hasText: '#12' });
+    // An issue nobody works on has no request to show.
+    await expect(row.getByRole('button', { name: /^PR #/ })).toHaveCount(0);
+    await row.getByRole('button', { name: 'Start' }).click();
+    await app.turnEnds();
+    const task = await app.core.task(app.taskId());
+    writeIn(task.cwd, DEMO_FILE, DEMO_TEXT.replace('limit: 5,', 'limit: 6,'));
+    await app.showView('Changes');
+    await app.git.getByRole('radio', { name: 'Push and open a pull request' }).check();
+    await app.git.getByRole('textbox', { name: 'Commit message' }).fill('Allow six attempts');
+    await app.git.getByRole('button', { name: /^Commit \d+ files?/ }).click();
+    await expect(app.request.getByRole('link', { name: 'Open on GitHub' })).toBeVisible();
+
+    await app.page.goto(`${app.core.url}/#/issues`);
+    // Its code: the task, as before.
+    await expect(row.getByRole('link', { name: 'Open', exact: true })).toHaveAttribute(
+      'href',
+      `#/task/${task.id}/code`,
+    );
+    // Itself, and its request: two panels, side by side, both open at once.
+    await row.getByRole('button', { name: 'Login allows unlimited attempts' }).click();
+    await row.getByRole('button', { name: 'PR #128' }).click();
+    await expect(panel(app)).toHaveAccessibleName('Details of issue #12');
+    await expect(requestPanel(app)).toHaveAccessibleName('Details of request #128');
+    await expect(panel(app).getByRole('heading', { level: 2 })).toHaveText('Login allows unlimited attempts');
+    await expect(requestPanel(app).getByRole('heading', { level: 2 })).toHaveText('TITLE');
+    // Each opens in the browser from its own head.
+    await expect(panel(app).getByRole('link', { name: 'Open in GitHub' })).toHaveAttribute('href', /\/issues\/12$/);
+    await expect(requestPanel(app).getByRole('link', { name: 'Open in GitHub' })).toHaveAttribute(
+      'href',
+      /\/pull\/128$/,
+    );
+    // The request's panel reads the task's branch: what it changes is there.
+    await requestPanel(app).getByRole('tab', { name: 'Changes' }).click();
+    await expect(requestPanel(app).getByRole('region', { name: 'Changes' })).toContainText(DEMO_FILE);
+
+    // Escape closes the one opened last; the other stays. Each closes by its own button too.
+    await app.page.keyboard.press('Escape');
+    await expect(requestPanel(app)).toHaveCount(0);
+    await expect(panel(app)).toBeVisible();
+    await row.getByRole('button', { name: 'PR #128' }).click();
+    await panel(app).getByRole('button', { name: 'Close the issue' }).click();
+    await expect(panel(app)).toHaveCount(0);
+    await expect(requestPanel(app)).toBeVisible();
   });
 });

@@ -7090,19 +7090,93 @@ button.picked-source:hover {
 
 /* ---------- An issue or a request in full, at the side of the screen ---------- */
 
-.detail {
+/* The panels stand side by side at the right edge: the issue outermost, the request of its task beside it. */
+.detail-dock {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
   z-index: 40;
-  width: min(580px, 100vw);
+  display: flex;
+  max-width: 100vw;
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.35);
+}
+.detail-dock:empty {
+  display: none;
+}
+/* A list with panels beside it: the list keeps what room is left, and scrolls by itself. */
+.page-with-side {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+}
+.page-with-side > .page {
+  min-width: 0;
+}
+.detail-dock.beside {
+  position: static;
+  flex: none;
+  max-width: 72vw;
+  box-shadow: none;
+}
+.detail-dock.beside .detail {
+  width: clamp(340px, 30vw, 540px);
+  min-width: 0;
+}
+.detail {
+  flex: 0 1 auto;
+  width: min(540px, 50vw);
+  min-width: min(360px, 100vw);
   display: flex;
   flex-direction: column;
   background: var(--panel);
   border-left: 1px solid var(--line-strong);
-  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.35);
   font-size: 13px;
+}
+.detail > .detail-title {
+  padding: 12px 16px 0;
+}
+.detail > .banner.detail-flat {
+  margin: 10px 16px 0;
+}
+.detail-tabs {
+  align-self: flex-start;
+  margin: 10px 16px 0;
+}
+.detail-changes,
+.detail-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.detail-file summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 26px;
+  cursor: default;
+  overflow-wrap: anywhere;
+}
+.detail-file summary::before {
+  content: '▸';
+  color: var(--text-3);
+}
+.detail-file[open] summary::before {
+  content: '▾';
+}
+.detail-file summary::-webkit-details-marker {
+  display: none;
+}
+.detail-file .diff {
+  margin: 4px 0 8px;
+  max-height: 50vh;
+}
+.diff-line.at {
+  color: var(--text-3);
+}
+.detail-checks .git-mr-card,
+.detail-checks .pipeline {
+  margin: 0;
 }
 .detail-head {
   display: flex;

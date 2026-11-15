@@ -1,4 +1,4 @@
-import { createDetails, DetailSide } from './DetailPanel';
+import { createDetails, DetailDock, RequestPanel } from './DetailPanel';
 import type { Detail } from '../core/details';
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createKept } from '../core/kept';
@@ -205,7 +205,9 @@ export function RequestCard(props: {
 
   return (
     <section class="git-mr-card" aria-label="Merge request">
-      <DetailSide details={details} />
+      <DetailDock>
+        <RequestPanel details={details} />
+      </DetailDock>
       <div class="git-head">
         <h2 class="pane-title">{Word()}</h2>
         <Show when={info()?.request} fallback={<span class="grow fine">{info() ? 'none yet' : ''}</span>}>
@@ -224,6 +226,7 @@ export function RequestCard(props: {
                     id: `request:${taskId}`,
                     title: `${Word()} ${request().number}`,
                     projectId: props.task.info.projectId,
+                    taskId,
                     ask: () => core.request<Detail>('mr.detail', { taskId }),
                   })
                 }
