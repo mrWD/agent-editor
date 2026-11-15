@@ -505,15 +505,15 @@ fn text<'a>(params: &'a Value, name: &str) -> Result<&'a str> {
     params.get(name).and_then(Value::as_str).ok_or_else(|| anyhow!("Missing parameter: {name}"))
 }
 
-/// How the last run of a job stands: whether it still runs, how it ended, and the end of what it printed.
-fn state_of(terminals: &Terminals, task_id: &str, id: &str, secrets: &[String]) -> Value {
-    let purpose = purpose(id);
-    let running = terminals.find(task_id, &purpose);
+/// How the last run with a purpose stands: whether it still runs, how it ended, and the end of
+/// what it printed. The checks of the Infra view are run and watched the same way.
+pub(crate) fn run_state(terminals: &Terminals, task_id: &str, purpose: &str, secrets: &[String]) -> Value {
+    let running = terminals.find(task_id, purpose);
     let printed = match &running {
         Some(info) => {
             terminals.scrollback(info.term_id).ok().map(|(bytes, _)| strip_codes(&String::from_utf8_lossy(&bytes)))
         }
-        None => terminals.last_output(task_id, &purpose),
+        None => terminals.last_output(task_id, purpose),
     };
     let printed = printed.map(|text| runner::env::scrub(text.trim_end(), secrets));
     let tail = printed.map(|text| {
@@ -524,7 +524,7 @@ fn state_of(terminals: &Terminals, task_id: &str, id: &str, secrets: &[String]) 
     json!({
         "running": running.is_some(),
         "termId": running.map(|info| info.term_id),
-        "exit": terminals.last_exit(task_id, &purpose),
+        "exit": terminals.last_exit(task_id, purpose),
         "output": tail
     })
 }
@@ -607,7 +607,7 @@ fn handle(
             let info = terminals.run(task_id, &cwd, &line, &purpose(id), &env)?;
             Ok(json!({ "termId": info.term_id, "command": line }))
         }
-        "jobs.state" => Ok(state_of(terminals, task_id, text(params, "id")?, &place.secrets)),
+        "jobs.state" => Ok(run_state(terminals, task_id, &purpose(text(params, "id")?), &place.secrets)),
         "jobs.stop" => {
             if let Some(info) = terminals.find(task_id, &purpose(text(params, "id")?)) {
                 terminals.stop(info.term_id)?;

@@ -117,6 +117,9 @@ export class Core {
       AE_ADB: path.join(this.toolsDir, 'adb'),
       AE_EMULATOR: path.join(this.toolsDir, 'emulator'),
       AE_IDB: path.join(this.toolsDir, 'idb'),
+      // Terraform and Helm are stand-ins too: no test plans against a cloud or renders with a real chart.
+      AE_TERRAFORM: path.join(this.toolsDir, 'terraform'),
+      AE_HELM: path.join(this.toolsDir, 'helm'),
       AE_MOCK_DELAY_MS: String(options.mockDelayMs ?? 30),
       // An agent that runs in a terminal is taken to be done after this much quiet. Short, so tests need not wait.
       AE_TERMINAL_QUIET_MS: '500',

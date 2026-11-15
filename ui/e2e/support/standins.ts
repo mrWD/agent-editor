@@ -5,10 +5,12 @@ import { deflateSync } from 'node:zlib';
 /**
  * Stand-ins for the command-line tools the core calls: `gh`, `glab` and `docker`,
  * and for the programs the Preview runs: a browser that takes screenshots, Xcode's
- * `xcrun`, Android's `adb` and `emulator`, and `idb`, which taps on a simulator.
+ * `xcrun`, Android's `adb` and `emulator`, `idb`, which taps on a simulator, and
+ * `terraform` and `helm`, which check infrastructure files.
  * They are shell scripts. The first three are in a folder that is first on the
  * core's PATH; the core is told where the others are (`AE_BROWSER`, `AE_XCRUN`,
- * `AE_ADB`, `AE_EMULATOR`, `AE_IDB`), so the real tools are never reached.
+ * `AE_ADB`, `AE_EMULATOR`, `AE_IDB`, `AE_TERRAFORM`, `AE_HELM`), so the real tools
+ * are never reached.
  * Each one writes every call to `<name>.log` next to itself and keeps what it
  * "knows" in files under `state/`.
  */
@@ -424,9 +426,44 @@ case "$1 $2" in
 esac
 `;
 
+const TERRAFORM = String.raw`#!/bin/sh
+# A stand-in for Terraform. It reaches no cloud and changes nothing: it says what a real one might.
+# A folder that holds broken.tf does not validate.
+here="$(cd "$(dirname "$0")" && pwd)"
+printf '%s\n' "$*" >> "$here/terraform.log"
+case "$1" in
+  validate)
+    if [ -f broken.tf ]; then
+      echo "Error: Unsupported block type"
+      echo "  on broken.tf line 1: Blocks of type \"resorce\" are not expected here."
+      exit 1
+    fi
+    echo "Success! The configuration is valid." ;;
+  plan)
+    echo "  # aws_s3_bucket.exports will be destroyed"
+    echo "Plan: 1 to add, 1 to change, 1 to destroy."
+    [ -f slow.tf ] && sleep 30
+    exit 0 ;;
+  *) echo "unexpected call: $*" >&2; exit 2 ;;
+esac
+`;
+
+const HELM = String.raw`#!/bin/sh
+# A stand-in for Helm. It installs nothing: it prints what the chart of its folder "renders" to.
+here="$(cd "$(dirname "$0")" && pwd)"
+printf '%s\n' "$*" >> "$here/helm.log"
+case "$1" in
+  template)
+    echo "---"
+    echo "# Source: $(basename "$PWD")/templates/web.yaml"
+    echo "kind: Deployment" ;;
+  *) echo "unexpected call: $*" >&2; exit 2 ;;
+esac
+`;
+
 export const STAND_INS = ['gh', 'glab', 'docker'] as const;
 /** The stand-ins the core is pointed at one by one, instead of finding them on its PATH. */
-export const NAMED_STAND_INS = ['browser', 'xcrun', 'adb', 'emulator', 'idb'] as const;
+export const NAMED_STAND_INS = ['browser', 'xcrun', 'adb', 'emulator', 'idb', 'terraform', 'helm'] as const;
 export type StandIn = (typeof STAND_INS)[number] | (typeof NAMED_STAND_INS)[number];
 
 /** A PNG of one colour, made here so that no picture file has to be kept with the tests. */
@@ -520,6 +557,8 @@ export function writeStandIns(dir: string) {
     adb: ADB,
     emulator: EMULATOR,
     idb: IDB,
+    terraform: TERRAFORM,
+    helm: HELM,
   };
   for (const name of [...STAND_INS, ...NAMED_STAND_INS]) {
     const file = path.join(dir, name);

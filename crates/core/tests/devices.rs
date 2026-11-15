@@ -153,7 +153,7 @@ fn stand_ins(sandbox: &Sandbox) -> (Arc<Previews>, PathBuf) {
     std::fs::write(tools.join(format!("{EMULATOR}.name")), "Pixel_9_API_35\n").unwrap();
     let browser = Some(PathBuf::from("/nonexistent/ae-test/browser"));
     let previews =
-        Previews::with_tools(Tools { browser, xcrun: Some(xcrun), adb: Some(adb), emulator, idb, patience: None });
+        Previews::with_tools(Tools { browser, xcrun: Some(xcrun), adb: Some(adb), emulator, idb, ..Tools::default() });
     (Arc::new(previews), tools)
 }
 

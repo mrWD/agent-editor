@@ -19,6 +19,7 @@ import { addPictures, pictureCount } from '../components/Pictures';
 import { ApiView } from '../components/PreviewApi';
 import { DatabaseView } from '../components/PreviewDatabase';
 import { DeviceView } from '../components/PreviewDevice';
+import { InfraView } from '../components/PreviewInfra';
 import { JobsView } from '../components/PreviewJobs';
 import { core } from '../core/client';
 import { MAX_PICTURES } from '../core/pictures';
@@ -65,7 +66,7 @@ const FROM_PAGE = 'ae-preview-page';
 
 type Relay = { port: number; target: string };
 type Tool = 'none' | 'pick' | 'draw';
-type Kind = 'web' | 'ios' | 'android' | 'api' | 'db' | 'jobs';
+type Kind = 'web' | 'ios' | 'android' | 'api' | 'db' | 'jobs' | 'infra';
 
 /** What is known about the page in one frame. */
 type FrameState = {
@@ -221,8 +222,20 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   const [problem, setProblem] = createSignal<string | null>(null);
   // What was looked at last is what opens next: a task on a service is not looked at as a page.
   const [kind, setKind] = createKept<Kind>(`task:${taskId}:preview.kind`, 'web');
-  /** Whether what is on show is data of the task's service, not a screen of its app. */
-  const isData = () => kind() === 'api' || kind() === 'db' || kind() === 'jobs';
+  /** Whether what is on show is data of the task's service or files of its project, not a screen of its app. */
+  const isData = () => kind() === 'api' || kind() === 'db' || kind() === 'jobs' || kind() === 'infra';
+  /**
+   * Whether the project has infrastructure files: Infra is offered only then. What was true at the
+   * last look is there at once; it is asked anew behind that.
+   */
+  const [hasInfra, setHasInfra] = createKept<boolean>(`task:${taskId}:preview.infra`, false);
+  const loadInfra = () => {
+    core
+      .request<{ has: boolean }>('infra.has', { taskId })
+      .then((answer) => setHasInfra(answer.has))
+      // An older core that knows no infrastructure: the kind is not offered.
+      .catch(() => {});
+  };
   const [tool, setTool] = createSignal<Tool>('none');
   const [adding, setAdding] = createSignal(false);
   const [widthProblem, setWidthProblem] = createSignal<string | null>(null);
@@ -567,17 +580,25 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       setLoaded(true);
     })();
     loadShotTool();
+    loadInfra();
 
+    let infraTimer: ReturnType<typeof setTimeout> | undefined;
     const stopEvents = core.onEvent((event) => {
       if (event.event === 'link.open') {
         void loadRun();
         loadShotTool();
+        loadInfra();
         setLinks((n) => n + 1);
         return;
       }
       if (event.data?.taskId !== taskId) return;
       if (event.event === 'run.changed') void loadRun();
       if (event.event === 'review.changed' || event.event === 'files.changed') changedSoon();
+      // The task may have written the project's first Dockerfile, or removed its last.
+      if (event.event === 'files.changed' || event.event === 'git.changed') {
+        clearTimeout(infraTimer);
+        infraTimer = setTimeout(loadInfra, 1500);
+      }
     });
     // A dev script says where it serves a moment after it starts; the app answers a moment after that.
     const timer = setInterval(() => {
@@ -604,6 +625,7 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       stopEvents();
       clearInterval(timer);
       clearTimeout(changeTimer);
+      clearTimeout(infraTimer);
       window.removeEventListener('message', onMessage);
       window.removeEventListener('keydown', onKey);
       observer.disconnect();
@@ -850,6 +872,11 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           <button type="button" aria-pressed={kind() === 'jobs'} onClick={() => setKind('jobs')}>
             Jobs
           </button>
+          <Show when={hasInfra() || kind() === 'infra'}>
+            <button type="button" aria-pressed={kind() === 'infra'} onClick={() => setKind('infra')}>
+              Infra
+            </button>
+          </Show>
         </div>
         <Show when={kind() === 'web' && loaded()}>
           <div class="preview-widths" role="group" aria-label="Widths">
@@ -1049,6 +1076,9 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       </Show>
       <Show when={kind() === 'jobs'}>
         <JobsView taskId={taskId} services={run()?.services ?? []} />
+      </Show>
+      <Show when={kind() === 'infra'}>
+        <InfraView taskId={taskId} />
       </Show>
 
       <div class="preview-stage" ref={stageEl} hidden={isData()}>

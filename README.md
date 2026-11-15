@@ -111,11 +111,11 @@ cd ui && npm run e2e
 ```
 
 Every automated test uses the practice agent, stand-ins for `gh`, `glab` and
-`docker`, for the browser that takes screenshots and for the device tools
-(`xcrun`, `adb`, `emulator`, `idb`), a local stand-in for Linear, and a home
-folder of its own in which the "conversations of Claude Code" are written by
-the test, so nothing is spent, no real account is touched and no real device
-is started. The test cases are listed in [docs/TEST-CASES.md](docs/TEST-CASES.md).
+`docker`, for the browser that takes screenshots, for the device tools
+(`xcrun`, `adb`, `emulator`, `idb`) and for `terraform` and `helm`, a local
+stand-in for Linear, and a home folder of its own in which the "conversations
+of Claude Code" are written by the test, so nothing is spent, no real account
+is touched and no real device is started. The test cases are listed in [docs/TEST-CASES.md](docs/TEST-CASES.md).
 
 A local SonarQube run (needs Docker):
 
@@ -237,6 +237,56 @@ it offers the lines of a `Procfile`, and for a project that names nothing
 itself the command of its framework: Django, FastAPI, Flask, Rails, Laravel,
 a Go program, and a Celery worker where an app is made. `PORT` among the
 task's own values moves the port, so two tasks can run side by side.
+
+## Infrastructure in Preview
+
+A change to a Terraform file or a manifest does nothing a page or a request
+can show: it takes effect when somebody applies it. For a project that keeps
+its infrastructure in its repository, Preview has a seventh thing to look at,
+**Infra**. It is offered when the project has any of these files:
+
+- **Terraform**: `*.tf` and the values in `*.tfvars`;
+- **Helm**: a `Chart.yaml`, with the values and the templates next to it;
+- **Kubernetes**: any other YAML that has an `apiVersion` and a `kind`;
+- **Docker**: Dockerfiles and compose files;
+- **CI**: `.gitlab-ci.yml` and the workflows under `.github/workflows`.
+
+Infra lists the infrastructure files the task touched since its branch left
+the base, grouped by tool, and says what each change does. It reads the files
+as they were and as they are; it runs nothing for that. Terraform resources,
+modules and outputs are told added, changed (with the arguments that differ)
+and removed by their blocks. Kubernetes objects are told by kind and name,
+with the fields a deploy turns on marked: image, replicas, resources, env and
+ports. Of a Dockerfile, the base images and the exposed ports are said; of a
+compose file, its services; of a pipeline, the jobs added, changed and
+removed; of a chart, its versions and the values that differ.
+
+What deserves a second look is marked and said why, the way dangerous
+migration steps are: a resource, an object, a service or a job that is
+removed; a volume or something that looks like a database touched; a
+privileged container, or one that shares the node's network or files; a
+secret written in plain text. A secret is named and its value is never
+repeated; one that is kept encrypted (a sealed secret, a file of SOPS) or
+pointed at (a variable, a reference to a vault) is not marked. What only
+moved is said to have moved, not to be removed: a block that went from one
+Terraform file to another of the same folder, and a file that went elsewhere
+with nothing in it changed. A file that stopped being YAML is said to be
+unreadable, not read as empty. The reading is by eye, not by the tools' own parsers: what it does
+not recognise it leaves out, and it does not know what a provider would
+replace rather than update.
+
+**Show it to the agent** puts the whole reading before the agent with your
+next message.
+
+Under the reading are the checks, for the folders the task touched first:
+`terraform validate` and `terraform plan -lock=false -refresh=false
+-input=false` for each folder of Terraform files, `helm template` for each
+chart. A check runs only when you press it, in a terminal of the task, and
+only when its tool is on this computer; its output is shown as it comes and
+can be shown to the agent. Nothing here ever applies, installs or upgrades
+anything. A plan is asked not to lock or refresh the state, but a provider
+may still want the credentials of its cloud: they are the ones of the task's
+environment, as for anything else the task runs.
 
 ## Where it stands
 
@@ -437,4 +487,7 @@ database in a real container (Docker is off on this Mac; the tests use a
 stand-in that answers as `psql` in a container would) and MySQL at all (its
 side is written from the client's documentation). PostgreSQL through `psql`
 of this computer and SQLite were tried for real: tables, rows, the refusal
-to write, and a trial of migrations there and back.
+to write, and a trial of migrations there and back. The checks of Infra were
+never run with a real Terraform or Helm (this Mac has neither; the tests use
+stand-ins that say what the real ones might), and its reading was tried only
+on files written for the tests, not on the infrastructure of a real project.

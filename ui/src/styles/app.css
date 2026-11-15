@@ -4521,6 +4521,27 @@ button.api-change-op:hover {
   font-size: 12px;
 }
 
+/* ---------- Preview of a project's infrastructure ---------- */
+
+.infra-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+/* The field of a deploy a step is about: it reads as the first word of the step. */
+.infra-field {
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--text-2);
+}
+.infra-check {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* A text of the Preview that goes along with the next message: an answer, rows, an output. */
 .card.shown {
   display: flex;

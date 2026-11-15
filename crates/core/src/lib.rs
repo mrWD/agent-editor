@@ -24,6 +24,7 @@ pub mod gitops;
 pub mod health;
 pub mod hosts;
 pub mod imports;
+pub mod infra;
 pub mod integrations;
 pub mod jobs;
 pub mod lsp;
