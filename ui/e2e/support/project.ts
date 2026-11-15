@@ -140,6 +140,18 @@ export class Project {
     writeFileSync(path.join(ghState(this.core.toolsDir, this.slug), 'issues.json'), JSON.stringify(listed));
   }
 
+  /** Says what `gh issue view` gives for one issue of this project: the issue whole, with its comments. */
+  setIssueWhole(number: number, whole: Record<string, unknown>) {
+    if (!this.slug) throw new Error('Only a project with a GitHub address has issues');
+    writeFileSync(path.join(ghState(this.core.toolsDir, this.slug), `issue-${number}.json`), JSON.stringify(whole));
+  }
+
+  /** Says what `gh pr view` gives for one pull request of this project when it is asked for whole. */
+  setPullWhole(number: number, whole: Record<string, unknown>) {
+    if (!this.slug) throw new Error('Only a project with a GitHub address has pull requests');
+    writeFileSync(path.join(ghState(this.core.toolsDir, this.slug), `whole-${number}.json`), JSON.stringify(whole));
+  }
+
   /** Says what the next pull request of this project looks like to `gh pr view`. */
   setPullTemplate(template: string) {
     if (!this.slug) throw new Error('Only a project with a GitHub address has pull requests');

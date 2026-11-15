@@ -61,9 +61,24 @@ case "$1 $2" in
   "auth status") exit 0 ;;
   "issue list")
     if [ -f "$state/issues.json" ]; then cat "$state/issues.json"; else echo "[]"; fi ;;
+  "auth token") echo "gho_stand_in_token" ;;
+  "issue view")
+    # One issue, whole: what a test wrote for its number.
+    if [ -f "$state/issue-$3.json" ]; then cat "$state/issue-$3.json"; else echo "GraphQL: Could not resolve to an Issue with the number of $3." >&2; exit 1; fi ;;
   "pr view")
-    file="$state/pull-$(flat "$3").json"
-    if [ -f "$file" ]; then cat "$file"; else echo "no pull requests found for branch \"$3\"" >&2; exit 1; fi ;;
+    case "$3" in
+      *[!0-9]*)
+        file="$state/pull-$(flat "$3").json"
+        if [ -f "$file" ]; then cat "$file"; else echo "no pull requests found for branch \"$3\"" >&2; exit 1; fi ;;
+      *)
+        # A request asked for by its number is asked for whole: what a test wrote for it, else the request as it is.
+        if [ -f "$state/whole-$3.json" ]; then cat "$state/whole-$3.json"; exit 0; fi
+        for file in "$state"/pull-*.json; do
+          [ -f "$file" ] || continue
+          if grep -q "\"number\":$3," "$file"; then cat "$file"; exit 0; fi
+        done
+        echo "GraphQL: Could not resolve to a PullRequest with the number of $3." >&2; exit 1 ;;
+    esac ;;
   "pr create")
     mkdir -p "$state"
     template="$state/template.json"
