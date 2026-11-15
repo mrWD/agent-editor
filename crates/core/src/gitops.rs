@@ -404,6 +404,13 @@ pub fn is_pushed(root: &Path, branch: &str) -> bool {
     remote(root).is_some_and(|remote| rev(root, &format!("refs/remotes/{remote}/{branch}")).is_some())
 }
 
+/// The commit the branch is at on the remote, as far as this copy knows (no network is used).
+/// `None` when the branch was never pushed.
+pub fn pushed_tip(root: &Path) -> Option<String> {
+    let (remote, branch) = (remote(root)?, current_branch(root)?);
+    rev(root, &format!("refs/remotes/{remote}/{branch}"))
+}
+
 /// The base to compare with: the one the task remembers, else the usual names.
 pub fn resolve_base(root: &Path, remembered: Option<&str>) -> Option<String> {
     let branch = current_branch(root);

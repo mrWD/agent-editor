@@ -298,3 +298,47 @@ async fn coming_back_says_where_the_user_stopped_and_what_happened_since() {
     let branch = manager.files_between(&id, "branch").unwrap();
     assert_eq!(branch["files"][0]["path"], FILE);
 }
+
+#[tokio::test]
+async fn what_is_committed_and_what_is_pushed_are_told_apart() {
+    let sandbox = Sandbox::new("spans-of-a-branch");
+    let (manager, id, root) = started(&sandbox, "What does the limiter do?").await;
+    let commit = |name: &str, message: &str| {
+        std::fs::create_dir_all(root.join("notes")).unwrap();
+        std::fs::write(root.join("notes").join(name), "a line\n").unwrap();
+        git(&root, &["add", "-A"]);
+        git(&root, &["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "-m", message]);
+    };
+    let paths = |from: &str| -> Vec<String> {
+        manager.files_between(&id, from).unwrap()["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|file| file["path"].as_str().unwrap().to_string())
+            .collect()
+    };
+
+    // A commit on a branch that was never pushed: all of it waits to be pushed, and the remote holds nothing.
+    commit("one.txt", "Add the first note");
+    assert_eq!(paths("ahead"), ["notes/one.txt"]);
+    let refused = manager.files_between(&id, "pushed").unwrap_err().to_string();
+    assert!(refused.contains("not pushed yet"), "{refused}");
+
+    // Pushed, it moves from the one to the other.
+    let bare = sandbox.0.join("remote.git");
+    git(&root, &["init", "-q", "--bare", &bare.to_string_lossy()]);
+    git(&root, &["remote", "add", "origin", &bare.to_string_lossy()]);
+    let branch = git(&root, &["symbolic-ref", "--short", "HEAD"]);
+    git(&root, &["push", "-q", "-u", "origin", branch.trim()]);
+    assert!(paths("ahead").is_empty());
+    assert_eq!(paths("pushed"), ["notes/one.txt"]);
+
+    // A commit after the push, and a file nobody committed: each span holds its own and no more.
+    commit("two.txt", "Add the second note");
+    std::fs::write(root.join("notes/three.txt"), "a line\n").unwrap();
+    assert_eq!(paths("ahead"), ["notes/two.txt"]);
+    assert_eq!(paths("pushed"), ["notes/one.txt"]);
+    assert_eq!(manager.diff_between(&id, "notes/two.txt", "ahead").unwrap()["added"], 1);
+    // The whole branch is still everything together, with what is not committed.
+    assert_eq!(paths("branch"), ["notes/one.txt", "notes/three.txt", "notes/two.txt"]);
+}
