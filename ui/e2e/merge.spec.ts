@@ -47,7 +47,7 @@ test.describe('The merge request of a task', () => {
     await app.addProject(shop.dir);
     await app.page.goto(`${app.core.url}/#/issues`);
     const section = app.page.locator('section', { has: app.page.getByRole('heading', { level: 2, name: shop.name }) });
-    await section.getByRole('button', { name: 'Start' }).click();
+    await section.getByRole('button', { name: 'Start in editor' }).click();
     await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);
     await app.turnEnds();
     const task = await app.core.task(app.taskId());

@@ -47,14 +47,24 @@ function IssueFoot(props: { taskId: string | null; busy: boolean; onStart: () =>
     <Show
       when={props.taskId}
       fallback={
-        <button type="button" class="btn" disabled={props.busy} onClick={() => props.onStart()}>
-          Start a task on it
+        <button
+          type="button"
+          class="btn"
+          title="Start a task on it and open it in the editor: the agent, the code, the changes and the preview"
+          disabled={props.busy}
+          onClick={() => props.onStart()}
+        >
+          Start in editor
         </button>
       }
     >
       {(taskId) => (
-        <a class="btn" href={taskHref(taskId())}>
-          Open its task
+        <a
+          class="btn"
+          href={taskHref(taskId())}
+          title="Open its task in the editor: the agent, the code, the changes and the preview"
+        >
+          Open in editor
         </a>
       )}
     </Show>
@@ -425,10 +435,11 @@ export function Issues(): JSX.Element {
                               <button
                                 type="button"
                                 class="btn small"
+                                title="Start a task on it and open it in the editor: the agent, the code, the changes and the preview"
                                 disabled={starting() !== null || chosenAgent() === '' || placeFor(issue.key) === ''}
                                 onClick={() => void start(placeFor(issue.key), issue, 'linear')}
                               >
-                                {starting() === `${placeFor(issue.key)}:${issue.key}` ? 'Starting' : 'Start'}
+                                {starting() === `${placeFor(issue.key)}:${issue.key}` ? 'Starting' : 'Start in editor'}
                               </button>
                             </>
                           }
@@ -452,8 +463,12 @@ export function Issues(): JSX.Element {
                                   </button>
                                 )}
                               </Show>
-                              <a class="btn small" href={taskHref(held().info.id)} title="Open the task with its code">
-                                Open
+                              <a
+                                class="btn small"
+                                href={taskHref(held().info.id)}
+                                title="Open its task in the editor: the agent, the code, the changes and the preview"
+                              >
+                                Open in editor
                               </a>
                             </>
                           )}
@@ -580,10 +595,11 @@ export function Issues(): JSX.Element {
                               <button
                                 type="button"
                                 class="btn small"
+                                title="Start a task on it and open it in the editor: the agent, the code, the changes and the preview"
                                 disabled={starting() !== null || chosenAgent() === ''}
                                 onClick={() => void start(project.projectId, issue)}
                               >
-                                {starting() === `${project.projectId}:${issue.key}` ? 'Starting' : 'Start'}
+                                {starting() === `${project.projectId}:${issue.key}` ? 'Starting' : 'Start in editor'}
                               </button>
                             </>
                           }
@@ -607,8 +623,12 @@ export function Issues(): JSX.Element {
                                   </button>
                                 )}
                               </Show>
-                              <a class="btn small" href={taskHref(held().info.id)} title="Open the task with its code">
-                                Open
+                              <a
+                                class="btn small"
+                                href={taskHref(held().info.id)}
+                                title="Open its task in the editor: the agent, the code, the changes and the preview"
+                              >
+                                Open in editor
                               </a>
                             </>
                           )}
@@ -626,8 +646,8 @@ export function Issues(): JSX.Element {
       </main>
       {/* Two panels, each of its own thing: the issue, and the request of the task that works on it. */}
       <DetailDock beside>
-        <RequestPanel details={requestDetails} />
         <IssuePanel details={details} />
+        <RequestPanel details={requestDetails} />
       </DetailDock>
     </div>
   );
