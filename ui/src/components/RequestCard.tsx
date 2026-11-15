@@ -1,3 +1,5 @@
+import { createDetails, DetailSide } from './DetailPanel';
+import type { Detail } from '../core/details';
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createKept } from '../core/kept';
 import { createStore, reconcile } from 'solid-js/store';
@@ -80,6 +82,8 @@ export function RequestCard(props: {
   const setComments = (list: ReviewComment[]) => setCommentList('list', reconcile(list, { key: 'id' }));
   const [replyTo, setReplyTo] = createSignal<string | null>(null);
   const [reply, setReply] = createSignal('');
+  /** The request, whole, at the side of the screen. */
+  const details = createDetails();
   const agentName = () => agentOf(props.task)?.name ?? 'the agent';
   /** The checks run on this computer. A failed one stands in the way of the merge. */
   const local = () => checksOf(taskId);
@@ -201,6 +205,7 @@ export function RequestCard(props: {
 
   return (
     <section class="git-mr-card" aria-label="Merge request">
+      <DetailSide details={details} />
       <div class="git-head">
         <h2 class="pane-title">{Word()}</h2>
         <Show when={info()?.request} fallback={<span class="grow fine">{info() ? 'none yet' : ''}</span>}>
@@ -210,6 +215,21 @@ export function RequestCard(props: {
                 Number {request().number} · {request().state}
                 {request().draft ? ' · draft' : ''}
               </span>
+              <button
+                type="button"
+                class="btn tiny"
+                title="Read it here: the description, who is on it and what was written under it"
+                onClick={() =>
+                  details.open({
+                    id: `request:${taskId}`,
+                    title: `${Word()} ${request().number}`,
+                    projectId: props.task.info.projectId,
+                    ask: () => core.request<Detail>('mr.detail', { taskId }),
+                  })
+                }
+              >
+                Details
+              </button>
               <a class="btn tiny" href={request().url} target="_blank" rel="noreferrer">
                 Open on {info()!.host!.name}
               </a>

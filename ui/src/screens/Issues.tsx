@@ -1,4 +1,6 @@
+import { createDetails, DetailSide } from '../components/DetailPanel';
 import { SentryIssues } from '../components/SentryIssues';
+import type { Detail } from '../core/details';
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
@@ -32,6 +34,26 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 /** Which issues are shown. */
 type Filter = 'open' | 'free';
 
+/** What can be done with the issue that is open at the side: start a task on it, or go to the one it has. */
+function IssueFoot(props: { taskId: string | null; busy: boolean; onStart: () => void }): JSX.Element {
+  return (
+    <Show
+      when={props.taskId}
+      fallback={
+        <button type="button" class="btn" disabled={props.busy} onClick={() => props.onStart()}>
+          Start a task on it
+        </button>
+      }
+    >
+      {(taskId) => (
+        <a class="btn" href={taskHref(taskId())}>
+          Open its task
+        </a>
+      )}
+    </Show>
+  );
+}
+
 /**
  * Issues of every project, from wherever each project keeps them: GitHub or
  * GitLab by the project's remote, or a Linear team. An issue becomes a task
@@ -55,6 +77,17 @@ export function Issues(): JSX.Element {
   const [key, setKey] = createSignal('');
   const [teamOf, setTeamOf] = createSignal<string | null>(null);
   const [team, setTeam] = createSignal('');
+
+  /** The issue that is open at the side of the screen, whole. */
+  const details = createDetails();
+  const openIssue = (projectId: string, issue: Issue, source: 'linear' | undefined, foot: () => JSX.Element) =>
+    details.open({
+      id: `issue:${source ?? projectId}:${issue.key}`,
+      title: issue.title,
+      projectId,
+      ask: () => core.request<Detail>('issues.detail', { projectId, key: issue.key, source }),
+      foot,
+    });
 
   const agents = () => state.agents.filter((agent) => agent.available);
   const chosenAgent = () => agentId() || defaultAgentId();
@@ -315,7 +348,22 @@ export function Issues(): JSX.Element {
                       <a class="issue-key" href={issue.url} target="_blank" rel="noreferrer">
                         {issue.key}
                       </a>
-                      <span class="name">{issue.title}</span>
+                      <button
+                        type="button"
+                        class="name issue-open"
+                        title="Read it here: the description, the comments and the pictures"
+                        onClick={() =>
+                          openIssue(placeFor(issue.key), issue, 'linear', () => (
+                            <IssueFoot
+                              taskId={issue.taskId}
+                              busy={starting() !== null || chosenAgent() === '' || placeFor(issue.key) === ''}
+                              onStart={() => void start(placeFor(issue.key), issue, 'linear')}
+                            />
+                          ))
+                        }
+                      >
+                        {issue.title}
+                      </button>
                       <span class="issue-state">{issue.state}</span>
                       <Show
                         when={task()}
@@ -453,7 +501,22 @@ export function Issues(): JSX.Element {
                       <a class="issue-key" href={issue.url} target="_blank" rel="noreferrer">
                         {issue.key}
                       </a>
-                      <span class="name">{issue.title}</span>
+                      <button
+                        type="button"
+                        class="name issue-open"
+                        title="Read it here: the description, the comments and the pictures"
+                        onClick={() =>
+                          openIssue(project.projectId, issue, undefined, () => (
+                            <IssueFoot
+                              taskId={issue.taskId}
+                              busy={starting() !== null || chosenAgent() === ''}
+                              onStart={() => void start(project.projectId, issue)}
+                            />
+                          ))
+                        }
+                      >
+                        {issue.title}
+                      </button>
                       <For each={issue.labels.slice(0, 3)}>{(label) => <span class="tag">{label}</span>}</For>
                       <span class="issue-state">{issue.state}</span>
                       <Show
@@ -495,6 +558,7 @@ export function Issues(): JSX.Element {
 
         <SentryIssues agentId={chosenAgent()} onlyFree={filter() === 'free'} />
       </div>
+      <DetailSide details={details} />
     </main>
   );
 }

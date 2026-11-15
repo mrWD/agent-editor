@@ -34,7 +34,24 @@ const marked = new Marked({
   },
 });
 
+/** For the text being made safe right now: where its pictures are shown from. `null` shows none. */
+let picturesThrough: ((src: string) => string) | null = null;
+
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  // A picture is never asked of the address the text names: it is shown through the core, or not at all.
+  if (node.tagName === 'IMG') {
+    const from = node.getAttribute('src') ?? '';
+    if (!picturesThrough || from === '') {
+      node.remove();
+      return;
+    }
+    node.setAttribute('data-from', from);
+    node.setAttribute('src', picturesThrough(from));
+    node.setAttribute('loading', 'lazy');
+    node.removeAttribute('width');
+    node.removeAttribute('height');
+    return;
+  }
   if (node.tagName !== 'A') return;
   const href = node.getAttribute('href') ?? '';
   // A link out of the app opens in the browser and learns nothing about where it was clicked.
@@ -48,19 +65,54 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
  * Markdown as safe HTML. What an agent writes is not trusted: scripts, styles,
  * forms and pictures are taken out. A picture would be fetched from wherever
  * the text says, which tells that place the text was read.
+ *
+ * The text of an issue or a request is the user's own tracker speaking, and
+ * its pictures are part of what it says. With `pictures`, each is shown from
+ * the address that function gives (the core, which fetches it from the
+ * tracker), never from the one the text names.
  */
-export function toHtml(text: string): string {
+export function toHtml(text: string, pictures?: (src: string) => string): string {
   const html = marked.parse(text, { async: false });
-  return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ['img', 'picture', 'video', 'audio', 'style', 'form', 'input', 'button', 'textarea', 'select'],
-    FORBID_ATTR: ['style', 'srcset'],
-  });
+  const without = ['picture', 'video', 'audio', 'style', 'form', 'input', 'button', 'textarea', 'select'];
+  picturesThrough = pictures ?? null;
+  try {
+    return DOMPurify.sanitize(html, {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: pictures ? without : ['img', ...without],
+      FORBID_ATTR: ['style', 'srcset'],
+    });
+  } finally {
+    picturesThrough = null;
+  }
 }
 
-/** An agent's message, with its Markdown shown as it is meant. Files it names open in the editor. */
-export function Markdown(props: { text: string; onFile?: (path: string, line?: number) => void }): JSX.Element {
-  const html = createMemo(() => toHtml(props.text));
+/**
+ * A text in Markdown, shown as it is meant. Files it names open in the editor. With `pictures`
+ * its pictures are shown too, from where that function says; one that does not come becomes a
+ * link to where the text said it is.
+ */
+export function Markdown(props: {
+  text: string;
+  onFile?: (path: string, line?: number) => void;
+  pictures?: (src: string) => string;
+}): JSX.Element {
+  const html = createMemo(() => toHtml(props.text, props.pictures));
+
+  // A picture the core could not fetch: what stands in its place says so and links to the tracker's own.
+  const onLost = (event: Event) => {
+    const picture = event.target as HTMLElement;
+    if (picture.tagName !== 'IMG') return;
+    const from = picture.getAttribute('data-from') ?? '';
+    const link = document.createElement(/^https?:/i.test(from) ? 'a' : 'span');
+    link.className = 'md-lost';
+    link.textContent = `Picture not shown: ${picture.getAttribute('alt') || from}`;
+    if (link instanceof HTMLAnchorElement) {
+      link.href = from;
+      link.target = '_blank';
+      link.rel = 'noreferrer noopener';
+    }
+    picture.replaceWith(link);
+  };
 
   const onClick = (event: MouseEvent) => {
     const link = (event.target as HTMLElement).closest('a');
@@ -79,7 +131,16 @@ export function Markdown(props: { text: string; onFile?: (path: string, line?: n
     if (file) props.onFile?.(file.path, file.line);
   };
 
-  // The HTML comes from `toHtml`, which takes out everything that could run.
-  // eslint-disable-next-line solid/no-innerhtml
-  return <div class="md" innerHTML={html()} onClick={onClick} role="presentation" />;
+  return (
+    <div
+      class="md"
+      // The HTML comes from `toHtml`, which takes out everything that could run.
+      // eslint-disable-next-line solid/no-innerhtml
+      innerHTML={html()}
+      onClick={onClick}
+      role="presentation"
+      // The loss of a picture does not rise through the page like a press does: it is caught on its way down.
+      ref={(el) => el.addEventListener('error', onLost, true)}
+    />
+  );
 }
