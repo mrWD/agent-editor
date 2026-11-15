@@ -70,4 +70,98 @@ test.describe('The panes at the sides of a task', () => {
     await row('src').click();
     await expect(row('middleware')).toHaveAttribute('aria-expanded', 'false');
   });
+
+  test('LY-03 the box a message is typed in is as tall as its top edge was dragged, and the conversation gives it the room', async ({
+    app,
+    project,
+  }) => {
+    await app.openHome();
+    await app.createTask({ text: unique('Describe the limiter'), folder: (await project()).dir });
+    const page = app.page;
+    const edge = page.getByRole('separator', { name: 'Drag to make the box you type in taller or shorter' });
+    const height = async (what: 'box' | 'feed') =>
+      Math.round((await (what === 'box' ? app.messageBox : app.conversation.locator('.feed')).boundingBox())!.height);
+    expect(await height('box')).toBe(56);
+    const feedBefore = await height('feed');
+
+    // Dragged up, the box grows and the conversation above it shrinks by as much.
+    const from = (await edge.boundingBox())!;
+    await page.mouse.move(from.x + 120, from.y + 4);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 120, from.y + 4 - 140, { steps: 5 });
+    await page.mouse.up();
+    expect(await height('box')).toBe(196);
+    expect(await height('feed')).toBe(feedBefore - 140);
+    await expect(edge).toHaveAttribute('aria-valuenow', '196');
+
+    // The arrows move it too, the way they point; it is never shorter than a line and a half of text.
+    await edge.focus();
+    await page.keyboard.press('ArrowUp');
+    expect(await height('box')).toBe(212);
+    for (let press = 0; press < 14; press += 1) await page.keyboard.press('ArrowDown');
+    expect(await height('box')).toBe(44);
+    // And it never takes the conversation's last room.
+    for (let press = 0; press < 60; press += 1) await page.keyboard.press('ArrowUp');
+    expect(await height('feed')).toBeGreaterThanOrEqual(96);
+    expect(await height('box')).toBeLessThanOrEqual(560);
+
+    // Kept after a reload; a double click puts it back as it was at first.
+    await edge.focus();
+    for (let press = 0; press < 80; press += 1) await page.keyboard.press('ArrowDown');
+    for (let press = 0; press < 5; press += 1) await page.keyboard.press('ArrowUp');
+    expect(await height('box')).toBe(124);
+    await page.reload();
+    await expect(app.conversation).toBeVisible();
+    expect(await height('box')).toBe(124);
+    await edge.dblclick();
+    expect(await height('box')).toBe(56);
+  });
+
+  test('LY-04 the column of Changes and the list of the Preview are as wide as they were dragged', async ({
+    app,
+    project,
+  }) => {
+    await app.openHome();
+    await app.createTask({ text: unique('Describe the limiter'), folder: (await project()).dir });
+    const page = app.page;
+    await app.showView('Changes');
+    const column = page.getByRole('region', { name: 'Git: what goes in, commit, push' });
+    const columnEdge = page.getByRole('separator', { name: 'Drag to make the column of changes wider or narrower' });
+    const width = async (of: typeof column) => Math.round((await of.boundingBox())!.width);
+    expect(await width(column)).toBe(320);
+    const from = (await columnEdge.boundingBox())!;
+    await page.mouse.move(from.x, from.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 100, from.y + 200, { steps: 4 });
+    await page.mouse.up();
+    expect(await width(column)).toBe(420);
+    await columnEdge.focus();
+    await page.keyboard.press('ArrowLeft');
+    expect(await width(column)).toBe(404);
+
+    // The list of the API in the Preview has an edge of its own, with a size of its own.
+    await app.showView('Preview');
+    await page
+      .getByRole('group', { name: 'What to preview on' })
+      .getByRole('button', { name: 'API', exact: true })
+      .click();
+    const list = page.getByRole('navigation', { name: 'What the API offers' });
+    const listEdge = page.getByRole('separator', { name: 'Drag to make the list of operations wider or narrower' });
+    expect(await width(list)).toBe(300);
+    await listEdge.focus();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    expect(await width(list)).toBe(332);
+
+    // Both are kept; the column of Changes is as it was left.
+    await page.reload();
+    await page
+      .getByRole('group', { name: 'What to preview on' })
+      .getByRole('button', { name: 'API', exact: true })
+      .click();
+    await expect(list).toBeVisible();
+    expect(await width(list)).toBe(332);
+    await app.showView('Changes');
+    expect(await width(column)).toBe(404);
+  });
 });
