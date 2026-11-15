@@ -4529,6 +4529,15 @@ button.api-change-op:hover {
   gap: 8px;
   margin-top: 6px;
 }
+/* What is listed: the files the task touched, or all of the project. As wide as its two words. */
+.infra-scope {
+  align-self: flex-start;
+  flex-wrap: nowrap;
+}
+.infra-scope .count {
+  margin-left: 0;
+  color: var(--text-3);
+}
 /* The field of a deploy a step is about: it reads as the first word of the step. */
 .infra-field {
   padding: 0 6px;

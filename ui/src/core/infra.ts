@@ -23,6 +23,17 @@ export type InfraFile = {
   steps: InfraStep[];
 };
 
+/** A file of the project as it stands, with what it holds. `change` says whether the task touched it. */
+export type InfraWhole = {
+  path: string;
+  tool: InfraTool;
+  change: 'added' | 'modified' | null;
+  steps: InfraStep[];
+};
+
+/** Every infrastructure file of a project, and how many more there are than were read. */
+export type InfraAll = { files: InfraWhole[]; more: number };
+
 /** A check of a tool that is started by hand: `terraform validate`, `terraform plan`, `helm template`. */
 export type InfraCheck = {
   /** What it is and where, such as `terraform-plan:infra/prod`. */
@@ -68,9 +79,22 @@ export function hasWords(tools: InfraState['tools']): string {
   return tools.map((one) => `${toolWord[one.kind]}, ${one.files} ${one.files === 1 ? 'file' : 'files'}`).join(' · ');
 }
 
+/** How many infrastructure files the project has. */
+export function fileCount(tools: InfraState['tools']): number {
+  return tools.reduce((sum, one) => sum + one.files, 0);
+}
+
+/**
+ * Which files are on show: the ones the task touched, or all of the project. Until the user says,
+ * it is what the task touched whenever it touched something.
+ */
+export function infraScope(chosen: 'touched' | 'all' | null, touched: number): 'touched' | 'all' {
+  return chosen ?? (touched > 0 ? 'touched' : 'all');
+}
+
 /** The files of each tool together, in the order the core gave them. */
-export function byTool(files: InfraFile[]): { tool: InfraTool; files: InfraFile[] }[] {
-  const groups: { tool: InfraTool; files: InfraFile[] }[] = [];
+export function byTool<File extends { tool: InfraTool }>(files: File[]): { tool: InfraTool; files: File[] }[] {
+  const groups: { tool: InfraTool; files: File[] }[] = [];
   for (const file of files) {
     const last = groups[groups.length - 1];
     if (last && last.tool === file.tool) last.files.push(file);
@@ -89,8 +113,8 @@ export function changeWords(files: InfraFile[]): string {
   return said || 'This task has touched none of it';
 }
 
-/** How many steps of the task's changes deserve a second look. */
-export function dangers(files: InfraFile[]): number {
+/** How many steps of some files deserve a second look. */
+export function dangers(files: { steps: InfraStep[] }[]): number {
   return files.reduce((sum, one) => sum + one.steps.filter((step) => step.danger !== null).length, 0);
 }
 
@@ -122,6 +146,26 @@ export function infraForAgent(files: InfraFile[]): { title: string; text: string
   const marked = dangers(files);
   if (marked > 0) lines.push('', `${marked} of these ${marked === 1 ? 'deserves' : 'deserve'} a second look.`);
   return { title: 'what this task changes in the infrastructure', text: lines.join('\n') };
+}
+
+/** All the infrastructure of the project as text for the agent: every file with what it holds. */
+export function allForAgent(all: InfraAll): { title: string; text: string } {
+  const lines = ['The infrastructure of this project, read from the files as they stand. Nothing was run.'];
+  for (const group of byTool(all.files)) {
+    lines.push('', toolWord[group.tool]);
+    for (const file of group.files) {
+      lines.push(file.change ? `${file.path} (${changeWord[file.change]} in this task)` : file.path);
+      for (const step of file.steps) {
+        lines.push(`- ${stepLine(step)}`);
+        if (step.danger) lines.push(`  Look twice: ${step.danger}`);
+      }
+      if (file.steps.length === 0) lines.push('- Nothing in it could be read.');
+    }
+  }
+  if (all.more > 0) lines.push('', `${all.more} more ${all.more === 1 ? 'file was' : 'files were'} not read.`);
+  const marked = dangers(all.files);
+  if (marked > 0) lines.push('', `${marked} of these ${marked === 1 ? 'deserves' : 'deserve'} a second look.`);
+  return { title: 'the infrastructure of this project', text: lines.join('\n') };
 }
 
 /** A run of a check as text for the agent: what was started and where, how it ended, what it printed. */

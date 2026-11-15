@@ -216,6 +216,114 @@ async fn what_a_task_changes_in_the_infrastructure_is_read_tool_by_tool_with_the
 }
 
 #[tokio::test]
+async fn all_the_infrastructure_of_a_project_is_read_as_it_stands_with_what_the_task_touched_said_so() {
+    let sandbox = Sandbox::new("infra-all");
+    let project = git_project(&sandbox);
+    write(&project, "infra/main.tf", MAIN_TF);
+    write(&project, "k8s/web.yaml", WEB_YAML);
+    write(&project, "Dockerfile", "FROM node:18-alpine\nUSER node\nEXPOSE 3000\n");
+    write(&project, ".github/workflows/ci.yml", "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n");
+    git(&project, &["add", "."]);
+    git(&project, &["commit", "-q", "-m", "Infrastructure"]);
+    let state = state_with(&sandbox, missing("terraform"), missing("helm"));
+    let added = state.manager.add_project(&project.to_string_lossy(), None).unwrap();
+    let task_id = idle_task(&state, &added.id).await;
+    let folder = state.manager.cwd(&task_id).unwrap();
+
+    // Before the task touches anything: every file, tool by tool, with what it holds.
+    let all = asked(&state, "infra.all", json!({ "taskId": task_id })).await.unwrap();
+    let listed = |all: &Value| -> Vec<(String, String, Value)> {
+        all["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|file| {
+                (
+                    file["tool"].as_str().unwrap().to_string(),
+                    file["path"].as_str().unwrap().to_string(),
+                    file["change"].clone(),
+                )
+            })
+            .collect()
+    };
+    let row = |tool: &str, path: &str, change: Value| (tool.to_string(), path.to_string(), change);
+    assert_eq!(
+        listed(&all),
+        [
+            row("terraform", "infra/main.tf", Value::Null),
+            row("kubernetes", "k8s/web.yaml", Value::Null),
+            row("docker", "Dockerfile", Value::Null),
+            row("ci", ".github/workflows/ci.yml", Value::Null),
+        ]
+    );
+    assert_eq!(all["more"], 0);
+    assert_eq!(
+        steps_of(&all, "infra/main.tf"),
+        [step("", "Resource `aws_db_instance.orders`", false), step("", "Resource `aws_s3_bucket.exports`", false)]
+    );
+    assert_eq!(
+        steps_of(&all, "k8s/web.yaml"),
+        [
+            step("", "Deployment `web`", false),
+            step("replicas", "2", false),
+            step("image", "of `web`: `shop/web:1.4`", false),
+            step("ports", "of `web`: 8080", false),
+        ]
+    );
+    assert_eq!(
+        steps_of(&all, "Dockerfile"),
+        [
+            step("image", "base `node:18-alpine`", false),
+            step("ports", "exposes 3000", false),
+            step("", "Runs as `node`", false),
+        ]
+    );
+    assert_eq!(
+        steps_of(&all, ".github/workflows/ci.yml"),
+        [step("", "Job `test`", false), step("", "Runs on push", false)]
+    );
+
+    // The task changes one file, writes another and removes a third: the files are read as they
+    // stand now, the first two are said to be touched, and the one that is gone is not listed.
+    write(&folder, "Dockerfile", "FROM node:20-alpine\nUSER root\nEXPOSE 3000\n");
+    write(
+        &folder,
+        "compose.yaml",
+        "services:\n  db:\n    image: postgres:16\n    environment:\n      POSTGRES_PASSWORD: hunter2hunter2\n",
+    );
+    std::fs::remove_file(folder.join(".github/workflows/ci.yml")).unwrap();
+    let all = asked(&state, "infra.all", json!({ "taskId": task_id })).await.unwrap();
+    assert_eq!(
+        listed(&all),
+        [
+            row("terraform", "infra/main.tf", Value::Null),
+            row("kubernetes", "k8s/web.yaml", Value::Null),
+            row("docker", "Dockerfile", json!("modified")),
+            row("compose", "compose.yaml", json!("added")),
+        ]
+    );
+    // What deserves a second look in a file as it stands is marked the same as in a change.
+    assert_eq!(
+        steps_of(&all, "Dockerfile"),
+        [
+            step("image", "base `node:20-alpine`", false),
+            step("ports", "exposes 3000", false),
+            step("", "Runs as `root`", true),
+        ]
+    );
+    assert_eq!(
+        steps_of(&all, "compose.yaml"),
+        [
+            step("", "Service `db`", false),
+            step("image", "of `db`: `postgres:16`", false),
+            step("env", "of `db`: `POSTGRES_PASSWORD`", false),
+            step("", "`POSTGRES_PASSWORD` is written in plain text", true),
+        ]
+    );
+    assert!(!all.to_string().contains("hunter2"), "a secret is named and never repeated");
+}
+
+#[tokio::test]
 async fn what_was_only_moved_is_not_read_as_removed() {
     let sandbox = Sandbox::new("infra-moves");
     let project = git_project(&sandbox);

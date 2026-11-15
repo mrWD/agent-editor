@@ -1,17 +1,23 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { core } from '../core/client';
 import {
+  allForAgent,
   byTool,
   changeWord,
   changeWords,
   checkForAgent,
   dangers,
+  fileCount,
   folderWords,
   hasWords,
   infraForAgent,
+  infraScope,
   toolWord,
+  type InfraAll,
   type InfraCheck,
+  type InfraFile,
   type InfraState,
+  type InfraWhole,
 } from '../core/infra';
 import { runWords, type JobRun } from '../core/jobs';
 import { createKept } from '../core/kept';
@@ -24,13 +30,20 @@ const said = (error: unknown) => (error instanceof Error ? error.message : Strin
  * The Preview of what a task changes in the infrastructure of a project: its
  * Terraform files, manifests, charts, Dockerfiles, compose files and
  * pipelines, each read before and after, with what deserves a second look
- * marked. Nothing is run by looking. A check of a tool that is on this
- * computer runs when its button is pressed, and nothing is ever applied.
+ * marked. All the infrastructure of the project can be listed instead: every
+ * file as it stands, with what it holds. Nothing is run by looking. A check of
+ * a tool that is on this computer runs when its button is pressed, and nothing
+ * is ever applied.
  */
 export function InfraView(props: { taskId: string }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- made anew for each task
   const taskId = props.taskId;
   const [found, setFound] = createKept<InfraState | null>(`task:${taskId}:infra.state`, null);
+  /** Every file of the project as it stands. Read only while all of them are on show. */
+  const [whole, setWhole] = createKept<InfraAll | null>(`task:${taskId}:infra.all`, null);
+  /** Which files are listed. `null` until the user says: then what the task touched, if anything. */
+  const [scope, setScope] = createKept<'touched' | 'all' | null>(`task:${taskId}:infra.scope`, null);
+  const showsAll = () => infraScope(scope(), found()?.files.length ?? 0) === 'all';
   /** The last run of each check that was looked at, and the command it was started with. */
   const [runs, setRuns] = createKept<Record<string, JobRun>>(`task:${taskId}:infra.runs`, {});
   const [commands, setCommands] = createKept<Record<string, string>>(`task:${taskId}:infra.commands`, {});
@@ -82,6 +95,8 @@ export function InfraView(props: { taskId: string }): JSX.Element {
     try {
       const state = await core.request<InfraState>('infra.get', { taskId });
       setFound(state);
+      // All of it is read only when it is what is looked at.
+      if (showsAll()) setWhole(await core.request<InfraAll>('infra.all', { taskId }));
       setProblem(null);
       // A check may have been started before this view was opened, and be running still: asked once.
       if (!looked) for (const check of state.checks) if (check.ready) void watch(check.id);
@@ -117,6 +132,12 @@ export function InfraView(props: { taskId: string }): JSX.Element {
   });
 
   const files = () => found()?.files ?? [];
+  const pick = (which: 'touched' | 'all') => {
+    setScope(which);
+    setHanded(null);
+    // What was read before stays on show while it is read again.
+    if (which === 'all') void load();
+  };
   const checks = () => found()?.checks ?? [];
   const byId = createMemo(() => new Map(checks().map((check) => [check.id, check])));
   /** The rows of the checks, by name: a row stays the same row when the infrastructure is read again. */
@@ -236,6 +257,61 @@ export function InfraView(props: { taskId: string }): JSX.Element {
     );
   };
 
+  /** Files tool by tool, each with its steps. A file the task touched says how. */
+  const FileList = (list: { files: (InfraFile | InfraWhole)[]; none: string }) => (
+    <For each={byTool(list.files)}>
+      {(group) => (
+        <section class="infra-tool" aria-label={toolWord[group.tool]}>
+          <h3 class="api-level">{toolWord[group.tool]}</h3>
+          <ul class="db-migrations">
+            <For each={group.files}>
+              {(one) => (
+                <li>
+                  <div class="db-file">
+                    <span class="mono">{one.path}</span>
+                    <Show when={one.change}>
+                      {(change) => (
+                        <span class="tag" classList={{ good: change() === 'added', accent: change() === 'modified' }}>
+                          {changeWord[change()]}
+                        </span>
+                      )}
+                    </Show>
+                  </div>
+                  <ul class="db-steps">
+                    <For each={one.steps}>
+                      {(step) => (
+                        <li classList={{ danger: step.danger !== null }}>
+                          <Show when={step.field}>
+                            <span class="tag infra-field">{step.field}</span>{' '}
+                          </Show>
+                          <Marked text={step.text} />
+                          <Show when={step.danger}>
+                            <span class="fine"> {step.danger}</span>
+                          </Show>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                  <Show when={one.steps.length === 0 && one.change !== 'deleted'}>
+                    <p class="fine">{list.none}</p>
+                  </Show>
+                </li>
+              )}
+            </For>
+          </ul>
+        </section>
+      )}
+    </For>
+  );
+
+  /** What is on show, as it goes to the agent. `null` while there is nothing to hand over. */
+  const forAgent = () => {
+    if (!showsAll()) return files().length > 0 ? infraForAgent(files()) : null;
+    const all = whole();
+    return all && all.files.length > 0 ? allForAgent(all) : null;
+  };
+  const onShow = (): { steps: InfraFile['steps'] }[] => (showsAll() ? (whole()?.files ?? []) : files());
+
   return (
     <div class="api infra">
       <Show when={problem()}>
@@ -261,78 +337,90 @@ export function InfraView(props: { taskId: string }): JSX.Element {
             }
           >
             <div class="db-body">
-              <section class="db-part" aria-label="What this task changes in the infrastructure">
+              <section
+                class="db-part"
+                aria-label={
+                  showsAll() ? 'The infrastructure of this project' : 'What this task changes in the infrastructure'
+                }
+              >
                 <div class="db-head">
                   <h2 class="api-title">
                     Infrastructure
-                    <span class="fine"> {changeWords(files())}</span>
+                    <span class="fine">
+                      {' '}
+                      {showsAll()
+                        ? `${fileCount(now().tools)} ${fileCount(now().tools) === 1 ? 'file' : 'files'}`
+                        : changeWords(files())}
+                    </span>
                   </h2>
-                  <Show when={dangers(files()) > 0}>
+                  <Show when={dangers(onShow()) > 0}>
                     <span class="tag" data-tone="failed">
-                      {dangers(files())} to look at twice
+                      {dangers(onShow())} to look at twice
                     </span>
                   </Show>
                   <span class="grow" />
-                  <Show when={files().length > 0}>
-                    <Show when={handed() === infraForAgent(files()).title}>
-                      <span class="fine">It goes along with your next message.</span>
-                    </Show>
-                    <button type="button" class="btn small" onClick={() => show(infraForAgent(files()))}>
-                      Show it to the agent
-                    </button>
+                  <Show when={forAgent()}>
+                    {(made) => (
+                      <>
+                        <Show when={handed() === made().title}>
+                          <span class="fine">It goes along with your next message.</span>
+                        </Show>
+                        <button type="button" class="btn small" onClick={() => show(made())}>
+                          Show it to the agent
+                        </button>
+                      </>
+                    )}
                   </Show>
+                </div>
+                <div class="switcher infra-scope" role="group" aria-label="Which infrastructure to show">
+                  <button
+                    type="button"
+                    aria-pressed={!showsAll()}
+                    title="Only the files this task touched, with what each change does"
+                    onClick={() => pick('touched')}
+                  >
+                    Changed <span class="count">{files().length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={showsAll()}
+                    title="Every infrastructure file of the project, with what it holds"
+                    onClick={() => pick('all')}
+                  >
+                    All <span class="count">{fileCount(now().tools)}</span>
+                  </button>
                 </div>
                 <p class="fine">
                   <Show when={now().tools.length > 0} fallback="The project has no infrastructure files left.">
                     The project has {hasWords(now().tools)}.
                   </Show>{' '}
-                  What the task changed since its branch left the base is read from the files; nothing is run for it.
+                  <Show
+                    when={showsAll()}
+                    fallback="What the task changed since its branch left the base is read from the files; nothing is run for it."
+                  >
+                    Every file is read as it stands in the folder of the task; nothing is run for it.
+                  </Show>
                 </p>
                 <Show when={now().note}>
                   <p class="fine">{now().note}</p>
                 </Show>
-                <For each={byTool(files())}>
-                  {(group) => (
-                    <section class="infra-tool" aria-label={toolWord[group.tool]}>
-                      <h3 class="api-level">{toolWord[group.tool]}</h3>
-                      <ul class="db-migrations">
-                        <For each={group.files}>
-                          {(one) => (
-                            <li>
-                              <div class="db-file">
-                                <span class="mono">{one.path}</span>
-                                <span
-                                  class="tag"
-                                  classList={{ good: one.change === 'added', accent: one.change === 'modified' }}
-                                >
-                                  {changeWord[one.change]}
-                                </span>
-                              </div>
-                              <ul class="db-steps">
-                                <For each={one.steps}>
-                                  {(step) => (
-                                    <li classList={{ danger: step.danger !== null }}>
-                                      <Show when={step.field}>
-                                        <span class="tag infra-field">{step.field}</span>{' '}
-                                      </Show>
-                                      <Marked text={step.text} />
-                                      <Show when={step.danger}>
-                                        <span class="fine"> {step.danger}</span>
-                                      </Show>
-                                    </li>
-                                  )}
-                                </For>
-                              </ul>
-                              <Show when={one.steps.length === 0 && one.change !== 'deleted'}>
-                                <p class="fine">Nothing in it could be read as a change.</p>
-                              </Show>
-                            </li>
-                          )}
-                        </For>
-                      </ul>
-                    </section>
-                  )}
-                </For>
+                <Show
+                  when={showsAll()}
+                  fallback={<FileList files={files()} none="Nothing in it could be read as a change." />}
+                >
+                  <Show when={whole()} fallback={<p class="fine">Reading every file</p>}>
+                    {(all) => (
+                      <>
+                        <FileList files={all().files} none="Nothing in it could be read." />
+                        <Show when={all().more > 0}>
+                          <p class="fine">
+                            {all().more} more {all().more === 1 ? 'file is' : 'files are'} not read here.
+                          </p>
+                        </Show>
+                      </>
+                    )}
+                  </Show>
+                </Show>
               </section>
               <Show when={checks().length > 0}>
                 <section class="db-part" aria-label="Checks of the infrastructure">

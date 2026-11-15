@@ -13,7 +13,9 @@
 //! - **CI**: `.gitlab-ci.yml` and the workflows under `.github/workflows`.
 //!
 //! The files the task touched since its branch left the base are listed, each
-//! with what its change does (see [`read`]). Nothing of that starts a program.
+//! with what its change does (see [`read`]). Every file of the project can be
+//! listed as well, each with what it holds as it stands. Nothing of that starts
+//! a program.
 //!
 //! Three checks can be started by hand, each in a terminal of the task and
 //! only when its tool is on this computer: `terraform validate`,
@@ -42,6 +44,8 @@ const MAX_FILE: u64 = 400 * 1024;
 const HEAD: usize = 64 * 1024;
 /// How many changed files are read, and how many checks are offered.
 const MOST_CHANGED: usize = 200;
+/// How many files of a project are read when all of its infrastructure is asked for.
+const MOST_READ: usize = 300;
 const MOST_CHECKS: usize = 24;
 
 /// The tools, in the order they are shown.
@@ -241,6 +245,41 @@ pub fn changed(root: &Path, start: &str, found: &Found) -> Result<Vec<Changed>> 
     Ok(files)
 }
 
+/// One infrastructure file of a project as it stands, with what it holds.
+#[derive(Debug, Serialize)]
+pub struct Whole {
+    pub path: String,
+    pub tool: &'static str,
+    /// "added" or "modified" when the task touched it; `None` for a file it left alone.
+    pub change: Option<&'static str>,
+    pub steps: Vec<Step>,
+}
+
+/// Every infrastructure file of a project as it stands in its folder, tool by tool, each with what
+/// it holds, and how many more there are than are read. `touched` is what the task changed: those
+/// files are said to be new or changed.
+pub fn all(root: &Path, found: &Found, touched: &[Changed]) -> (Vec<Whole>, usize) {
+    let order = |tool: &str| TOOLS.iter().position(|one| *one == tool).unwrap_or(TOOLS.len());
+    let mut listed: Vec<&(String, &'static str)> = found.files.iter().collect();
+    listed.sort_by(|a, b| (order(a.1), &a.0).cmp(&(order(b.1), &b.0)));
+    let more = listed.len().saturating_sub(MOST_READ);
+    let files = listed
+        .into_iter()
+        .take(MOST_READ)
+        .map(|(path, tool)| {
+            let on_disk = root.join(path);
+            let short = std::fs::metadata(&on_disk).is_ok_and(|meta| meta.len() <= MAX_FILE);
+            let steps = match short.then(|| std::fs::read(&on_disk).ok()).flatten() {
+                Some(bytes) => read::whole(tool, path, &String::from_utf8_lossy(&bytes)),
+                None => read::too_long(),
+            };
+            let change = touched.iter().find(|file| &file.path == path).map(|file| file.change);
+            Whole { path: path.clone(), tool, change, steps }
+        })
+        .collect();
+    (files, more)
+}
+
 fn folder_of(path: &str) -> &str {
     path.rsplit_once('/').map_or("", |(folder, _)| folder)
 }
@@ -430,6 +469,11 @@ fn handle(
             let checks = checks(root, &found, &files, tools);
             Ok(json!({ "tools": tools_found, "files": files, "note": note, "checks": checks }))
         }
+        "infra.all" => {
+            let (found, touched, _) = look()?;
+            let (files, more) = all(root, &found, &touched);
+            Ok(json!({ "files": files, "more": more }))
+        }
         "infra.run" => {
             let id = text(params, "id")?;
             let (found, files, _) = look()?;
@@ -462,6 +506,8 @@ fn handle(
 /// - `infra.has { taskId }` says whether the project has any infrastructure file.
 /// - `infra.get { taskId }` gives the tools the project has, the infrastructure files the task
 ///   touched with what each change does, and the checks that can be started.
+/// - `infra.all { taskId }` gives every infrastructure file of the project as it stands in the
+///   task's folder, each with what it holds and whether the task touched it.
 /// - `infra.run { taskId, id }` starts a check in a terminal of the task.
 /// - `infra.state { taskId, id }` says whether it still runs, how it ended and what it printed.
 /// - `infra.stop { taskId, id }` stops it.

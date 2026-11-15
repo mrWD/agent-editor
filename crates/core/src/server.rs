@@ -1210,7 +1210,7 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         "jobs.get" | "jobs.set" | "jobs.run" | "jobs.state" | "jobs.stop" => {
             crate::jobs::command(state, method, params).await
         }
-        "infra.has" | "infra.get" | "infra.run" | "infra.state" | "infra.stop" => {
+        "infra.has" | "infra.get" | "infra.all" | "infra.run" | "infra.state" | "infra.stop" => {
             crate::infra::command(state, method, params).await
         }
         "db.get" | "db.set" | "db.schema" | "db.query" | "db.try" => {
