@@ -26,7 +26,8 @@ const OUTPUT_PATIENCE: Duration = Duration::from_millis(1500);
 
 /// Where the programs the Preview runs are. `None` means: look for it on this computer.
 ///
-/// Tests name stand-ins here, and so do `AE_BROWSER`, `AE_XCRUN`, `AE_ADB`, `AE_EMULATOR` and `AE_IDB`.
+/// Tests name stand-ins here, and so do `AE_BROWSER`, `AE_XCRUN`, `AE_ADB`, `AE_EMULATOR`, `AE_IDB`,
+/// `AE_TERRAFORM` and `AE_HELM`.
 /// A program that is named is the only one used, even when it is not there:
 /// a test must never fall through to the real Chrome, Xcode or Android tools.
 #[derive(Debug, Clone, Default)]
@@ -39,6 +40,9 @@ pub struct Tools {
     pub emulator: Option<PathBuf>,
     /// `idb`, which taps and types on an iOS simulator. Looked for only when `xcrun` was not named.
     pub idb: Option<PathBuf>,
+    /// `terraform` and `helm`, which the Infra view starts in a terminal when asked to.
+    pub terraform: Option<PathBuf>,
+    pub helm: Option<PathBuf>,
     /// How long any one run may take, instead of each kind's own limit. For tests of a program that hangs.
     pub patience: Option<Duration>,
 }
@@ -53,6 +57,8 @@ impl Tools {
             adb: named("AE_ADB"),
             emulator: named("AE_EMULATOR"),
             idb: named("AE_IDB"),
+            terraform: named("AE_TERRAFORM"),
+            helm: named("AE_HELM"),
             patience: None,
         }
     }
