@@ -130,6 +130,23 @@ scripts/sonar-local.sh
   token. Which one a project uses is read from the address of its git remote.
 - **Linear** needs a personal API key, pasted in the Issues section, and a team
   key per project.
+- **An issue or a request in full.** On the Issues screen an issue in work
+  opens three ways: "Open" goes to its task with the code, its title opens
+  the issue in a panel at the side, and the name of its request ("PR #128",
+  "MR !48") opens the request in a panel of its own. Both panels can be open
+  at once, beside the list. Each has in its head a button that opens it in
+  the browser. The panel of an issue shows the description, who wrote it and
+  who has it, the labels, what is attached, and what was written under it,
+  oldest first. The panel of a request has a tab for each part: what it
+  says, the comments (with the ones on lines that are not settled), what it
+  changes file by file, and what stands before its merge with the pipeline
+  of its branch. "Details" on the card of a request in Changes opens the
+  same panel. A picture in a
+  description is kept by the tracker for signed-in people only, so the core
+  fetches it with your own sign-in (`gh`, `glab`, the Linear key) and hands
+  it on. It does that only for the tracker's own places for uploads, and only
+  when what comes back is a picture. Nothing is written: no comment is added
+  from here.
 - **Docker** is used by the Run tab when a project has a compose file.
 - **Sentry** needs an auth token that may read events, projects and the
   organization, pasted on the Issues screen with the organization's name
