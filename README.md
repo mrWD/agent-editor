@@ -131,10 +131,12 @@ scripts/sonar-local.sh
 - **Linear** needs a personal API key, pasted in the Issues section, and a team
   key per project.
 - **An issue or a request in full.** On the Issues screen an issue in work
-  opens three ways: "Open" goes to its task with the code, its title opens
-  the issue in a panel at the side, and the name of its request ("PR #128",
+  opens three ways: "Open in editor" goes to its task (the agent, the code,
+  the changes and the preview), its title opens the issue in a panel at the
+  side, and the name of its request ("PR #128",
   "MR !48") opens the request in a panel of its own. Both panels can be open
-  at once, beside the list. Each has in its head a button that opens it in
+  at once, beside the list: the issue first, its request after it. An issue
+  nobody works on has "Start in editor" in place of "Open in editor". Each has in its head a button that opens it in
   the browser. The panel of an issue shows the description, who wrote it and
   who has it, the labels, what is attached, and what was written under it,
   oldest first. The panel of a request has a tab for each part: what it
@@ -198,8 +200,10 @@ things to look at, next to Web and the two devices.
   description with the one of the base: the same file where the branch
   started, or a service that runs the base branch, whose address you give
   under Set up. Each difference is weighed by what it does to a client written
-  against the base: it breaks clients, it is worth a look, or it is safe. The
-  operations the task touched come first in the list.
+  against the base: it breaks clients, it is worth a look, or it is safe. Once
+  there is something to compare with, the list holds only the operations the
+  task added or changed; "All" above it brings the whole API back, with what
+  the task touched first.
 - **Database.** The migrations the task added or changed, read from their
   text and said step by step, with the steps that can lose data or break the
   code that still runs marked and said why. Alembic, Django, Prisma, Rails,
