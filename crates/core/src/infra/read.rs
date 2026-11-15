@@ -108,6 +108,39 @@ pub fn read(tool: &str, path: &str, before: Option<&str>, after: Option<&str>) -
     steps
 }
 
+/// What a file holds as it stands, in the words of [`read`]. It is read as a file that is new, and
+/// what such a reading "adds" is simply there: a resource, an object with its image and its
+/// replicas, a service, a job. What deserves a second look in a file as it stands is marked the same:
+/// a privileged container, a secret written in plain text, an image that runs as root.
+pub fn whole(tool: &str, path: &str, text: &str) -> Vec<Step> {
+    let mut steps = read(tool, path, None, Some(text));
+    for step in &mut steps {
+        let said = &step.text;
+        if let Some(rest) = said.strip_prefix("Adds ") {
+            // "Adds resource `a.b`" is "Resource `a.b`" of a file that is not new.
+            let mut letters = rest.chars();
+            step.text = letters.next().map_or(String::new(), |first| first.to_uppercase().chain(letters).collect());
+        } else if let Some(rest) = said.strip_prefix("Changes ") {
+            // Whatever else a compose file says: its networks, its name.
+            step.text = format!("Also sets {rest}");
+        } else if let Some(count) = said.strip_prefix("and ").and_then(|rest| rest.strip_suffix(" more changes")) {
+            step.text = format!("and {count} more");
+        } else if let Some(name) = said.strip_suffix(" is set anew") {
+            step.text = format!("{name} is set");
+        } else if let Some(names) = said.strip_prefix("Variables of the pipeline: adds ") {
+            step.text = format!("Variables of the pipeline: {names}");
+        }
+    }
+    // Who the image runs as is the last word of its last stage.
+    if tool == "docker"
+        && let Some((_, Some(user))) = built(text).users.last()
+    {
+        let text = format!("Runs as {}", mark(user));
+        steps.push(if is_root(user) { risky(text, AS_ROOT) } else { plain(text) });
+    }
+    steps
+}
+
 // ----- secrets in plain text -----
 
 /// Whether a name says that what it holds is a secret.
@@ -1890,6 +1923,85 @@ spec:
         assert_eq!(filled("app:${TAG}-$TAG.${OTHER}", &given), "app:1.2-1.2.${OTHER}");
         assert_eq!(filled("${REGISTRY:-docker.io}/app:${EMPTY:-latest}$", &given), "docker.io/app:latest$");
         assert_eq!(filled("${EMPTY}app", &given), "app");
+    }
+
+    #[test]
+    fn a_file_as_it_stands_is_said_in_the_words_of_a_change_without_adds() {
+        // Terraform: every block by what it is; a secret written out is marked as in a change.
+        let tf = "resource \"aws_db_instance\" \"orders\" {\n  password = \"hunter22\"\n}\nmodule \"net\" {\n  source = \"./net\"\n}\n";
+        assert_eq!(
+            said(&whole("terraform", "infra/main.tf", tf)),
+            [
+                ("", "Resource `aws_db_instance.orders`", false),
+                ("", "Module `net`", false),
+                ("", "`password` is written in plain text", true),
+            ]
+        );
+        assert_eq!(said(&whole("terraform", "prod.tfvars", "region = \"eu\"\n")), [("", "Sets `region`", false)]);
+        // A manifest: the object, then what it says in the fields that matter.
+        let web = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2\n  template:\n    spec:\n      containers:\n        - name: web\n          image: shop/web:1.4\n          securityContext:\n            privileged: true\n";
+        assert_eq!(
+            said(&whole("kubernetes", "k8s/web.yaml", web)),
+            [
+                ("", "Deployment `web`", false),
+                ("replicas", "2", false),
+                ("image", "of `web`: `shop/web:1.4`", false),
+                ("", "`web` runs privileged", true),
+            ]
+        );
+        // A compose file: its services and volumes, and whatever else it sets.
+        let compose =
+            "name: shop\nservices:\n  db:\n    image: postgres:16\n    ports: ['5432:5432']\nvolumes:\n  data: {}\n";
+        assert_eq!(
+            said(&whole("compose", "compose.yaml", compose)),
+            [
+                ("", "Service `db`", false),
+                ("image", "of `db`: `postgres:16`", false),
+                ("ports", "of `db`: 5432:5432", false),
+                ("", "Volume `data`", false),
+                ("", "Also sets `name`", false),
+            ]
+        );
+        // A chart and its values; what may be a secret is named and never repeated.
+        assert_eq!(
+            said(&whole("helm", "deploy/shop/Chart.yaml", "name: shop\nversion: 1.0.0\n")),
+            [("", "The chart `shop`", false), ("", "The version of the chart is `1.0.0`", false)]
+        );
+        assert_eq!(
+            said(&whole("helm", "deploy/shop/values.yaml", "image:\n  tag: '1.4'\ndb:\n  password: ${DB}\n")),
+            [("", "`db.password` is set", false), ("image", "`image.tag`: `1.4`", false)]
+        );
+        // The pipelines: their jobs, and what starts them.
+        assert_eq!(
+            said(&whole("ci", ".gitlab-ci.yml", "stages: [test]\nvariables:\n  NODE: '20'\nunit:\n  script: [x]\n")),
+            [
+                ("", "Job `unit`", false),
+                ("", "The stages are test", false),
+                ("", "Variables of the pipeline: `NODE`", false),
+            ]
+        );
+        assert_eq!(
+            said(&whole("ci", ".github/workflows/ci.yml", "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n")),
+            [("", "Job `test`", false), ("", "Runs on push", false)]
+        );
+        // A Dockerfile: what it starts from, its ports, and who the image runs as when its last stage ends.
+        let image = "ARG NODE=node:20\nFROM ${NODE} AS build\nUSER root\nFROM nginx:1.27 AS production\nUSER nginx\nEXPOSE 8080\n";
+        assert_eq!(
+            said(&whole("docker", "Dockerfile", image)),
+            [
+                ("image", "base `node:20`, `nginx:1.27`", false),
+                ("ports", "exposes 8080", false),
+                ("", "Runs as `nginx`", false),
+            ]
+        );
+        assert_eq!(
+            said(&whole("docker", "Dockerfile", "FROM a\nUSER 0\n")),
+            [("image", "base `a`", false), ("", "Runs as `0`", true)]
+        );
+        // One that names no user says nothing of it.
+        assert_eq!(said(&whole("docker", "Dockerfile", "FROM a\n")), [("image", "base `a`", false)]);
+        // A file that is not YAML says so.
+        assert!(whole("compose", "compose.yaml", "services: [\n")[0].text.starts_with("It cannot be read as YAML"));
     }
 
     #[test]
