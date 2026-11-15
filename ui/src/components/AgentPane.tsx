@@ -1,5 +1,6 @@
 import {
   createEffect,
+  createMemo,
   createSignal,
   For,
   lazy,
@@ -31,6 +32,8 @@ import {
 } from '../core/store';
 import { openInEditor, saveAll, setWork, workOf, type Quote } from '../core/work';
 import { teamOf, watchTeam } from '../core/team';
+import { createKept } from '../core/kept';
+import { allSteps, foldFailed, foldWords, keepRows, oneLine, rowsOf, setAllSteps, type Row } from '../core/feed';
 import { clearPointed, pointedText, sendsShot, setSendsShot, shooterOf } from '../core/previewState';
 import { hideSince, sinceOf } from '../core/visits';
 import { Timeline } from '../screens/LookBack';
@@ -90,6 +93,18 @@ function DiffView(props: { diff: Diff }): JSX.Element {
 function toolVerb(kind: string, status: string): string {
   const done = status === 'completed';
   const waiting = status === 'pending';
+  // A step that was not done is over all the same: it is not said to be going on.
+  if (status === 'failed') {
+    const tried: Record<string, string> = {
+      read: 'tried to read',
+      edit: 'tried to edit',
+      delete: 'tried to delete',
+      execute: 'tried to run',
+      search: 'tried to search',
+      fetch: 'tried to fetch',
+    };
+    return tried[kind] ?? 'tried to do';
+  }
   switch (kind) {
     case 'read':
       return done ? 'read' : 'is reading';
@@ -346,7 +361,88 @@ export function AgentPane(props: { task: Task }): JSX.Element {
     }
   };
 
-  const item = (entry: FeedItem): JSX.Element => (
+  /** The folds the user opened, by the task they are in. Kept while the window lives: a fold stays open when the task is left and come back to. */
+  const [allOpened, setAllOpened] = createKept<Record<string, Record<string, boolean>>>('feed.opened', {});
+  const opened = () => allOpened()[taskId()] ?? {};
+  const setOpened = (next: Record<string, boolean>) => setAllOpened({ ...allOpened(), [taskId()]: next });
+  const working = () => sessionState() === 'running' || sessionState() === 'waiting_permission';
+  /** The conversation as it is read: the work of a turn folded, what was said left open (see `feed`). */
+  const rows = createMemo<Row[]>((before) => keepRows(before, rowsOf(props.task.feed, working(), allSteps())), []);
+
+  /** A step of the agent, on one line. A long command is cut to its first line and opens when pressed. */
+  const ToolRow = (row: { tool: Extract<FeedItem, { kind: 'tool' }> }): JSX.Element => {
+    const [whole, setWhole] = createSignal(false);
+    const text = () => row.tool.path ?? row.tool.title;
+    const cut = () => oneLine(text());
+    return (
+      <div class="activity">
+        <Chip agentId={agentId()} short={short()} flat />
+        <span class="verb">{toolVerb(row.tool.toolKind, row.tool.status)}</span>
+        <Switch fallback={<span class="what">{text()}</span>}>
+          <Match when={inFolder(row.tool.path)}>
+            <button type="button" class="what link" onClick={() => showFile(row.tool.path!)}>
+              {row.tool.path}
+            </button>
+          </Match>
+          <Match when={cut()}>
+            <button
+              type="button"
+              class="what cut"
+              aria-expanded={whole()}
+              title={whole() ? 'Show the first line only' : 'Show all of it'}
+              onClick={() => setWhole(!whole())}
+            >
+              {whole() ? text() : cut()}
+            </button>
+          </Match>
+        </Switch>
+        <Show when={row.tool.status === 'failed'}>
+          <span class="status failed">not done</span>
+        </Show>
+      </div>
+    );
+  };
+
+  /** A run of work folded into one line. Pressed, it shows every entry of the run. */
+  const Fold = (fold: { row: Extract<Row, { kind: 'fold' }> }): JSX.Element => {
+    const open = () => opened()[fold.row.key] === true;
+    const failed = () => foldFailed(fold.row.entries);
+    /** What the agent is at right now, when this fold is still growing. */
+    const now = () => {
+      if (!fold.row.live) return null;
+      const tools = fold.row.entries.filter((entry) => entry.kind === 'tool');
+      const last = tools[tools.length - 1];
+      if (!last || last.kind !== 'tool') return null;
+      const text = last.path ?? last.title;
+      return `${toolVerb(last.toolKind, last.status)} ${oneLine(text) ?? text}`;
+    };
+    return (
+      <div class="fold" classList={{ open: open(), whole: fold.row.whole }}>
+        <button
+          type="button"
+          class="fold-head"
+          aria-expanded={open()}
+          onClick={() => setOpened({ ...opened(), [fold.row.key]: !open() })}
+        >
+          <span class="fold-mark" aria-hidden="true" />
+          <span class="fold-words">{foldWords(fold.row.entries, fold.row.whole)}</span>
+          <Show when={failed() > 0}>
+            <span class="status failed">{failed()} not done</span>
+          </Show>
+        </button>
+        <Show when={now() && !open()}>
+          <p class="fold-now">{now()}</p>
+        </Show>
+        <Show when={open()}>
+          <div class="fold-body">
+            <For each={fold.row.entries}>{(entry) => item(entry, false)}</For>
+          </div>
+        </Show>
+      </div>
+    );
+  };
+
+  const item = (entry: FeedItem, lead = true): JSX.Element => (
     <Switch>
       <Match when={entry.kind === 'user' && entry}>
         {(user) => (
@@ -441,11 +537,13 @@ export function AgentPane(props: { task: Task }): JSX.Element {
       <Match when={entry.kind === 'agent' && entry}>
         {(said) => (
           <article class="said">
-            <div class="said-head">
-              <Chip agentId={agentId()} short={short()} />
-              <span class="who">{name()}</span>
-              <span class="muted">{ago(said().at)}</span>
-            </div>
+            <Show when={lead}>
+              <div class="said-head">
+                <Chip agentId={agentId()} short={short()} />
+                <span class="who">{name()}</span>
+                <span class="muted">{ago(said().at)}</span>
+              </div>
+            </Show>
             <Markdown text={said().text} onFile={showFile} />
           </article>
         )}
@@ -463,22 +561,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         )}
       </Match>
       <Match when={entry.kind === 'thought' && entry}>{(thought) => <p class="thought">{thought().text}</p>}</Match>
-      <Match when={entry.kind === 'tool' && entry}>
-        {(tool) => (
-          <div class="activity">
-            <Chip agentId={agentId()} short={short()} flat />
-            <span class="verb">{toolVerb(tool().toolKind, tool().status)}</span>
-            <Show when={inFolder(tool().path)} fallback={<span class="what">{tool().path ?? tool().title}</span>}>
-              <button type="button" class="what link" onClick={() => showFile(tool().path!)}>
-                {tool().path}
-              </button>
-            </Show>
-            <Show when={tool().status === 'failed'}>
-              <span class="status failed">not done</span>
-            </Show>
-          </div>
-        )}
-      </Match>
+      <Match when={entry.kind === 'tool' && entry}>{(tool) => <ToolRow tool={tool()} />}</Match>
       <Match when={entry.kind === 'plan' && entry}>
         {(plan) => (
           <section class="plan">
@@ -649,6 +732,15 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             Look back
           </button>
         </Show>
+        <button
+          type="button"
+          class="btn small ghost"
+          aria-pressed={allSteps()}
+          title="Show every step of the work, one under another, in place of one line for each run of them"
+          onClick={() => setAllSteps(!allSteps())}
+        >
+          All steps
+        </button>
         <span class="grow" />
         <Show when={usage()}>
           <span class="meta" title={usageTitle()}>
@@ -753,13 +845,13 @@ export function AgentPane(props: { task: Task }): JSX.Element {
           <Match
             when={sessionState() === 'idle' && !inTerminal() && props.task.feed.length > 0 && !props.task.info.race}
           >
-            <section class="card pinned">
+            <section class="card pinned slim">
               <h2>Your turn</h2>
               <p>{name()} finished this turn. Say what to do next.</p>
             </section>
           </Match>
           <Match when={starting()}>
-            <section class="card pinned">
+            <section class="card pinned slim">
               <h2>Starting {name()}</h2>
               <p>It is told what was said so far, then gets your message.</p>
             </section>
@@ -774,7 +866,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
             </section>
           </Match>
           <Match when={sessionState() === 'asleep' && !props.task.info.race}>
-            <section class="card pinned">
+            <section class="card pinned slim">
               <h2>No agent is running</h2>
               <p>Everything said so far is kept. Your next message starts {name()} again and tells it what was said.</p>
             </section>
@@ -807,7 +899,7 @@ export function AgentPane(props: { task: Task }): JSX.Element {
         </Show>
 
         <div class="feed" classList={{ beside: inTerminal() }} ref={feedEl} onScroll={onScroll}>
-          <For each={props.task.feed}>{item}</For>
+          <For each={rows()}>{(row) => (row.kind === 'fold' ? <Fold row={row} /> : item(row.entry, row.lead))}</For>
           <Show when={work().editing}>
             {(editing) => (
               <div class="activity live">
