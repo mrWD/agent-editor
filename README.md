@@ -234,6 +234,15 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   head of the conversation and are remembered. An agent that can load a session
   picks its own up after sleep or a restart; one that cannot is told what was
   said. The head shows how full the context is and what the task has cost.
+  The conversation is folded the way it is read. A turn that was answered
+  since shows what was asked and the agent's last word, with all the work
+  between as one line ("Worked for 1h 6m · 100 steps, 28 messages") that
+  opens when pressed. The latest turn shows what the agent says along the
+  way, with each run of three steps or more as one line ("Ran 8 commands,
+  read 3 files"); while the agent works, the line says what it is at. A
+  long command is its first line until it is pressed. What the agent
+  thought is inside the folds. A question that waits for you is never
+  folded. **All steps** in the head shows everything one under another.
   Answers in Markdown are shown as meant. A picture is attached, pasted or
   dropped into a message and goes to agents that take images. Checked with the
   real Claude on its cheapest model; Codex and Gemini have not been started.

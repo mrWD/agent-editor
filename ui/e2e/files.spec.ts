@@ -41,6 +41,8 @@ test.describe('Making, renaming and deleting files in the tree', () => {
 
     // The agent hears about the new files with the next message.
     await app.say('And who calls it?');
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(app.thoughts.last()).toContainText('the user changed these files by hand');
     await expect(app.thoughts.last()).toContainText('`src/limits/extra.ts`');
   });

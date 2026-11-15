@@ -132,6 +132,21 @@ export class App {
     return this.conversation.locator('.bubble');
   }
 
+  /**
+   * Shows every step of the conversation, one under another, in place of one line for a run of them.
+   * The choice is kept in the browser, so it holds for whatever conversation is shown next too.
+   */
+  async allSteps() {
+    const all = this.page.getByRole('button', { name: 'All steps', exact: true });
+    if ((await all.getAttribute('aria-pressed')) !== 'true') await all.click();
+    await expect(all).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  /** A run of work folded into one line, by a part of what the line says. */
+  fold(words: string | RegExp): Locator {
+    return this.conversation.locator('.fold', { has: this.page.locator('.fold-words', { hasText: words }) });
+  }
+
   /** What the agent thought aloud. The practice agent repeats there what it was sent. */
   get thoughts(): Locator {
     return this.conversation.locator('.thought');

@@ -340,6 +340,8 @@ test.describe('The Preview of a task', () => {
 
     await app.say('What is this for?');
     const told = app.thoughts.last();
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(told).toContainText('About an element picked in the preview at 320 wide (phone):');
     await expect(told).toContainText('- it is a <button> that reads "Try again in 42 s", ');
     await expect(told).toContainText('46, disabled');
@@ -386,6 +388,8 @@ test.describe('The Preview of a task', () => {
     await expect(preview.attached).toContainText('drawing 2');
     await expect(preview.attached).toContainText('tablet 768');
     await app.say('What do you see there?');
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(app.thoughts.last()).toContainText(
       'The user marked the area around the <h1> that reads "Sign in" at 768 wide (drawing 2). Their note: "Too close to the top".',
     );

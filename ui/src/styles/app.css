@@ -1038,6 +1038,21 @@ textarea::placeholder {
 .card.needs {
   border-color: var(--accent);
 }
+/* A card that only says how things stand: one line when it fits, so the conversation keeps its room. */
+.card.pinned.slim {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  padding: 8px 12px;
+}
+.card.slim h2 {
+  font-size: 13px;
+}
+.card.slim p {
+  flex: 1 1 200px;
+  font-size: 12px;
+}
 .card h2,
 .card h3 {
   font-family: var(--display);
@@ -1196,6 +1211,95 @@ textarea::placeholder {
   font-family: var(--mono);
   font-size: 12.5px;
   overflow-wrap: anywhere;
+}
+/* A long command stands on one line until it is pressed. */
+.activity {
+  flex-wrap: nowrap;
+  align-items: baseline;
+}
+.activity .verb {
+  flex: none;
+}
+button.what.cut {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button.what.cut[aria-expanded='true'] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+button.what.cut:hover {
+  color: var(--text-2);
+}
+/* The work of a turn folded into one line. */
+.fold {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fold-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+}
+.fold-head:hover {
+  background: var(--veil-2);
+  color: var(--text);
+}
+.fold-mark {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transform: translateY(-1px);
+}
+.fold.open .fold-mark {
+  transform: rotate(90deg);
+}
+.fold-words {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fold-head .status.failed {
+  flex: none;
+  font-size: 12px;
+  color: var(--red);
+}
+.fold-now {
+  margin: 0 0 0 10px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
 }
 .activity .status {
   font-size: 12px;

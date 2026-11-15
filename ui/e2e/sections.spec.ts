@@ -103,6 +103,8 @@ test.describe('Handing a task to another agent', () => {
     await second.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(second.getByText('Second practice agent finished this turn.')).toBeVisible();
     // The practice agent repeats what it was sent: the earlier conversation is in it.
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(second.locator('.thought').last()).toContainText(`User: ${title}`);
     // The core knows who has the task now, and so does every other window.
     expect((await core.request<{ id: string; agentId: string }[]>('tasks.list')).at(-1)?.agentId).toBe('mock-2');
