@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allForAgent,
   byTool,
   changeWords,
   checkForAgent,
   dangers,
+  fileCount,
   folderWords,
   hasWords,
   infraForAgent,
+  infraScope,
   stepLine,
   type InfraCheck,
   type InfraFile,
   type InfraStep,
+  type InfraWhole,
 } from './infra';
 import type { JobRun } from './jobs';
 
@@ -121,6 +125,76 @@ describe('what a task changes in the infrastructure', () => {
     );
     expect(infraForAgent(files.slice(0, 1)).text).toContain('1 of these deserves a second look.');
     expect(infraForAgent(files.slice(1, 2)).text).not.toContain('second look');
+  });
+});
+
+describe('all the infrastructure of a project', () => {
+  const whole: InfraWhole[] = [
+    {
+      path: 'infra/main.tf',
+      tool: 'terraform',
+      change: null,
+      steps: [step('Resource `aws_db_instance.orders`')],
+    },
+    {
+      path: 'Dockerfile',
+      tool: 'docker',
+      change: 'modified',
+      steps: [
+        step('base `node:20`', { field: 'image' }),
+        step('Runs as `root`', { danger: 'Whatever gets hold of the process is root in the container.' }),
+      ],
+    },
+    { path: 'compose.yaml', tool: 'compose', change: 'added', steps: [] },
+  ];
+
+  it('is on show when the task touched none of it, until the user says which', () => {
+    expect(infraScope(null, 0)).toBe('all');
+    expect(infraScope(null, 2)).toBe('touched');
+    expect(infraScope('touched', 0)).toBe('touched');
+    expect(infraScope('all', 2)).toBe('all');
+  });
+
+  it('is counted over its tools, grouped like the changes, and its marks are counted the same', () => {
+    expect(
+      fileCount([
+        { kind: 'terraform', files: 3 },
+        { kind: 'docker', files: 1 },
+      ]),
+    ).toBe(4);
+    expect(fileCount([])).toBe(0);
+    expect(byTool(whole).map((group) => group.tool)).toEqual(['terraform', 'docker', 'compose']);
+    expect(dangers(whole)).toBe(1);
+  });
+
+  it('goes to the agent file by file, with what the task touched said so', () => {
+    const made = allForAgent({ files: whole, more: 2 });
+    expect(made.title).toBe('the infrastructure of this project');
+    expect(made.text).toBe(
+      [
+        'The infrastructure of this project, read from the files as they stand. Nothing was run.',
+        '',
+        'Terraform',
+        'infra/main.tf',
+        '- Resource `aws_db_instance.orders`',
+        '',
+        'Dockerfiles',
+        'Dockerfile (changed in this task)',
+        '- image base `node:20`',
+        '- Runs as `root`',
+        '  Look twice: Whatever gets hold of the process is root in the container.',
+        '',
+        'Compose',
+        'compose.yaml (new in this task)',
+        '- Nothing in it could be read.',
+        '',
+        '2 more files were not read.',
+        '',
+        '1 of these deserves a second look.',
+      ].join('\n'),
+    );
+    expect(allForAgent({ files: whole.slice(0, 1), more: 1 }).text).toContain('1 more file was not read.');
+    expect(allForAgent({ files: whole.slice(0, 1), more: 0 }).text).not.toContain('second look');
   });
 });
 

@@ -146,6 +146,93 @@ test.describe('The infrastructure a task changes', () => {
     await expect(changes.locator('.db-head .tag')).toHaveText(/ to look at twice$/);
   });
 
+  test('IN-10 all the infrastructure of the project is listed as it stands, next to what the task changes in it', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project();
+    withInfra(shop);
+    const before = { terraform: app.core.calls('terraform').length, helm: app.core.calls('helm').length };
+    // The task has touched none of it: all of it is what there is to show.
+    const { view, folder } = await openInfra(app, shop);
+    const scope = view.getByRole('group', { name: 'Which infrastructure to show' });
+    await expect(scope.getByRole('button')).toHaveText(['Changed 0', 'All 6']);
+    await expect(scope.getByRole('button', { name: /^All/ })).toHaveAttribute('aria-pressed', 'true');
+    const all = view.getByRole('region', { name: 'The infrastructure of this project' });
+    await expect(all.getByRole('heading', { level: 2 })).toHaveText(/^Infrastructure\s*6 files$/);
+    await expect(all).toContainText('Every file is read as it stands in the folder of the task');
+    await expect(all.getByRole('heading', { level: 3 })).toHaveText([
+      'Terraform',
+      'Kubernetes',
+      'Helm',
+      'Dockerfiles',
+      'Compose',
+    ]);
+    // What each file holds, in the words of a change, without anything being added or removed.
+    await expect(all.getByRole('region', { name: 'Terraform' }).locator('.db-steps > li')).toHaveText([
+      /^Resource aws_db_instance\.orders$/,
+      /^Resource aws_s3_bucket\.exports$/,
+    ]);
+    await expect(all.getByRole('region', { name: 'Kubernetes' }).locator('.db-steps > li')).toHaveText([
+      /^Deployment web$/,
+      /^replicas\s*2$/,
+      /^image\s*of web: shop\/web:1\.4$/,
+      /^ports\s*of web: 8080$/,
+    ]);
+    await expect(all.getByRole('region', { name: 'Helm' }).locator('.db-file')).toHaveText([
+      'deploy/shop/Chart.yaml',
+      'deploy/shop/values.yaml',
+    ]);
+    const docker = all.getByRole('region', { name: 'Dockerfiles' });
+    await expect(docker.locator('.db-file')).toHaveText('Dockerfile');
+    await expect(docker.locator('.db-steps > li')).toHaveText([
+      /^image\s*base node:18-alpine$/,
+      /^ports\s*exposes 3000$/,
+    ]);
+    await expect(all.locator('.db-head .tag')).toHaveCount(0);
+
+    // Only what the task changed, as asked: nothing yet.
+    await scope.getByRole('button', { name: /^Changed/ }).click();
+    const changes = view.getByRole('region', { name: 'What this task changes in the infrastructure' });
+    await expect(changes.getByRole('heading', { level: 2 })).toHaveText(
+      /^Infrastructure\s*This task has touched none of it$/,
+    );
+    await expect(changes.getByRole('heading', { level: 3 })).toHaveCount(0);
+    await expect(all).toHaveCount(0);
+
+    // The task moves the image to another base and has it run as root. Looked at again, the view
+    // is still on what the task changed, and that is one file now.
+    writeIn(folder, 'Dockerfile', 'FROM node:20-alpine\nUSER root\nEXPOSE 3000\n');
+    await app.showView('Code');
+    await app.showView('Preview');
+    await expect(scope.getByRole('button')).toHaveText(['Changed 1', 'All 6']);
+    await expect(changes.getByRole('heading', { level: 3 })).toHaveText(['Dockerfiles']);
+    await expect(changes.locator('.db-steps > li')).toHaveText([/^image\s*base node:20-alpine, was node:18-alpine$/]);
+
+    // All of it again: the file the task touched says so, and is read as it stands now.
+    await scope.getByRole('button', { name: /^All/ }).click();
+    await expect(docker.locator('.db-file')).toHaveText(/^Dockerfile\s*changed$/);
+    await expect(docker.locator('.db-steps > li')).toHaveText([
+      /^image\s*base node:20-alpine$/,
+      /^ports\s*exposes 3000$/,
+      /^Runs as root\s*Whatever gets hold of the process is root in the container\.$/,
+    ]);
+    await expect(all.locator('.db-head .tag')).toHaveText('1 to look at twice');
+    await expect(all.getByRole('region', { name: 'Terraform' }).locator('.db-file .tag')).toHaveCount(0);
+
+    // It goes to the agent as what the project has, not as what the task did.
+    await all.getByRole('button', { name: 'Show it to the agent' }).click();
+    const card = app.conversation.getByRole('region', { name: 'From the preview: the infrastructure of this project' });
+    await expect(card).toContainText('infra/main.tf');
+    await expect(card).toContainText('Dockerfile (changed in this task)');
+    await expect(card).toContainText('- Runs as `root`');
+    await expect(card).toContainText('1 of these deserves a second look.');
+
+    // Reading all of it starts no tool either.
+    expect(app.core.calls('terraform').length).toBe(before.terraform);
+    expect(app.core.calls('helm').length).toBe(before.helm);
+  });
+
   test('IN-04 a check runs only when it is pressed, with a stand-in for the tool, and its output goes to the agent', async ({
     app,
     project,
