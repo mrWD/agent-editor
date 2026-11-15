@@ -97,6 +97,8 @@ test.describe('What survives the core', () => {
       app.conversation.getByText('The agent was started again and told what was said before.'),
     ).toBeVisible();
     const told = app.thoughts.last();
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(told).toContainText('This task continues an earlier conversation. What was said before:');
     await expect(told).toContainText(`User: ${title}`);
     await expect(told).toContainText(`Agent: ${PLAIN_ANSWER}`);

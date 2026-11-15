@@ -119,6 +119,8 @@ test.describe('Looking back and rewinding', () => {
 
     // The next agent hears only what is left.
     await app.say('And who calls it?');
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(app.thoughts.last()).toContainText(`User: ${first}`);
     await expect(app.thoughts.last()).not.toContainText('Change the limit');
   });

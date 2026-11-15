@@ -30,6 +30,8 @@ test.describe('Rules of a project', () => {
     await app.goHome();
     await app.createTask({ text: unique('Describe the limiter'), project: shop.name });
     // The practice agent repeats what it was sent.
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(app.thoughts.first()).toContainText('the user has set these rules for this project');
     await expect(app.thoughts.first()).toContainText(`- ${rule}`);
     // What the user typed is shown as typed, without the note.

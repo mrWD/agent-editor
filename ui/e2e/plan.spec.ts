@@ -423,6 +423,8 @@ test.describe('Plan: the flow chart a task is built from', () => {
 
     // On: the agent is shown the plan and told to keep to it. The user sees only what they typed.
     await app.say('What else is there?');
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(app.thoughts.last()).toContainText('Note from the editor: this task is built from a plan');
     await expect(app.thoughts.last()).toContainText('Build nothing that is not a block of this plan');
     await expect(app.thoughts.last()).toContainText('step b1: Answer 429');

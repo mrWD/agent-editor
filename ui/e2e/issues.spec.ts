@@ -76,6 +76,8 @@ test.describe('Issues', () => {
     await expect(app.messages.first()).toContainText('Login allows unlimited attempts');
     await expect(app.messages.first()).toContainText('Five a minute is enough.');
     await expect(app.messages.first()).toContainText(`This is issue #12 (${address}).`);
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(app.thoughts.first()).toContainText('Five a minute is enough.');
 
     // The issue stands next to the task's name, as a link to it, and in the task's row on Home.

@@ -609,6 +609,38 @@ fn run_turn(agent: &Agent, id: &Value, params: &Value) {
         return;
     }
 
+    // Asked to look around, it takes a row of steps and says a word in the middle, the way a real
+    // agent fills a conversation: a command of three lines, a search, a word, two more commands of
+    // which the last is not done.
+    if last_paragraph(&text).to_lowercase().contains("look around") {
+        let step = |kind: &str, title: &str, ends: &str| {
+            let step_id = format!("tool-{}", agent.next_tool.fetch_add(1, Ordering::SeqCst));
+            let begun = json!({ "sessionUpdate": "tool_call", "toolCallId": step_id, "title": title, "kind": kind, "status": "in_progress" });
+            agent.update(&session, begun);
+            agent.pause();
+            agent.update(
+                &session,
+                json!({ "sessionUpdate": "tool_call_update", "toolCallId": step_id, "status": ends }),
+            );
+            agent.pause();
+        };
+        step("execute", "cd src &&\n  grep -rn \"limit\" . |\n  sort", "completed");
+        step("search", "Search for windowMs", "completed");
+        if stop(agent) {
+            return;
+        }
+        agent.update(
+            &session,
+            json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": "Two places set a limit." } }),
+        );
+        agent.pause();
+        step("execute", "npm test", "completed");
+        step("execute", "npm run lint", "failed");
+        if stop(agent) {
+            return;
+        }
+    }
+
     let mut edited = false;
     if edit {
         let edit_id = format!("tool-{}", agent.next_tool.fetch_add(1, Ordering::SeqCst));

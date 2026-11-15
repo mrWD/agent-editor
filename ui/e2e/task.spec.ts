@@ -101,6 +101,8 @@ test.describe('A task and its conversation', () => {
     await app.openHome();
     const taskId = await app.createTask({ text: title, folder: shop.dir });
 
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     const feed = (await app.conversation.locator('.feed > *').allInnerTexts()).map((text) => text.replace(/\s+/g, ' '));
     const at = (pattern: RegExp) => feed.findIndex((entry) => pattern.test(entry));
     const order = [
@@ -195,6 +197,8 @@ test.describe('A task and its conversation', () => {
     await expect(app.activities.filter({ hasText: 'edited' })).toContainText(DEMO_FILE);
     await expect(app.conversation.getByText('Sent with a note about your edits to rateLimit.ts.')).toBeVisible();
     // The practice agent repeats what it was sent: the note of the editor came first.
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(app.thoughts.last()).toContainText(
       'Note from the editor: since your last turn the user changed these files',
     );
@@ -275,6 +279,8 @@ test.describe('Typing while the agent works', () => {
     await expect(app.conversation.getByText('Sent with a note about your edits to rateLimit.ts.')).toBeVisible();
     expect(readIn(folder, DEMO_FILE)).toContain('windowMs: 60 * 1000, // mine');
     await expect(goOn).toBeHidden();
+    // What the agent was sent is read from its thought, and a thought is shown only with every step.
+    await app.allSteps();
     await expect(app.thoughts.last()).toContainText('Note from the editor');
     await app.turnEnds();
     await expect(app.answers.last()).toContainText('Nothing was changed.');
