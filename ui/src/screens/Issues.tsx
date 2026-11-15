@@ -35,6 +35,12 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 /** Which issues are shown. */
 type Filter = 'open' | 'free';
 
+/** The items of a list that read the same as before, kept as the very things they were. */
+function steady<T>(before: T[], now: T[]): T[] {
+  const kept = new Map(before.map((item) => [JSON.stringify(item), item]));
+  return now.map((item) => kept.get(JSON.stringify(item)) ?? item);
+}
+
 /** What can be done with the issue that is open at the side: start a task on it, or go to the one it has. */
 function IssueFoot(props: { taskId: string | null; busy: boolean; onStart: () => void }): JSX.Element {
   return (
@@ -118,8 +124,20 @@ export function Issues(): JSX.Element {
     setProblem(null);
     try {
       const [listed, status] = await Promise.all([listIssues(), integrationsStatus()]);
-      setProjects(listed.projects);
-      setMine(listed.linear);
+      // What reads the same as before stays the same thing, so its row stays as drawn: a press
+      // that lands while the list is read again is not lost.
+      const before = projects() ?? [];
+      setProjects(
+        steady(
+          before,
+          listed.projects.map((project) => {
+            const was = before.find((one) => one.projectId === project.projectId);
+            return { ...project, issues: steady(was?.issues ?? [], project.issues) };
+          }),
+        ),
+      );
+      const mineBefore = mine();
+      setMine(listed.linear && { ...listed.linear, issues: steady(mineBefore?.issues ?? [], listed.linear.issues) });
       setServices(status);
       setSyncedAt(Date.now());
       // Who the key belongs to, said back so the user sees the right account is connected, and its teams.

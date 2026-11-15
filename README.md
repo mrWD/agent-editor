@@ -251,6 +251,12 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   head of the conversation and are remembered. An agent that can load a session
   picks its own up after sleep or a restart; one that cannot is told what was
   said. The head shows how full the context is and what the task has cost.
+  Every pane at a side or at the bottom has an edge to drag: the files, the
+  conversation, the box a message is typed in (by its top edge), the panel
+  with the terminal, the open projects panel, the column of Changes, the
+  lists of the Preview and the panels of an issue and a request. An arrow key
+  moves an edge the way it points, a double click puts the part back as it
+  was, and the sizes are kept in the browser.
   The conversation is folded the way it is read. A turn that was answered
   since shows what was asked and the agent's last word, with all the work
   between as one line ("Worked for 1h 6m · 100 steps, 28 messages") that
