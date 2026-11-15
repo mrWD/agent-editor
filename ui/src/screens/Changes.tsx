@@ -152,11 +152,14 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
   const pushed = createMemo(() => commits().filter((made) => made.pushed));
   const request = () => requests[taskId]?.request;
 
-  /** The part on show: the one that was picked, else the first that holds something. */
-  const tab = (): ChangesTab => {
+  /**
+   * The part on show: the one that was picked, else the first that holds something. Held as a
+   * value, so what follows it runs when the part changes and not each time git is read.
+   */
+  const tab = createMemo((): ChangesTab => {
     const picked = workOf(taskId).changes;
     return picked && picked !== 'visit' ? picked : firstTab(git());
-  };
+  });
   /** After something was done the view follows the change: a part left empty gives way to the next that is not. */
   const settle = () => setWork(taskId, { changes: tabAfter(tab(), git()) });
   /** What the middle compares in the second and the third part. Nothing while nothing is pushed. */
