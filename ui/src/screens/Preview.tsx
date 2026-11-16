@@ -66,9 +66,11 @@ const FROM_PAGE = 'ae-preview-page';
 
 type Relay = { port: number; target: string };
 type Tool = 'none' | 'pick' | 'draw';
-/** Where the running app is looked at: as a page, or on one of the two devices. */
+/** Where the running app is looked at: as a page, or on one of the two devices. Any of them, side by side. */
 type Screen = 'web' | 'ios' | 'android';
-type Kind = Screen | 'api' | 'db' | 'jobs' | 'infra';
+/** The order they stand in, left to right. */
+const SCREENS: readonly Screen[] = ['web', 'ios', 'android'];
+type Kind = 'app' | 'api' | 'db' | 'jobs' | 'infra';
 
 /** What is known about the page in one frame. */
 type FrameState = {
@@ -223,15 +225,25 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   const [relay, setRelay] = createSignal<Relay | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
   // What was looked at last is what opens next: a task on a service is not looked at as a page.
-  const [kind, setKind] = createKept<Kind>(`task:${taskId}:preview.kind`, 'web');
-  // The page and the two devices are one thing to look at, the app: "App" comes back to the one seen last.
-  const [screen, setScreen] = createKept<Screen>(`task:${taskId}:preview.screen`, 'web');
-  const onScreen = (which: Screen) => {
-    setScreen(which);
-    setKind(which);
-  };
+  const [kind, setKind] = createKept<Kind>(`task:${taskId}:preview.kind`, 'app');
+  // The page and the two devices are one thing to look at, the app, and they are looked at together:
+  // each is turned on or off by itself, and what is on stands side by side, to be compared.
+  const [screens, setScreens] = createKept<Screen[]>(`task:${taskId}:preview.screens`, ['web']);
   /** Whether what is on show is data of the task's service or files of its project, not a screen of its app. */
-  const isData = () => kind() === 'api' || kind() === 'db' || kind() === 'jobs' || kind() === 'infra';
+  const isData = () => kind() !== 'app';
+  /** Whether the page is on show. */
+  const webOn = () => !isData() && screens().includes('web');
+  /** The devices that are on show, in the order they stand. */
+  const devicesOn = createMemo(() =>
+    isData() ? [] : SCREENS.filter((one): one is 'ios' | 'android' => one !== 'web' && screens().includes(one)),
+  );
+  const toggleScreen = (which: Screen) => {
+    const now = screens();
+    // The last one stays on: there is always something of the app to look at.
+    if (now.includes(which)) {
+      if (now.length > 1) setScreens(now.filter((one) => one !== which));
+    } else setScreens(SCREENS.filter((one) => one === which || now.includes(one)));
+  };
   /**
    * Whether the project has infrastructure files: Infra is offered only then. What was true at the
    * last look is there at once; it is asked anew behind that.
@@ -261,7 +273,17 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   const [links, setLinks] = createSignal(0);
   const [frames, setFrames] = createStore<Record<string, FrameState>>({});
   const iframes = new Map<number, HTMLIFrameElement>();
-  let stageEl: HTMLDivElement | undefined;
+  // The room the page has: the whole stage, or what the devices beside it leave. The page's part of
+  // the stage comes and goes with "Web", so it is watched from the moment it is drawn.
+  const stageWatch = new ResizeObserver((entries) => {
+    const box = entries[entries.length - 1]?.contentRect;
+    if (box) setStage({ width: Math.floor(box.width), height: Math.floor(box.height) });
+  });
+  const watchStage = (el: HTMLDivElement) => {
+    stageWatch.disconnect();
+    stageWatch.observe(el);
+  };
+  onCleanup(() => stageWatch.disconnect());
   let widthInput: HTMLInputElement | undefined;
 
   // ----- what is remembered -----
@@ -623,12 +645,6 @@ export function PreviewView(props: { task: Task }): JSX.Element {
     };
     window.addEventListener('keydown', onKey);
 
-    const observer = new ResizeObserver((entries) => {
-      const box = entries[0]?.contentRect;
-      if (box) setStage({ width: Math.floor(box.width), height: Math.floor(box.height) });
-    });
-    if (stageEl) observer.observe(stageEl);
-
     onCleanup(() => {
       stopEvents();
       clearInterval(timer);
@@ -636,7 +652,6 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       clearTimeout(infraTimer);
       window.removeEventListener('message', onMessage);
       window.removeEventListener('keydown', onKey);
-      observer.disconnect();
       setLive(taskId, null);
       setShooter(taskId, null);
     });
@@ -657,14 +672,14 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   // The pane says "The preview is live" while a page is on show, and how it is kept fresh.
   createEffect(() => {
     const widths = shown();
-    const showing = kind() === 'web' && pageUrl() !== null && widths.length > 0;
+    const showing = webOn() && pageUrl() !== null && widths.length > 0;
     const allHot = widths.every((width) => frames[String(width)]?.hot);
     setLive(taskId, showing ? (allHot ? 'itself' : 'reloaded') : null);
   });
 
   // While a page is on show, the conversation can ask for its picture at the moment a message is sent.
   createEffect(() => {
-    const showing = kind() === 'web' && pageUrl() !== null && shown().length > 0;
+    const showing = webOn() && pageUrl() !== null && shown().length > 0;
     setShooter(
       taskId,
       showing
@@ -865,8 +880,8 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           <button
             type="button"
             aria-pressed={!isData()}
-            title="The running app: as a page, on the iOS simulator or on the Android emulator"
-            onClick={() => onScreen(screen())}
+            title="The running app: as a page, on the iOS simulator and on the Android emulator, side by side"
+            onClick={() => setKind('app')}
           >
             App
           </button>
@@ -886,19 +901,36 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           </Show>
         </div>
         <Show when={!isData()}>
-          <div class="switcher" role="group" aria-label="Where the app is shown">
-            <button type="button" aria-pressed={kind() === 'web'} onClick={() => onScreen('web')}>
-              Web
-            </button>
-            <button type="button" aria-pressed={kind() === 'ios'} onClick={() => onScreen('ios')}>
-              iOS simulator
-            </button>
-            <button type="button" aria-pressed={kind() === 'android'} onClick={() => onScreen('android')}>
-              Android emulator
-            </button>
+          <div class="switcher several" role="group" aria-label="Where the app is shown">
+            <For
+              each={
+                [
+                  ['web', 'Web'],
+                  ['ios', 'iOS simulator'],
+                  ['android', 'Android emulator'],
+                ] as const
+              }
+            >
+              {([which, words]) => (
+                <button
+                  type="button"
+                  aria-pressed={screens().includes(which)}
+                  title={
+                    screens().includes(which)
+                      ? screens().length > 1
+                        ? `Take ${words} away; the rest stays`
+                        : 'The only one on show: turn another on to compare'
+                      : `Show ${words} beside what is on show`
+                  }
+                  onClick={() => toggleScreen(which)}
+                >
+                  {words}
+                </button>
+              )}
+            </For>
           </div>
         </Show>
-        <Show when={kind() === 'web' && loaded()}>
+        <Show when={webOn() && loaded()}>
           <div class="preview-widths" role="group" aria-label="Widths">
             <span class="fine">Widths</span>
             <For each={PRESET_WIDTHS}>
@@ -998,7 +1030,7 @@ export function PreviewView(props: { task: Task }): JSX.Element {
           </Show>
         </Show>
         <Show when={loaded() && !isData()}>
-          <Show when={kind() !== 'web'}>
+          <Show when={!webOn()}>
             <span class="grow" />
           </Show>
           <span class="preview-address">
@@ -1011,34 +1043,29 @@ export function PreviewView(props: { task: Task }): JSX.Element {
               value={address() ?? ''}
               onChange={(event) => commitAddress(event.currentTarget.value)}
             />
-            <Show
-              when={kind() === 'web'}
-              fallback={
-                <button
-                  type="button"
-                  aria-label="Open the address again"
-                  title="Open the address on the device again"
-                  disabled={!address()}
-                  onClick={() => setDeviceReloads((n) => n + 1)}
-                >
-                  <ReloadIcon />
-                </button>
+            {/* One press for all that is on show: the frames are loaded anew, a device opens the address again. */}
+            <button
+              type="button"
+              aria-label={webOn() ? 'Reload the preview' : 'Open the address again'}
+              title={
+                !webOn()
+                  ? 'Open the address on the device again'
+                  : devicesOn().length > 0
+                    ? 'Load every frame anew, and open the address on the devices again'
+                    : 'Load every frame anew'
               }
+              disabled={webOn() && devicesOn().length === 0 ? !pageUrl() : !address()}
+              onClick={() => {
+                if (webOn() && pageUrl()) reloadAll(false);
+                if (devicesOn().length > 0) setDeviceReloads((n) => n + 1);
+              }}
             >
-              <button
-                type="button"
-                aria-label="Reload the preview"
-                title="Load every frame anew"
-                disabled={!pageUrl()}
-                onClick={() => reloadAll(false)}
-              >
-                <ReloadIcon />
-              </button>
-            </Show>
+              <ReloadIcon />
+            </button>
           </span>
         </Show>
       </div>
-      <Show when={kind() === 'web' && loaded()}>
+      <Show when={webOn() && loaded()}>
         <div class="preview-bar tools">
           <div class="switcher" role="group" aria-label="Tools">
             <button
@@ -1101,48 +1128,60 @@ export function PreviewView(props: { task: Task }): JSX.Element {
         <InfraView taskId={taskId} />
       </Show>
 
-      <div class="preview-stage" ref={stageEl} hidden={isData()}>
-        <Switch>
-          <Match when={!loaded()}>
-            <p class="bottom-note">Reading the preview of this task</p>
-          </Match>
-          <Match when={isData()}>{null}</Match>
-          <Match when={kind() !== 'web'}>
-            <Show when={kind()} keyed>
-              {(device) => (
-                <DeviceView
-                  taskId={taskId}
-                  kind={device === 'ios' ? 'ios' : 'android'}
-                  address={address()}
-                  reloads={deviceReloads()}
-                >
-                  <NothingRuns />
-                </DeviceView>
-              )}
-            </Show>
-          </Match>
-          <Match when={!address()}>
-            <NothingRuns />
-          </Match>
-          <Match when={!pageUrl()}>
-            <Show when={!problem()}>
-              <p class="bottom-note">Opening the preview</p>
-            </Show>
-          </Match>
-          <Match when={shown().length === 0}>
-            <div class="center-note">
-              <h2>No width is chosen</h2>
-              <p>Pick a width above to see the page.</p>
+      <div class="preview-stage" hidden={isData()}>
+        <Show when={loaded()} fallback={<p class="bottom-note">Reading the preview of this task</p>}>
+          <Show when={!isData()}>
+            {/* What is on show stands side by side: the page first, then each device in a column of its own. */}
+            <div class="preview-panes">
+              <Show when={webOn()}>
+                <div class="preview-pane web" ref={watchStage}>
+                  <Switch>
+                    <Match when={!address()}>
+                      <NothingRuns />
+                    </Match>
+                    <Match when={!pageUrl()}>
+                      <Show when={!problem()}>
+                        <p class="bottom-note">Opening the preview</p>
+                      </Show>
+                    </Match>
+                    <Match when={shown().length === 0}>
+                      <div class="center-note">
+                        <h2>No width is chosen</h2>
+                        <p>Pick a width above to see the page.</p>
+                      </div>
+                    </Match>
+                    <Match when={true}>
+                      <div class="preview-frames">
+                        <For each={shown()}>{(width) => <Frame width={width} />}</For>
+                      </div>
+                    </Match>
+                  </Switch>
+                </div>
+              </Show>
+              <For each={devicesOn()}>
+                {(device) => (
+                  <div
+                    class="preview-pane"
+                    role="group"
+                    aria-label={device === 'ios' ? 'iOS simulator' : 'Android emulator'}
+                  >
+                    <DeviceView taskId={taskId} kind={device} address={address()} reloads={deviceReloads()}>
+                      {/* How to start the app is said once, by the page beside; alone, a device says it itself. */}
+                      <Show when={webOn()} fallback={<NothingRuns />}>
+                        <div class="center-note">
+                          <h2>{device === 'ios' ? 'iOS simulator' : 'Android emulator'}</h2>
+                          <p>Nothing is running yet. It opens the app here once one runs.</p>
+                        </div>
+                      </Show>
+                    </DeviceView>
+                  </div>
+                )}
+              </For>
             </div>
-          </Match>
-          <Match when={true}>
-            <div class="preview-frames">
-              <For each={shown()}>{(width) => <Frame width={width} />}</For>
-            </div>
-          </Match>
-        </Switch>
+          </Show>
+        </Show>
       </div>
-      <Show when={kind() === 'web' && pageUrl() && shown().length > 0}>
+      <Show when={webOn() && pageUrl() && shown().length > 0}>
         <div class="statusline">
           <span>
             {joinAddress(relay()!.target, parts()!.path)}

@@ -4031,11 +4031,35 @@ a.deploy-name:hover {
   display: flex;
   flex-direction: column;
   padding: 16px;
-  /* The frames are scaled to fit, so the view never scrolls sideways. */
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
   background: var(--ground-deep);
+}
+/* What of the app is on show, side by side: the page, and each device in a column of its own.
+   Each scrolls by itself; only when the columns cannot be made narrower does the row scroll. */
+.preview-panes {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+}
+.preview-pane {
+  flex: 1 1 0;
+  min-width: 280px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+/* The page has the most to show. Its frames are scaled to fit, so it never scrolls sideways. */
+.preview-pane.web {
+  flex-grow: 2;
+  min-width: 0;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+.preview-pane + .preview-pane {
+  padding-left: 16px;
+  border-left: 1px solid var(--line-soft);
 }
 .preview-stage .center-note {
   padding: 12px 8px;
