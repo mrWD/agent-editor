@@ -52,7 +52,7 @@ test.describe('Every screen can be read and used without a mouse', () => {
         await app.page.waitForTimeout(400);
         expect.soft(await problemsOn(app.page), view).toEqual([]);
         if (view !== 'Preview') continue;
-        // Preview is seven things to look at; the three for a service and the one for the project's
+        // Preview is five things to look at; the three for a service and the one for the project's
         // infrastructure are read too, each as it opens for this project.
         const kinds = app.page.getByRole('group', { name: 'What to preview on' });
         for (const kind of ['API', 'Database', 'Jobs', 'Infra'] as const) {
@@ -60,7 +60,7 @@ test.describe('Every screen can be read and used without a mouse', () => {
           await app.page.waitForTimeout(400);
           expect.soft(await problemsOn(app.page), `Preview, ${kind}`).toEqual([]);
         }
-        await kinds.getByRole('button', { name: 'Web', exact: true }).click();
+        await kinds.getByRole('button', { name: 'App', exact: true }).click();
       }
 
       for (const section of ['Issues', 'Health', 'Automations', 'Agents'] as const) {

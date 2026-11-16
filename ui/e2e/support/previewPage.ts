@@ -174,9 +174,9 @@ export class Preview {
     return this.app.conversation.getByRole('list', { name: 'Pictures that go with your message' });
   }
 
-  /** One of "Web", "iOS simulator" and "Android emulator". */
+  /** One of "Web", "iOS simulator" and "Android emulator": where the app is shown, under "App". */
   kind(name: 'Web' | 'iOS simulator' | 'Android emulator'): Locator {
-    return this.view.getByRole('group', { name: 'What to preview on' }).getByRole('button', { name });
+    return this.view.getByRole('group', { name: 'Where the app is shown' }).getByRole('button', { name });
   }
 
   /** The list of simulators or emulators a device tab offers. */
