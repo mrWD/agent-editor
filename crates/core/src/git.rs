@@ -116,6 +116,95 @@ pub async fn add_worktree_on(repo: &Path, dir: &Path, branch: &str) -> Result<()
     Ok(())
 }
 
+/// What the remote has of a branch, fetched: `true` when it has the branch. Without the network
+/// it says what was known before.
+async fn fetch_branch(repo: &Path, branch: &str) -> (Option<String>, bool, String) {
+    let remote = remote_name(repo).await;
+    let mut said = String::new();
+    if let Some(remote) = &remote {
+        let spec = format!("+refs/heads/{branch}:refs/remotes/{remote}/{branch}");
+        if let Ok(output) = git(repo, &["fetch", remote, &spec]).await
+            && !output.status.success()
+        {
+            said = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        }
+    }
+    let theirs = remote.map(|remote| format!("{remote}/{branch}"));
+    let there = match &theirs {
+        Some(theirs) => has_ref(repo, &format!("refs/remotes/{theirs}")).await,
+        None => false,
+    };
+    (theirs, there, said)
+}
+
+/// How many files of a working copy are not as the last commit has them.
+pub async fn dirty_count(dir: &Path) -> Result<usize> {
+    let output = git(dir, &["status", "--porcelain"]).await?;
+    if !output.status.success() {
+        bail!("git could not say how the folder stands: {}", String::from_utf8_lossy(&output.stderr).trim());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).lines().filter(|line| !line.trim().is_empty()).count())
+}
+
+/// How many commits the working copy has that neither `branch` (as the remote has it) nor
+/// `base` holds: the work of its own that going over to `branch` would leave behind.
+pub async fn commits_of_its_own(dir: &Path, branch: &str, base: Option<&str>) -> usize {
+    let (theirs, there, _) = fetch_branch(dir, branch).await;
+    let mut args: Vec<String> = vec!["rev-list".into(), "--count".into(), "HEAD".into(), "--not".into()];
+    if let (Some(theirs), true) = (theirs, there) {
+        args.push(theirs);
+    }
+    if has_ref(dir, &format!("refs/heads/{branch}")).await {
+        args.push(branch.to_string());
+    }
+    if let Some(base) = base
+        && git(dir, &["rev-parse", "--verify", "--quiet", base]).await.is_ok_and(|output| output.status.success())
+    {
+        args.push(base.to_string());
+    }
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    match git(dir, &args).await {
+        Ok(output) if output.status.success() => String::from_utf8_lossy(&output.stdout).trim().parse().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// Puts a working copy that is there already onto another branch that is there already: the
+/// branch of a request its task goes over to. The same care as `add_worktree_on`: the branch is
+/// fetched, used as it is where the repository has it, made from the remote's where it has not,
+/// and never reset. The working copy has to be clean; the caller sees to that.
+pub async fn switch_worktree_to(dir: &Path, branch: &str) -> Result<()> {
+    let (theirs, there, fetch_said) = fetch_branch(dir, branch).await;
+    let here = has_ref(dir, &format!("refs/heads/{branch}")).await;
+    let output = match (here, &theirs) {
+        (true, _) => git(dir, &["checkout", branch]).await?,
+        (false, Some(theirs)) if there => git(dir, &["checkout", "--track", "-b", branch, theirs]).await?,
+        _ => {
+            let why = if fetch_said.is_empty() { String::new() } else { format!(" git said: {fetch_said}") };
+            bail!("The branch {branch} is neither in this project's folder nor on its remote.{why}");
+        }
+    };
+    if !output.status.success() {
+        let said = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if said.contains("already checked out") || said.contains("already used by worktree") {
+            bail!(
+                "The branch {branch} is open in another folder of this project. Switch that folder to another branch \
+                 first. git said: {said}"
+            );
+        }
+        bail!("git could not go over to {branch}: {said}");
+    }
+    if here && there {
+        let _ = git(dir, &["merge", "--ff-only", theirs.as_deref().unwrap_or_default()]).await;
+    }
+    Ok(())
+}
+
+/// Removes a branch that holds nothing of its own any more. One that does is left: git refuses.
+pub async fn drop_merged_branch(repo: &Path, branch: &str) {
+    let _ = git(repo, &["branch", "-d", branch]).await;
+}
+
 /// Removes a working copy and leaves its branch: for a task that could not start on a branch that
 /// was there before it.
 pub async fn remove_worktree_only(repo: &Path, dir: &Path) {

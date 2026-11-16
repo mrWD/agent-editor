@@ -496,6 +496,14 @@ impl Store {
         Ok(())
     }
 
+    /// Says which branch a task works on from now on, and what its changes are compared with:
+    /// for a task that went over to the branch of a request that was open already.
+    pub fn set_task_branch(&self, id: &str, branch: &str, base: Option<&str>) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("UPDATE tasks SET branch = ?2, base_branch = ?3 WHERE id = ?1", params![id, branch, base])?;
+        Ok(())
+    }
+
     /// Gives a task to another agent. The old agent's session means nothing to the new one.
     pub fn set_task_agent(&self, id: &str, agent_id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();

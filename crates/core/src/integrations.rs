@@ -61,6 +61,9 @@ pub struct ProjectIssues {
     pub issues: Vec<IssueRow>,
     /// Why the issues could not be listed, in words for the user.
     pub problem: Option<String>,
+    /// How a request of this project's repository is called in two letters, "PR" on GitHub and
+    /// "MR" on GitLab, whatever tracker its issues come from. `None` for a project on neither.
+    pub request_short: Option<&'static str>,
 }
 
 fn team_setting(project_id: &str) -> String {
@@ -240,6 +243,10 @@ impl Manager {
             linear_team: self.linear_team(project_id),
             issues: rows,
             problem,
+            request_short: remote_of(Path::new(&project.path)).map(|remote| match remote.kind {
+                HostKind::GitHub => "PR",
+                HostKind::GitLab => "MR",
+            }),
         })
     }
 
@@ -315,6 +322,80 @@ impl Manager {
             }
         }
         Ok(found)
+    }
+
+    /// The open requests of the issue a task works on, other than the task's own: work on the
+    /// issue that is under way on another branch. Empty for a task without an issue.
+    pub fn task_issue_requests(&self, task_id: &str) -> Result<Vec<RequestBranch>> {
+        let task = self.store().task(task_id)?;
+        let Some(issue) = &task.issue else { return Ok(vec![]) };
+        let source = (issue.source == "linear").then_some("linear");
+        let mut found = self.issue_requests(&task.project_id, &issue.key, source)?;
+        found.retain(|request| Some(&request.branch) != task.branch.as_ref());
+        Ok(found)
+    }
+
+    /// Takes a task that works on a branch of its own over to the branch of an open request: the
+    /// work on its issue that was under way before the task. Its working copy goes to that branch
+    /// as it stands, and from then on the request is the task's.
+    ///
+    /// Nothing is lost by it, so it is refused where something would be: while the agent works,
+    /// while files are not committed, and while the task's branch holds commits that are neither
+    /// on the request's branch nor on the base. The branch the task leaves is removed when it
+    /// holds nothing of its own, and is left otherwise.
+    pub async fn join_request(self: &Arc<Self>, task_id: &str, number: u64) -> Result<TaskInfo> {
+        let task = self.store().task(task_id)?;
+        let Some(before) = task.branch.clone() else {
+            bail!("This task works in a folder without git, so it has no branch to change");
+        };
+        let cwd = PathBuf::from(&task.cwd);
+        if !cwd.starts_with(self.data_root().join("worktrees")) {
+            bail!("This task works in the project's own folder: its branch is yours to change, not the editor's");
+        }
+        if matches!(
+            self.state_of(task_id),
+            crate::tasks::TaskState::Running | crate::tasks::TaskState::WaitingPermission
+        ) {
+            bail!("The agent is working. Wait for its turn to end, or stop it, then go over to the request.");
+        }
+        let (on, _) = self.on_request(&task.project_id, number).await?;
+        if on.branch == before {
+            bail!("This task is on the branch of that request already");
+        }
+        let dirty = crate::git::dirty_count(&cwd).await?;
+        if dirty > 0 {
+            bail!(
+                "{dirty} {} not committed in this task. Commit or undo {} first: going over to another branch must not carry {} along.",
+                if dirty == 1 { "file is" } else { "files are" },
+                if dirty == 1 { "it" } else { "them" },
+                if dirty == 1 { "it" } else { "them" }
+            );
+        }
+        let own = crate::git::commits_of_its_own(&cwd, &on.branch, task.base_branch.as_deref()).await;
+        if own > 0 {
+            bail!(
+                "This task has {own} {} of its own on {before} that the request's branch does not have. They would be left behind: push them as a request of their own, or start a new task on the request.",
+                if own == 1 { "commit" } else { "commits" }
+            );
+        }
+        crate::git::switch_worktree_to(&cwd, &on.branch).await?;
+        self.store().set_task_branch(task_id, &on.branch, on.base.as_deref())?;
+        // Nothing of its own was on it: it goes. git keeps it if that is not so.
+        let project = self.store().project(&task.project_id)?;
+        crate::git::drop_merged_branch(Path::new(&project.path), &before).await;
+        // What was known of the task's request was of the branch it left.
+        self.remembered.requests.lock().unwrap().remove(task_id);
+        self.emit(
+            task_id,
+            json!({
+                "type": "tracker",
+                "text": format!("This task went over to the branch {} of request {number}: what is committed there is where it goes on.", on.branch)
+            }),
+        );
+        let info = self.task(task_id)?;
+        self.broadcast("task.updated", json!(info));
+        self.broadcast("mr.changed", json!({ "taskId": task_id }));
+        Ok(info)
     }
 
     /// The branch of an open request of a project's repository, for a task that goes on with it,

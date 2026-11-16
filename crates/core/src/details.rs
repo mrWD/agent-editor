@@ -433,6 +433,14 @@ impl Manager {
         self.hosts.issue_detail(&remote, number).map_err(|error| crate::hosts::said_plainly(&remote, error))
     }
 
+    /// A request of a project's repository by its number, whole: one that belongs to no task here.
+    pub fn request_detail_of(&self, project_id: &str, number: u64) -> Result<Detail> {
+        let project = self.store().project(project_id)?;
+        let remote = crate::hosts::remote_of(std::path::Path::new(&project.path))
+            .ok_or_else(|| anyhow!("This project's remote is not on GitHub or GitLab"))?;
+        self.hosts.request_detail(&remote, number).map_err(|error| crate::hosts::said_plainly(&remote, error))
+    }
+
     /// The request of a task, whole.
     pub fn request_detail(&self, task_id: &str) -> Result<Detail> {
         let (_, _, branch, remote) = self.request_place(task_id)?;
@@ -484,6 +492,8 @@ impl Manager {
 ///
 /// - `issues.detail { projectId, key, source? }` gives an issue.
 /// - `mr.detail { taskId }` gives the request of a task.
+/// - `mr.detailOf { projectId, number }` gives a request of a project's repository by its number:
+///   one no task is on.
 ///
 /// They wait for a tracker, so they run off the event loop.
 pub async fn command(manager: &std::sync::Arc<Manager>, method: &str, params: &Value) -> Result<Value> {
@@ -498,6 +508,12 @@ pub async fn command(manager: &std::sync::Arc<Manager>, method: &str, params: &V
             Ok(json!(
                 tokio::task::spawn_blocking(move || manager.issue_detail(&project, &key, source.as_deref())).await??
             ))
+        }
+        "mr.detailOf" => {
+            let project = word("projectId")?;
+            let number =
+                params.get("number").and_then(Value::as_u64).ok_or_else(|| anyhow!("Missing parameter: number"))?;
+            Ok(json!(tokio::task::spawn_blocking(move || manager.request_detail_of(&project, number)).await??))
         }
         "mr.detail" => {
             let task = word("taskId")?;

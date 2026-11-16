@@ -832,6 +832,87 @@ async fn a_task_goes_on_with_the_open_request_of_its_issue_on_that_request_s_bra
 }
 
 #[tokio::test]
+async fn a_task_on_a_branch_of_its_own_goes_over_to_the_open_request_of_its_issue_when_nothing_is_lost_by_it() {
+    let sandbox = Sandbox::new("join-request");
+    let tools = sandbox.0.join("tools");
+    let linear = fake_linear();
+    let missing = PathBuf::from("/nonexistent/ae-test/tool");
+    let hosts = Hosts::with(gh_with_requests(&tools), missing.clone(), missing, linear.url.clone());
+    let state = AppState::new(sandbox.manager_with(hosts));
+    let manager = &state.manager;
+    let (repo, _) = github_project(&sandbox);
+    let trunk = git(&repo, &["symbolic-ref", "--short", "HEAD"]).trim().to_string();
+    git(&repo, &["checkout", "-q", "-b", "feat/order-pages"]);
+    std::fs::write(repo.join("pages.txt"), "fifty a page\n").unwrap();
+    git(&repo, &["add", "pages.txt"]);
+    git(&repo, &["commit", "-q", "-m", "Pages of fifty"]);
+    git(&repo, &["push", "-q", "origin", "feat/order-pages"]);
+    git(&repo, &["checkout", "-q", &trunk]);
+    git(&repo, &["branch", "-q", "-D", "feat/order-pages"]);
+    let project = manager.add_project(&repo.to_string_lossy(), None).unwrap();
+    dispatch(&state, "integrations.setLinearKey", &json!({ "key": "lin_test_key" })).await.unwrap();
+
+    // The task was started on a branch of its own, as if nobody had looked for the request.
+    let mut events = manager.subscribe();
+    let task = dispatch(
+        &state,
+        "issues.start",
+        &json!({ "projectId": project.id, "key": "APP-215", "agentId": "mock", "source": "linear" }),
+    )
+    .await
+    .unwrap();
+    let id = task["id"].as_str().unwrap().to_string();
+    let own = task["branch"].as_str().unwrap().to_string();
+    assert!(own.starts_with("task/"), "{own}");
+    let cwd = PathBuf::from(task["cwd"].as_str().unwrap());
+    until(&mut events, &id, |e| state_is(e, "idle")).await;
+
+    // The request of its issue is found from the task, and can be read whole though no task is on it.
+    let found = dispatch(&state, "mr.ofIssue", &json!({ "taskId": id })).await.unwrap();
+    assert_eq!(found["requests"][0]["name"], "PR #128");
+    assert_eq!(found["requests"].as_array().unwrap().len(), 1);
+    let whole = dispatch(&state, "mr.detailOf", &json!({ "projectId": project.id, "number": 128 })).await.unwrap();
+    assert_eq!(whole["title"], "feat(orders): pages");
+
+    // A file that is not committed would be carried along: refused, in words.
+    let join = json!({ "taskId": id, "number": 128 });
+    std::fs::write(cwd.join("draft.txt"), "not yet\n").unwrap();
+    let dirty = dispatch(&state, "mr.join", &join).await.unwrap_err().to_string();
+    assert!(dirty.contains("1 file is not committed in this task"), "{dirty}");
+    // A commit of the task's own would be left behind: refused as well.
+    git(&cwd, &["add", "draft.txt"]);
+    git(&cwd, &["commit", "-q", "-m", "A draft"]);
+    let ahead = dispatch(&state, "mr.join", &join).await.unwrap_err().to_string();
+    assert!(ahead.contains("This task has 1 commit of its own"), "{ahead}");
+    assert_eq!(git(&cwd, &["symbolic-ref", "--short", "HEAD"]).trim(), own);
+    git(&cwd, &["reset", "-q", "--hard", "HEAD~1"]);
+
+    // With nothing to lose, the task goes over: its folder is on the request's branch, the row says so,
+    // every window is told, and the branch it left, which held nothing, is gone.
+    let mut windows = manager.subscribe();
+    let moved = dispatch(&state, "mr.join", &join).await.unwrap();
+    assert_eq!((moved["branch"].as_str(), moved["baseBranch"].as_str()), (Some("feat/order-pages"), Some("main")));
+    assert_eq!(git(&cwd, &["symbolic-ref", "--short", "HEAD"]).trim(), "feat/order-pages");
+    assert_eq!(std::fs::read_to_string(cwd.join("pages.txt")).unwrap(), "fifty a page\n");
+    assert!(!git(&repo, &["branch", "--list", "task/*"]).contains("task/"));
+    let mut told = Vec::new();
+    while told.len() < 2 {
+        let message = windows.recv().await.unwrap();
+        if matches!(message["event"].as_str(), Some("task.updated" | "mr.changed")) {
+            told.push(message["event"].as_str().unwrap().to_string());
+        }
+    }
+    assert_eq!(told, ["task.updated", "mr.changed"]);
+    let kept = manager.task(&id).unwrap();
+    assert_eq!(kept.row.branch.as_deref(), Some("feat/order-pages"));
+    // The request is the task's own now: it is no longer another one to go to, and going twice is said.
+    let found = dispatch(&state, "mr.ofIssue", &json!({ "taskId": id })).await.unwrap();
+    assert_eq!(found["requests"], json!([]));
+    let twice = dispatch(&state, "mr.join", &join).await.unwrap_err().to_string();
+    assert!(twice.contains("on the branch of that request already"), "{twice}");
+}
+
+#[tokio::test]
 async fn a_working_copy_on_a_branch_that_is_there_takes_what_was_pushed_and_never_a_branch_that_is_open_elsewhere() {
     let sandbox = Sandbox::new("on-branch");
     let (repo, _) = github_project(&sandbox);
