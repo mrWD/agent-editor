@@ -421,7 +421,10 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   issue at the side of the editor. An issue that has a request open in the
   project's repository already (attached to it in Linear, or joined to it on
   GitHub or GitLab) is asked about first: the task goes on with that request,
-  on its branch, or starts on a new branch. The lists are searched by name, key, state, label
+  on its branch, or starts on a new branch. A task that is on a branch of its
+  own shows that request in its row and in its Changes, to read and to go
+  over to when nothing would be lost by it; a task with no request anywhere
+  has "Create MR" in its row. The lists are searched by name, key, state, label
   and who has the issue, and put in the tracker's order, by the last change,
   by name, by key or by state. Agents: who is doing what, cost by agent and by task,
   limits, a daily budget, handing a task to another agent. Automations: clean

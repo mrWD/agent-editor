@@ -946,7 +946,18 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             .await?;
             Ok(json!({ "projects": projects?, "linear": linear }))
         }
-        "issues.detail" | "mr.detail" => crate::details::command(manager, method, params).await,
+        "issues.detail" | "mr.detail" | "mr.detailOf" => crate::details::command(manager, method, params).await,
+        "mr.ofIssue" => {
+            let task = text_param(params, "taskId")?.to_string();
+            let blocking = manager.clone();
+            let found = tokio::task::spawn_blocking(move || blocking.task_issue_requests(&task)).await??;
+            Ok(json!({ "requests": found }))
+        }
+        "mr.join" => {
+            let number =
+                params.get("number").and_then(Value::as_u64).ok_or_else(|| anyhow!("Missing parameter: number"))?;
+            Ok(json!(manager.join_request(text_param(params, "taskId")?, number).await?))
+        }
         "issues.start" => {
             let (project, key, agent) =
                 (text_param(params, "projectId")?, text_param(params, "key")?, text_param(params, "agentId")?);

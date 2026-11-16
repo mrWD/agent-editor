@@ -1,4 +1,6 @@
-import { expect, pullTemplate, readIn, test, type App, type Project } from './support/fixtures';
+import { rmSync } from 'node:fs';
+import path from 'node:path';
+import { expect, pullTemplate, readIn, test, writeIn, type App, type Project } from './support/fixtures';
 
 const ISSUES = [
   { number: 12, title: 'Login allows unlimited attempts', body: 'Five a minute is enough.', labels: ['auth'] },
@@ -227,6 +229,122 @@ test.describe('Issues', () => {
     // The request is the task's from its first moment: Changes names its third part after it.
     await app.showView('Changes');
     await expect(app.changesTab('PR #128')).toBeVisible();
+  });
+
+  test('N-22 N-23 a task on a branch of its own sees the request its issue has, reads it, and goes over to it', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({ remote: 'github', issues: ISSUES });
+    const address = `https://github.com/${shop.slug}/pull/128`;
+    const trunk = shop.git(['symbolic-ref', '--short', 'HEAD']);
+    shop.git(['checkout', '-q', '-b', 'feat/six-attempts']);
+    shop.write('notes.txt', 'six a minute\n');
+    shop.git(['add', 'notes.txt']);
+    shop.git(['commit', '-q', '-m', 'Allow six attempts']);
+    shop.git(['push', '-q', 'origin', 'feat/six-attempts']);
+    shop.git(['checkout', '-q', trunk]);
+    shop.git(['branch', '-q', '-D', 'feat/six-attempts']);
+    shop.setIssueWhole(12, { number: 12, closedByPullRequestsReferences: [{ number: 128, url: address }] });
+    shop.setPullWhole(128, {
+      number: 128,
+      title: 'Allow six attempts',
+      body: 'Closes #12.',
+      url: address,
+      state: 'OPEN',
+      isDraft: false,
+      author: { login: 'ann' },
+      createdAt: '2026-11-10T08:00:00Z',
+      updatedAt: '2026-11-12T19:05:30Z',
+      headRefName: 'feat/six-attempts',
+      baseRefName: trunk,
+      isCrossRepository: false,
+      comments: [],
+    });
+    shop.setPullOf('feat/six-attempts', 128, pullTemplate({ checks: 'passed' }));
+    await app.addProject(shop.dir);
+    await openIssues(app);
+    const row = sectionOf(app, shop).locator('.issue-row').filter({ hasText: '#12' });
+
+    // The task is started on a branch of its own, though the issue has a request.
+    await row.getByRole('button', { name: 'Start in editor' }).click();
+    await app.page.getByRole('dialog').getByRole('button', { name: 'Start on a new branch' }).click();
+    await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);
+    await app.turnEnds();
+    const taskId = app.taskId();
+    const before = await app.core.task(taskId);
+    expect(before.branch).toMatch(/^task\//);
+
+    // In the list the row of the task has the issue's request, to read: nothing of the task's own to show yet.
+    await app.page.getByRole('link', { name: 'Issues', exact: true }).click();
+    await row.getByRole('button', { name: 'PR #128' }).click();
+    const side = app.page.getByRole('complementary', { name: /^Details of request / });
+    await expect(side.getByRole('heading', { level: 2 })).toHaveText('Allow six attempts');
+    // A request no task is on has what it says and what was written under it; its changes are the host's to show.
+    await expect(side.getByRole('tab')).toHaveText(['Overview', 'Comments']);
+    await app.page.keyboard.press('Escape');
+    await expect(side).toHaveCount(0);
+
+    // In the task's Changes the same request is said, with the way to read it and the way to go over to it.
+    await row.getByRole('link', { name: 'Open in editor' }).click();
+    await app.showView('Changes');
+    await app.showChanges('Pushed');
+    const other = app.request.getByRole('group', { name: 'PR #128 of the issue' });
+    await expect(other).toContainText('#12 has PR #128 open already: Allow six attempts');
+    await expect(other).toContainText(`feat/six-attempts into ${trunk}`);
+    // While a file is not committed the task does not go over, and the card says why.
+    writeIn(before.cwd, 'draft.txt', 'not yet\n');
+    await other.getByRole('button', { name: 'Go on with PR #128' }).click();
+    await expect(app.request.getByRole('alert')).toContainText('1 file is not committed in this task');
+    rmSync(path.join(before.cwd, 'draft.txt'));
+
+    // With nothing to lose it goes over: the request is the task's own, on the branch that was pushed.
+    await other.getByRole('button', { name: 'Go on with PR #128' }).click();
+    await expect(app.request).toContainText('Number 128 · open');
+    await expect(other).toHaveCount(0);
+    await expect(app.page.locator('.subbar')).toContainText('feat/six-attempts');
+    await expect(app.changesTab('PR #128')).toBeVisible();
+    const after = await app.core.task(taskId);
+    expect(after.branch).toBe('feat/six-attempts');
+    expect(readIn(after.cwd, 'notes.txt')).toBe('six a minute\n');
+    expect(shop.git(['branch', '--list', 'task/*'])).toBe('');
+    await expect(app.conversation).toContainText('This task went over to the branch feat/six-attempts of request 128');
+  });
+
+  test('N-24 a task without a request has "Create PR" in its row: it leads to where the request is opened', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({ remote: 'github', issues: ISSUES });
+    shop.setPullTemplate(pullTemplate({ checks: 'passed' }));
+    await app.addProject(shop.dir);
+    await openIssues(app);
+    const row = sectionOf(app, shop).locator('.issue-row').filter({ hasText: '#13' });
+    await row.getByRole('button', { name: 'Start in editor' }).click();
+    await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);
+    await app.turnEnds();
+    const task = await app.core.task(app.taskId());
+
+    // With nothing committed, the way leads to the request's place, which says what is missing.
+    await app.page.getByRole('link', { name: 'Issues', exact: true }).click();
+    await row.getByRole('link', { name: 'Create PR' }).click();
+    await expect(app.page).toHaveURL(/#\/task\/[^/]+\/changes$/);
+    await expect(app.changesTab('Pushed')).toHaveAttribute('aria-pressed', 'true');
+    await expect(app.request).toContainText('Nothing is committed on this branch yet');
+
+    // With a commit, the same press opens the form of the request, filled in.
+    writeIn(task.cwd, 'notes.txt', 'fifty a page\n');
+    await app.showChanges('Not committed');
+    await app.commit('Pages of fifty');
+    await app.page.getByRole('link', { name: 'Issues', exact: true }).click();
+    await row.getByRole('link', { name: 'Create PR' }).click();
+    await expect(app.request.getByRole('textbox', { name: 'Title' })).toHaveValue('Pages of fifty');
+    await app.request.getByRole('button', { name: 'Push and open the pull request' }).click();
+    await expect(app.request).toContainText('Number 128 · open');
+    // The row now has the task's own request, and nothing to create.
+    await app.page.getByRole('link', { name: 'Issues', exact: true }).click();
+    await expect(row.getByRole('button', { name: 'PR #128' })).toBeVisible();
+    await expect(row.getByRole('link', { name: 'Create PR' })).toHaveCount(0);
   });
 
   test('N-06 N-07 a project without a known host has no tracker; a Linear team without a key says what is missing', async ({

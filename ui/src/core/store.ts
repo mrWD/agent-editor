@@ -1288,6 +1288,8 @@ export type ProjectIssues = {
   linearTeam: string | null;
   issues: Issue[];
   problem: string | null;
+  /** How a request of this project's repository is called in two letters: "PR", "MR", or `null` on neither host. */
+  requestShort: 'PR' | 'MR' | null;
 };
 
 export function integrationsStatus() {
@@ -1367,6 +1369,22 @@ export async function issueRequests(projectId: string, key: string, source?: 'li
     ...(source ? { source } : {}),
   });
   return found.requests;
+}
+
+/**
+ * The open requests of the issue a task works on that are on another branch than the task:
+ * work on the issue that is under way, which the task is not on. Empty for a task without an issue.
+ */
+export async function taskIssueRequests(taskId: string): Promise<IssueRequest[]> {
+  return (await core.request<{ requests: IssueRequest[] }>('mr.ofIssue', { taskId })).requests;
+}
+
+/**
+ * Takes a task over to the branch of an open request of its issue. Refused, with the reason,
+ * while something would be lost by it: files that are not committed, commits of the task's own.
+ */
+export function joinRequest(taskId: string, number: number) {
+  return core.request<TaskInfo>('mr.join', { taskId, number });
 }
 
 export type Checks = {
