@@ -316,6 +316,10 @@ kbd {
   background: transparent;
   color: var(--text);
 }
+/* The model of a new task and the like: beside the agent, and no wider than a name needs. */
+.select-button.task-option {
+  max-width: 200px;
+}
 select.select-button {
   appearance: none;
   padding-right: 26px;

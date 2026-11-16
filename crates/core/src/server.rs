@@ -603,6 +603,7 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
             "onboarded": manager.onboarded()
         })),
         "agents.list" => Ok(manager.agents_listed()),
+        "agents.offers" => Ok(json!({ "options": manager.offers(text_param(params, "agentId")?) })),
         "settings.get"
         | "settings.set"
         | "agents.save"
@@ -639,8 +640,22 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
 
         "tasks.list" => Ok(json!(manager.list()?)),
         "tasks.create" => {
+            // What was chosen for the task ahead of its agent, as `{ "model": "…" }`: a setting's id and its value.
+            let choices: Vec<(String, String)> = params
+                .get("options")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .filter_map(|(id, value)| Some((id.clone(), value.as_str()?.to_string())))
+                .collect();
             let task = manager
-                .create(text_param(params, "projectId")?, text_param(params, "agentId")?, text_param(params, "text")?)
+                .create_with(
+                    text_param(params, "projectId")?,
+                    text_param(params, "agentId")?,
+                    text_param(params, "text")?,
+                    None,
+                    &choices,
+                )
                 .await?;
             Ok(json!(task))
         }

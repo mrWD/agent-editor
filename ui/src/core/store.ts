@@ -714,9 +714,26 @@ export function setProjectFolder(projectId: string, folder: string): Promise<Pro
   return core.request<Project>('projects.setFolder', { projectId, folder });
 }
 
-/** Creates a task, starts its agent and sends the first message. Returns the new task's id. */
-export async function createTask(projectId: string, agentId: string, text: string): Promise<string> {
-  const info = await core.request<TaskInfo>('tasks.create', { projectId, agentId, text });
+/**
+ * What a new task of an agent can be given ahead of its agent: the settings its last session
+ * offered, such as its model and how hard it thinks, each on the choice made for the agent last.
+ * The mode is not among them. Empty for an agent that has not run a task yet.
+ */
+export async function agentOffers(agentId: string): Promise<ConfigOption[]> {
+  return (await core.request<{ options: ConfigOption[] }>('agents.offers', { agentId })).options;
+}
+
+/**
+ * Creates a task, starts its agent and sends the first message. Returns the new task's id.
+ * `options` is what was chosen for it ahead of its agent: a setting's id and the value picked.
+ */
+export async function createTask(
+  projectId: string,
+  agentId: string,
+  text: string,
+  options: Record<string, string> = {},
+): Promise<string> {
+  const info = await core.request<TaskInfo>('tasks.create', { projectId, agentId, text, options });
   // The "task.created" event may already have added it and started loading; if not, do it here.
   if (!state.tasks[info.id]) {
     addTask(info);
