@@ -1141,11 +1141,17 @@ test.describe('The iOS simulator and the Android emulator', () => {
     expect(boxes[0].right).toBeLessThanOrEqual(boxes[1].left);
     expect(boxes[1].right).toBeLessThanOrEqual(boxes[2].left);
     expect(new Set(boxes.map((box) => Math.round(box.top))).size).toBe(1);
-    // The page still fits its column: its frames are scaled to the room the devices leave.
-    const frames = await preview.view
-      .locator('.preview-frame')
-      .evaluateAll((all) => all.map((one) => one.getBoundingClientRect().right));
-    expect(Math.max(...frames)).toBeLessThanOrEqual(boxes[0].right + 1);
+    // The page still fits its column: its frames are scaled to the room the devices leave. The scale
+    // follows the column a moment after it narrows, so it is waited for.
+    await expect
+      .poll(() =>
+        preview.view.evaluate((view) => {
+          const column = view.querySelector('.preview-pane.web')!.getBoundingClientRect().right;
+          const frames = [...view.querySelectorAll('.preview-frame')].map((one) => one.getBoundingClientRect().right);
+          return frames.length > 0 && Math.max(...frames) <= column + 1;
+        }),
+      )
+      .toBe(true);
 
     // Something else of the task is looked at: the three are not offered there. "App" comes back to the same three.
     await tabs.getByRole('button', { name: 'API' }).click();
