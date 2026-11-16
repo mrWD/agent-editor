@@ -2450,7 +2450,15 @@ button.search-link:hover {
   flex: 1 1 220px;
   /* A name with one long word in it, an address say, breaks rather than widen the list. */
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.issue-row .where-stopped,
+.issue-row > .tag,
+.issue-row > .btn,
+.issue-row > select {
+  flex: none;
 }
 .issue-key,
 .issue-chip {

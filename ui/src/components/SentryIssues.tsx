@@ -341,7 +341,9 @@ export function SentryIssues(props: {
                             <a class="issue-key" href={issue.url || undefined} target="_blank" rel="noreferrer">
                               {issue.key}
                             </a>
-                            <span class="name">{issue.title}</span>
+                            <span class="name" title={issue.title}>
+                              {issue.title}
+                            </span>
                             <span class="tag">{issue.level}</span>
                             <span class="issue-state">
                               {sentryNumbers(issue)} · last {ago(issue.lastSeen)}

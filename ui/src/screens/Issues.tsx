@@ -442,7 +442,7 @@ export function Issues(): JSX.Element {
                         <button
                           type="button"
                           class="name issue-open"
-                          title="Read it here: the description, the comments and the pictures"
+                          title={`${issue.title}\nRead it here: the description, the comments and the pictures`}
                           onClick={() =>
                             openIssue(placeFor(issue.key), issue, 'linear', () => (
                               <IssueFoot
@@ -612,7 +612,7 @@ export function Issues(): JSX.Element {
                         <button
                           type="button"
                           class="name issue-open"
-                          title="Read it here: the description, the comments and the pictures"
+                          title={`${issue.title}\nRead it here: the description, the comments and the pictures`}
                           onClick={() =>
                             openIssue(project.projectId, issue, undefined, () => (
                               <IssueFoot
