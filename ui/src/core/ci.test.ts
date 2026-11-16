@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { byStage, jobAct, needsNobody, stagesOf, stillGoing, summary, type CiJob, type CiState } from './ci';
+import {
+  byStage,
+  jobAct,
+  needsNobody,
+  quietWords,
+  shares,
+  stagesOf,
+  stillGoing,
+  summary,
+  WANTS_A_LOOK,
+  type CiJob,
+  type CiState,
+} from './ci';
 
 const job = (name: string, stage: string, state: CiState): CiJob => ({
   id: name,
@@ -37,6 +49,35 @@ describe('a pipeline told briefly', () => {
     expect(summary(jobs)).toBe('1 failed, 1 running, 1 waits to be started, 2 passed, 1 skipped');
     expect(summary([job('a', 's', 'manual'), job('b', 's', 'manual')])).toBe('2 wait to be started');
     expect(summary([])).toBe('no jobs');
+  });
+
+  it('gives each state its share, what failed first, and leaves out a state nobody is in', () => {
+    expect(shares(jobs)).toEqual([
+      { state: 'failed', count: 1 },
+      { state: 'running', count: 1 },
+      { state: 'manual', count: 1 },
+      { state: 'passed', count: 2 },
+      { state: 'skipped', count: 1 },
+    ]);
+    expect(shares([])).toEqual([]);
+  });
+
+  it('lists what wants a look under a word for how it stands, and nothing that needs nobody', () => {
+    expect(WANTS_A_LOOK.map(([, words]) => words)).toEqual([
+      'Failed',
+      'Running',
+      'Waiting',
+      'Waits for you',
+      'Stopped',
+    ]);
+    expect(WANTS_A_LOOK.some(([state]) => needsNobody(job('a', 's', state)))).toBe(false);
+  });
+
+  it('says what needs nobody in one line', () => {
+    expect(quietWords(jobs)).toBe('2 went well, 1 skipped');
+    expect(quietWords([job('a', 's', 'passed')])).toBe('1 went well');
+    expect(quietWords([job('a', 's', 'skipped')])).toBe('1 skipped');
+    expect(quietWords([job('a', 's', 'failed')])).toBe('');
   });
 
   it('lists a job that went well only when asked', () => {

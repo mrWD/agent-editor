@@ -5,10 +5,13 @@ import {
   CI_WORDS,
   getPipeline,
   jobAct,
-  stagesOf,
   needsNobody,
+  quietWords,
+  shares,
+  stagesOf,
   stillGoing,
   summary,
+  WANTS_A_LOOK,
   type CiAct,
   type CiInfo,
   type CiPipeline,
@@ -29,6 +32,44 @@ const ARMED_FOR = 4_000;
 
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+const drawn = {
+  width: '12',
+  height: '12',
+  viewBox: '0 0 16 16',
+  fill: 'none',
+  stroke: 'currentColor',
+  'stroke-width': '1.6',
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+  'aria-hidden': 'true',
+} as const;
+
+/** What a press on a job does, as a sign: start it, stop it, or run it again. The words are the button's name. */
+function ActIcon(props: { what: CiAct }): JSX.Element {
+  return (
+    <svg {...drawn}>
+      <Show when={props.what === 'playJob'}>
+        <path d="M5 3.5v9l7.5-4.5z" />
+      </Show>
+      <Show when={props.what === 'cancelJob'}>
+        <rect x="4" y="4" width="8" height="8" rx="1" />
+      </Show>
+      <Show when={props.what === 'retryJob'}>
+        <path d="M13 8a5 5 0 1 1-1.5-3.6" />
+        <path d="M13 2.5v3h-3" />
+      </Show>
+    </svg>
+  );
+}
+
+function Chevron(props: { down: boolean }): JSX.Element {
+  return (
+    <svg {...drawn}>
+      <path d={props.down ? 'M4 6l4 4 4-4' : 'M6 4l4 4-4 4'} />
+    </svg>
+  );
+}
+
 /** How a pipeline stands, in a few words: for a line at the head of the view. */
 export type PipelineBrief = { state: CiPipeline['state']; words: string };
 
@@ -36,8 +77,9 @@ export type PipelineBrief = { state: CiPipeline['state']; words: string };
  * The pipeline of the task's branch, under its merge request: where it
  * stands, job by job, and what a person does to it without opening the host:
  * run a failed job again, start one that waits, stop or run the whole thing
- * again, start a new one. A long pipeline is told by its stages; the jobs that
- * went well are folded away.
+ * again, start a new one. What wants a look comes first, by how it stands:
+ * what failed, what is going, what waits for a person. The jobs that went
+ * well are one line, and opened they are told stage by stage.
  */
 export function PipelineCard(props: {
   task: Task;
@@ -67,7 +109,7 @@ export function PipelineCard(props: {
   const [busy, setBusy] = createSignal<string | null>(null);
   /** The button that was pressed once and waits for its second press. */
   const [armed, setArmed] = createSignal<string | null>(null);
-  /** The stages whose every job is listed, by run and stage. */
+  /** The runs whose jobs that need nobody are listed too. */
   const [unfolded, setUnfolded] = createSignal<string[]>([]);
   let disarm: ReturnType<typeof setTimeout> | undefined;
   const arm = (key: string | null) => {
@@ -184,20 +226,44 @@ export function PipelineCard(props: {
     </button>
   );
 
-  const jobRow = (job: CiJob) => {
+  /** A job in one row: where it stands, its name, a word about it, and what can be done to it. */
+  const jobRow = (job: CiJob, note: string) => {
     const can = () => jobAct(job, info()!.can);
     return (
       <li class="pipe-job">
         <span class={`pipe-dot ${job.state}`} aria-hidden="true" />
-        <a class="pipe-name" href={job.url} target="_blank" rel="noreferrer">
-          {job.name}
-        </a>
-        <span class="fine">
-          {CI_WORDS[job.state]}
-          {job.allowedToFail && job.state === 'failed' ? ', may fail' : ''}
+        <span class="pipe-what">
+          <a class="pipe-name" href={job.url} target="_blank" rel="noreferrer">
+            {job.name}
+          </a>
+          <Show when={note}>
+            {' '}
+            <span class="fine">{note}</span>
+          </Show>
         </span>
         <Show when={can()}>
-          {(todo) => button(`job:${job.id}`, todo().label, todo().what, job.id, job.name, todo().twice)}
+          {(todo) => {
+            const key = `job:${job.id}`;
+            const label = () => (armed() === key ? `Press again: ${todo().label}` : todo().label);
+            return (
+              <button
+                type="button"
+                class="btn tiny pipe-act"
+                classList={{ armed: armed() === key, wide: armed() === key || busy() === key }}
+                disabled={busy() !== null}
+                title={label()}
+                aria-label={`${label()}: ${job.name}`}
+                onClick={() => void act(key, todo().what, job.id, job.name, todo().twice)}
+                onBlur={() => armed() === key && arm(null)}
+              >
+                <Show when={busy() !== key} fallback="Asking">
+                  <Show when={armed() !== key} fallback="Press again">
+                    <ActIcon what={todo().what} />
+                  </Show>
+                </Show>
+              </button>
+            );
+          }}
         </Show>
       </li>
     );
@@ -205,14 +271,18 @@ export function PipelineCard(props: {
 
   const run = (one: CiRun) => {
     const broken = () => one.jobs.some((job) => job.state === 'failed' || job.state === 'canceled');
+    const open = () => unfolded().includes(one.id);
+    const quiet = () => one.jobs.filter(needsNobody);
+    /** What a job that wants a look says of itself: its stage, and that its failure fails nothing. */
+    const about = (job: CiJob) =>
+      [job.stage, job.allowedToFail && job.state === 'failed' ? 'may fail' : ''].filter(Boolean).join(' · ');
     return (
       <div class="pipe-run" role="group" aria-label={one.name}>
         <div class="pipe-run-head">
           <span class={`pipe-dot ${one.state}`} aria-hidden="true" />
-          <a class="pipe-name strong" href={one.url} target="_blank" rel="noreferrer">
+          <a class="pipe-name strong grow" href={one.url} target="_blank" rel="noreferrer">
             {one.name}
           </a>
-          <span class="fine grow">{summary(one.jobs)}</span>
           <Show when={broken() && info()!.can.retryFailed}>
             {button(`failed:${one.id}`, 'Run failed again', 'retryFailed', one.id, one.name, false)}
           </Show>
@@ -223,37 +293,61 @@ export function PipelineCard(props: {
             {button(`stop:${one.id}`, 'Stop', 'cancelRun', one.id, one.name, true)}
           </Show>
         </div>
-        <For each={stagesOf(one.jobs)}>
-          {(stage) => {
-            const key = `${one.id}:${stage}`;
-            const jobs = () => one.jobs.filter((job) => job.stage === stage);
-            const open = () => unfolded().includes(key);
-            const quiet = () => jobs().filter(needsNobody).length;
-            const shown = () => (open() ? jobs() : jobs().filter((job) => !needsNobody(job)));
+        {/* How the jobs stand, as shares of one bar: what failed first, what went well after. */}
+        <div class="pipe-bar" role="img" aria-label={summary(one.jobs)} title={summary(one.jobs)}>
+          <For each={shares(one.jobs)}>
+            {(share) => <span class={`pipe-share ${share.state}`} style={{ 'flex-grow': share.count }} />}
+          </For>
+        </div>
+        {/* What wants a look comes first, by how it stands and not by stage: the stage is said on the row. */}
+        <For each={WANTS_A_LOOK}>
+          {([state, words]) => {
+            const jobs = () => one.jobs.filter((job) => job.state === state);
             return (
-              <div class="pipe-stage" role="group" aria-label={stage || 'Jobs'}>
-                <div class="pipe-stage-head">
-                  <span class="pipe-stage-name">{stage || 'Jobs'}</span>
-                  <Show when={quiet() > 0}>
-                    <button
-                      type="button"
-                      class="pipe-fold"
-                      aria-expanded={open()}
-                      onClick={() => setUnfolded((now) => (open() ? now.filter((one) => one !== key) : [...now, key]))}
-                    >
-                      {open() ? 'Fold' : `${quiet()} went well`}
-                    </button>
-                  </Show>
-                </div>
-                <Show when={shown().length > 0}>
+              <Show when={jobs().length > 0}>
+                <div class="pipe-group" role="group" aria-label={words}>
+                  <span class="pipe-group-name">
+                    {words} · {jobs().length}
+                  </span>
                   <ul class="pipe-jobs">
-                    <For each={shown()}>{jobRow}</For>
+                    <For each={jobs()}>{(job) => jobRow(job, about(job))}</For>
                   </ul>
-                </Show>
-              </div>
+                </div>
+              </Show>
             );
           }}
         </For>
+        {/* What needs nobody is one line; opened, it is told stage by stage. */}
+        <Show when={quiet().length > 0}>
+          <div class="pipe-group quiet">
+            <button
+              type="button"
+              class="pipe-fold"
+              aria-expanded={open()}
+              onClick={() => setUnfolded((now) => (open() ? now.filter((id) => id !== one.id) : [...now, one.id]))}
+            >
+              <span class="pipe-dot passed" aria-hidden="true" />
+              <span class="grow">{quietWords(one.jobs)}</span>
+              <Chevron down={open()} />
+            </button>
+            <Show when={open()}>
+              <For each={stagesOf(quiet())}>
+                {(stage) => (
+                  <div class="pipe-stage" role="group" aria-label={stage || 'Jobs'}>
+                    <Show when={stage}>
+                      <span class="pipe-stage-name">{stage}</span>
+                    </Show>
+                    <ul class="pipe-jobs">
+                      <For each={quiet().filter((job) => job.stage === stage)}>
+                        {(job) => jobRow(job, job.state === 'skipped' ? CI_WORDS.skipped : '')}
+                      </For>
+                    </ul>
+                  </div>
+                )}
+              </For>
+            </Show>
+          </div>
+        </Show>
       </div>
     );
   };
