@@ -354,8 +354,8 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   that are not pushed, with Undo, and the push, alone or with a request
   opened for it. The third is called "Pushed" until there is a request and
   by the request's name after ("PR #128", "MR !48"): the request and what
-  stands before its merge, the pipeline, what was written under the request,
-  and the pushed commits with Revert. The middle shows what the part on show
+  stands before its merge, the pipeline, and the pushed commits with Revert
+  (what was written under the request is in its panel, behind "Details"). The middle shows what the part on show
   changes. The view opens on the first part that holds something and follows
   a change: a commit of everything leads to the commits, a push to the
   request; a change made meanwhile is only counted on its part. "Since last
@@ -365,8 +365,10 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   the agent or get a reply; "Merge now" merges it, deletes the branch and the
   working copy and archives the task, and "Merge by itself" does that once the
   checks are green. Under the request stands the pipeline of the branch
-  (GitLab's, or the runs of GitHub Actions for the newest commit), stage by
-  stage: what failed, runs or waits is listed, what went well is folded away.
+  (GitLab's, or the runs of GitHub Actions for the newest commit): a bar of
+  how its jobs stand, then what failed, runs or waits, listed by how it
+  stands with its stage named, and what went well as one line that opens
+  stage by stage.
   A failed job is run again with one press; starting a job that waits,
   stopping, running everything again and starting a new pipeline take two. A
   checkpoint is taken before every message: "Look back"
@@ -396,8 +398,9 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
 - **M7, Preview and Map.** Preview shows the running app at several widths at
   once, in light and dark, lets you pick an element or draw on the page, and
   sends that to the agent in words. A screenshot of each width goes into the
-  message (it needs Chrome, Chromium or Edge on this computer). The iOS
-  simulator and the Android emulator each have a tab that lists the devices,
+  message (it needs Chrome, Chromium or Edge on this computer). The page,
+  the iOS simulator and the Android emulator are one tab, "App", with a
+  switch between the three; each of the two devices lists the devices,
   starts one that is off, opens the app there and shows its screen as a
   picture taken again every second. A press on the picture is a tap and a
   drag is a swipe; under it are the device's buttons, a field that types on
