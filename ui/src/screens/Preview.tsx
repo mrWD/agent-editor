@@ -66,7 +66,9 @@ const FROM_PAGE = 'ae-preview-page';
 
 type Relay = { port: number; target: string };
 type Tool = 'none' | 'pick' | 'draw';
-type Kind = 'web' | 'ios' | 'android' | 'api' | 'db' | 'jobs' | 'infra';
+/** Where the running app is looked at: as a page, or on one of the two devices. */
+type Screen = 'web' | 'ios' | 'android';
+type Kind = Screen | 'api' | 'db' | 'jobs' | 'infra';
 
 /** What is known about the page in one frame. */
 type FrameState = {
@@ -222,6 +224,12 @@ export function PreviewView(props: { task: Task }): JSX.Element {
   const [problem, setProblem] = createSignal<string | null>(null);
   // What was looked at last is what opens next: a task on a service is not looked at as a page.
   const [kind, setKind] = createKept<Kind>(`task:${taskId}:preview.kind`, 'web');
+  // The page and the two devices are one thing to look at, the app: "App" comes back to the one seen last.
+  const [screen, setScreen] = createKept<Screen>(`task:${taskId}:preview.screen`, 'web');
+  const onScreen = (which: Screen) => {
+    setScreen(which);
+    setKind(which);
+  };
   /** Whether what is on show is data of the task's service or files of its project, not a screen of its app. */
   const isData = () => kind() === 'api' || kind() === 'db' || kind() === 'jobs' || kind() === 'infra';
   /**
@@ -854,14 +862,13 @@ export function PreviewView(props: { task: Task }): JSX.Element {
       <Deploys taskId={taskId} />
       <div class="preview-bar">
         <div class="switcher" role="group" aria-label="What to preview on">
-          <button type="button" aria-pressed={kind() === 'web'} onClick={() => setKind('web')}>
-            Web
-          </button>
-          <button type="button" aria-pressed={kind() === 'ios'} onClick={() => setKind('ios')}>
-            iOS simulator
-          </button>
-          <button type="button" aria-pressed={kind() === 'android'} onClick={() => setKind('android')}>
-            Android emulator
+          <button
+            type="button"
+            aria-pressed={!isData()}
+            title="The running app: as a page, on the iOS simulator or on the Android emulator"
+            onClick={() => onScreen(screen())}
+          >
+            App
           </button>
           <button type="button" aria-pressed={kind() === 'api'} onClick={() => setKind('api')}>
             API
@@ -878,6 +885,19 @@ export function PreviewView(props: { task: Task }): JSX.Element {
             </button>
           </Show>
         </div>
+        <Show when={!isData()}>
+          <div class="switcher" role="group" aria-label="Where the app is shown">
+            <button type="button" aria-pressed={kind() === 'web'} onClick={() => onScreen('web')}>
+              Web
+            </button>
+            <button type="button" aria-pressed={kind() === 'ios'} onClick={() => onScreen('ios')}>
+              iOS simulator
+            </button>
+            <button type="button" aria-pressed={kind() === 'android'} onClick={() => onScreen('android')}>
+              Android emulator
+            </button>
+          </div>
+        </Show>
         <Show when={kind() === 'web' && loaded()}>
           <div class="preview-widths" role="group" aria-label="Widths">
             <span class="fine">Widths</span>

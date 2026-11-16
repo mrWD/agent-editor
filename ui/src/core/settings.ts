@@ -17,6 +17,8 @@ export type AgentSetting = {
   changed: boolean;
   available: boolean;
   note: string | null;
+  /** What stands behind the name of one the editor comes with, while its command is the editor's own. */
+  about: string | null;
   spendsTokens: boolean;
   /** "terminal" for a program that speaks no protocol: it runs in a terminal and messages are typed into it. */
   speaks: 'acp' | 'terminal';

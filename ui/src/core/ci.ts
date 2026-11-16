@@ -76,17 +76,40 @@ export function stagesOf(jobs: CiJob[]): string[] {
 /** A job that went well, or was left out, needs nobody: it is listed only when the whole stage is unfolded. */
 export const needsNobody = (job: CiJob) => job.state === 'passed' || job.state === 'skipped';
 
-/** How many jobs stand where, in the order a person cares: what failed first. "3 failed, 2 running, 44 passed". */
+/**
+ * The states that want a look, in the order a person cares, each with the words its jobs are listed
+ * under. What failed comes first; what waits for a person to start it is "Waits for you".
+ */
+export const WANTS_A_LOOK: readonly (readonly [CiState, string])[] = [
+  ['failed', 'Failed'],
+  ['running', 'Running'],
+  ['pending', 'Waiting'],
+  ['manual', 'Waits for you'],
+  ['canceled', 'Stopped'],
+];
+
+/** How many jobs stand where, in the order a person cares: what failed first. A state nobody is in is left out. */
+export function shares(jobs: CiJob[]): { state: CiState; count: number }[] {
+  const order: CiState[] = [...WANTS_A_LOOK.map(([state]) => state), 'passed', 'skipped'];
+  return order
+    .map((state) => ({ state, count: jobs.filter((job) => job.state === state).length }))
+    .filter((share) => share.count > 0);
+}
+
+/** The same in words: "3 failed, 2 running, 44 passed". */
 export function summary(jobs: CiJob[]): string {
-  const order: CiState[] = ['failed', 'running', 'pending', 'manual', 'canceled', 'passed', 'skipped'];
-  const counted = order
-    .map((state) => [state, jobs.filter((job) => job.state === state).length] as const)
-    .filter(([, count]) => count > 0)
-    .map(
-      ([state, count]) =>
-        `${count} ${state === 'manual' ? (count === 1 ? 'waits to be started' : 'wait to be started') : CI_WORDS[state]}`,
-    );
+  const counted = shares(jobs).map(
+    ({ state, count }) =>
+      `${count} ${state === 'manual' ? (count === 1 ? 'waits to be started' : 'wait to be started') : CI_WORDS[state]}`,
+  );
   return counted.length > 0 ? counted.join(', ') : 'no jobs';
+}
+
+/** The jobs that need nobody, in one line to press: "32 went well, 2 skipped". Empty when there are none. */
+export function quietWords(jobs: CiJob[]): string {
+  const passed = jobs.filter((job) => job.state === 'passed').length;
+  const skipped = jobs.filter((job) => job.state === 'skipped').length;
+  return [passed > 0 ? `${passed} went well` : '', skipped > 0 ? `${skipped} skipped` : ''].filter(Boolean).join(', ');
 }
 
 /** What can be done to a job in the state it is in, on this host. */

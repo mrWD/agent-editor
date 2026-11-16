@@ -141,6 +141,10 @@ p {
 /* ---------- App frame ---------- */
 
 .app {
+  /* The frame never scrolls as a whole; only what is in it does. A label that is there only to be
+     read aloud keeps its place in a long list, and without this it made the page that long. */
+  position: relative;
+  overflow: clip;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -2433,6 +2437,9 @@ button.search-link:hover {
 }
 .issue-row .name {
   flex: 1 1 220px;
+  /* A name with one long word in it, an address say, breaks rather than widen the list. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .issue-key,
 .issue-chip {
@@ -2723,14 +2730,6 @@ button.search-link:hover {
 }
 .git-tab[hidden] {
   display: none;
-}
-.request-talk .detail-notes {
-  padding: 0;
-}
-/* A long comment, such as a report a bot posts, scrolls in its own box: the column stays short. */
-.request-talk .detail-note {
-  max-height: 220px;
-  overflow-y: auto;
 }
 .away-row {
   display: flex;
@@ -6931,46 +6930,124 @@ button.picked-source:hover {
   border-top: 1px solid var(--line-soft);
 }
 .pipe-run-head,
-.pipe-stage-head,
 .pipe-job {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  gap: 8px;
+}
+.pipe-run-head {
+  flex-wrap: wrap;
   gap: 4px 8px;
+}
+.pipe-run-head {
+  min-height: 24px;
+}
+/* How the jobs of a run stand, as shares of one bar. A single job among forty is still seen. */
+.pipe-bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  margin: 2px 0 4px;
+}
+.pipe-share {
+  flex: 1 1 0;
+  min-width: 4px;
+  border-radius: 3px;
+  background: var(--line-dashed);
+}
+.pipe-share.passed {
+  background: var(--green);
+}
+.pipe-share.failed {
+  background: var(--red);
+}
+.pipe-share.running,
+.pipe-share.pending {
+  background: var(--accent);
+}
+.pipe-share.manual {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.pipe-share.skipped {
+  background: var(--line-strong);
+}
+/* The jobs that stand the same way, under a word for how they stand. */
+.pipe-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+}
+.pipe-group-name,
+.pipe-stage-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+.pipe-group.quiet {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
 }
 .pipe-stage {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-left: 14px;
+  padding: 4px 0 0 16px;
 }
-.pipe-stage-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-/* "14 went well": words to press, not a button to look at. */
+/* "32 went well, 2 skipped": a line to press, not a button to look at. */
 .pipe-fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--text-3);
+  color: var(--text-2);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  text-align: left;
   cursor: pointer;
 }
 .pipe-fold:hover {
   color: var(--text);
-  text-decoration: underline;
 }
 .pipe-jobs {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   margin: 0;
-  padding: 0 0 2px 2px;
+  padding: 0;
   list-style: none;
   font-size: 13px;
+}
+.pipe-job {
+  min-height: 26px;
+}
+/* The name and the word about the job read as one line of text; in a narrow column the word goes
+   under the name whole, and the name is not broken to make room for it. */
+.pipe-what {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+}
+.pipe-what .fine {
+  display: inline-block;
+  margin-left: 4px;
+}
+/* What is done to one job is a sign in a small square; armed or asking, it says so in words. */
+.pipe-act {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  padding: 0;
+}
+.pipe-act.wide {
+  width: auto;
+  padding: 0 8px;
 }
 .pipe-name {
   min-width: 0;
@@ -6983,9 +7060,6 @@ button.picked-source:hover {
 }
 .pipe-name.strong {
   font-weight: 500;
-}
-.pipe-job .fine {
-  flex: 1 1 auto;
 }
 /* Where a job stands, as a dot: the colours of good and bad news, the accent for what is going on. */
 /* How the pipeline stands, in one line at the head of the column: a press goes down to its card. */

@@ -121,6 +121,7 @@ impl OwnAgent {
             env: vec![],
             available: false,
             note: None,
+            about: None,
             // Nobody knows what an agent of the user's own costs; saying "it may cost" is the safe side.
             spends_tokens: true,
             speaks: if self.terminal { Speaks::Terminal } else { Speaks::Acp },
@@ -134,6 +135,8 @@ fn with_command(mut agent: AgentDef, command: &Command) -> AgentDef {
     let found = find_program(&command.program);
     agent.available = found.is_some();
     agent.note = (!agent.available).then(|| format!("Its command was not found: {}", command.program));
+    // Another command may start something else: what the editor said of its own no longer holds.
+    agent.about = None;
     // The full path, where there is one: a bare name does not start everything on every system.
     agent.program = found.map_or_else(|| command.program.clone(), |path| path.to_string_lossy().into_owned());
     agent.args = command.args.clone();
@@ -392,6 +395,7 @@ impl Manager {
                     "changed": changed.contains_key(&agent.id),
                     "available": agent.available,
                     "note": agent.note,
+                    "about": agent.about,
                     "spendsTokens": agent.spends_tokens,
                     "speaks": agent.speaks,
                     "isDefault": default.as_deref() == Some(agent.id.as_str()),
@@ -640,6 +644,20 @@ mod tests {
         assert!(wrong(json!({ "program": "a", "env": [["A=B", "1"]] })).contains("cannot be the name"));
         assert!(wrong(json!({ "program": "a", "env": [["A", "1"], ["A", "2"]] })).contains("twice"));
         assert!(wrong(json!({ "program": "a", "env": [["A"]] })).contains("a name and a value"));
+    }
+
+    #[test]
+    fn what_stands_behind_a_known_agent_is_said_until_its_command_is_another() {
+        let known = crate::agents::Registry::detect();
+        let claude = known.get("claude").expect("Claude is always in the list");
+        assert_eq!(
+            claude.about.as_deref(),
+            Some("Claude Code, behind an adapter that speaks the Agent Client Protocol.")
+        );
+        assert_eq!(known.get("mock").expect("the practice agent").about, None);
+
+        let command = Command { program: "/nonexistent/ae-test/x".into(), args: vec![], env: vec![] };
+        assert_eq!(with_command(claude.clone(), &command).about, None);
     }
 
     #[test]

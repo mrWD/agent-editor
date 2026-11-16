@@ -43,6 +43,10 @@ pub struct AgentDef {
     pub available: bool,
     /// Why it is not available, or what the first start will do.
     pub note: Option<String>,
+    /// What stands behind the name, for an agent the editor knows by itself:
+    /// "Claude" alone does not say that it is Claude Code behind an adapter.
+    /// Gone once the user writes another command for it.
+    pub about: Option<String>,
     /// True when using it spends tokens on the user's account.
     pub spends_tokens: bool,
     /// Whether it speaks the protocol or runs in a terminal.
@@ -69,9 +73,26 @@ impl Registry {
             "Cl",
             "Anthropic",
             &["@agentclientprotocol/claude-agent-acp"],
+            "Claude Code, behind an adapter that speaks the Agent Client Protocol.",
         ));
-        agents.push(Self::via_npx(&npx, "codex", "Codex", "Cx", "OpenAI", &["@agentclientprotocol/codex-acp"]));
-        agents.push(Self::via_npx(&npx, "gemini", "Gemini", "Gm", "Google", &["@google/gemini-cli", "--acp"]));
+        agents.push(Self::via_npx(
+            &npx,
+            "codex",
+            "Codex",
+            "Cx",
+            "OpenAI",
+            &["@agentclientprotocol/codex-acp"],
+            "Codex, behind an adapter that speaks the Agent Client Protocol.",
+        ));
+        agents.push(Self::via_npx(
+            &npx,
+            "gemini",
+            "Gemini",
+            "Gm",
+            "Google",
+            &["@google/gemini-cli", "--acp"],
+            "Gemini CLI, which speaks the Agent Client Protocol by itself.",
+        ));
         Self { agents }
     }
 
@@ -102,6 +123,7 @@ impl Registry {
             env: vec![],
             available,
             note: (!available).then(|| "Build it with: cargo build -p ae-mock-agent".into()),
+            about: None,
             // With `AE_MOCK_COST` set it pretends each turn costs that much, so cost and
             // budgets can be tried without an account. Nothing is ever charged.
             spends_tokens: std::env::var("AE_MOCK_COST")
@@ -147,6 +169,7 @@ impl Registry {
         short: &str,
         vendor: &str,
         package_args: &[&str],
+        about: &str,
     ) -> AgentDef {
         let mut args = vec!["-y".to_string()];
         args.extend(package_args.iter().map(|s| s.to_string()));
@@ -165,6 +188,7 @@ impl Registry {
             } else {
                 "Needs Node.js: the npx command was not found.".into()
             }),
+            about: Some(about.into()),
             spends_tokens: true,
             speaks: Speaks::Acp,
         }

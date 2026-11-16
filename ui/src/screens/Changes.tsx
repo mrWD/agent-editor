@@ -5,7 +5,6 @@ import { createStore } from 'solid-js/store';
 import { createKept } from '../core/kept';
 import { go, taskHref } from '../app/router';
 import { ago, Chip } from '../components/bits';
-import { RequestTalk } from '../components/DetailPanel';
 import { RequestCard } from '../components/RequestCard';
 import { PipelineCard, type PipelineBrief } from '../components/PipelineCard';
 import { firstTab, tabAfter, tabCount, type ChangesTab } from '../core/changesTabs';
@@ -808,9 +807,6 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
                 pushes={`${state().commits.length}:${state().notPushed}`}
                 onBrief={setPipeBrief}
               />
-              <Show when={request()}>
-                <RequestTalk taskId={taskId} projectId={props.task.info.projectId} shown={tab() === 'request'} />
-              </Show>
               <section class="git-block">
                 <div class="git-head">
                   <h2 class="pane-title grow">Pushed</h2>

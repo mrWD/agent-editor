@@ -3,6 +3,8 @@ import { DEMO_FILE, DEMO_TEXT, expect, test, unique, writeIn, type App, type Pro
 /** The Pipeline card of the task on screen: it stands under the merge request, on Changes. */
 const card = (app: App) => app.page.getByRole('region', { name: 'Pipeline' });
 const run = (app: App, name: string) => card(app).getByRole('group', { name, exact: true });
+/** The bar of a run: how its jobs stand, as shares. Its name says the same in words. */
+const bar = (app: App, name: string) => run(app, name).getByRole('img');
 
 /**
  * A task of a project on GitHub, on the part of its Changes view where the pipeline is: what is
@@ -21,7 +23,7 @@ const done = (app: App, shop: Project) =>
   app.core.calls('gh').filter((call) => /^run (rerun|cancel)/.test(call) && call.includes(shop.slug!));
 
 test.describe('The pipeline of a task’s branch', () => {
-  test('CI-01 CI-02 the card says how the newest commit stands: what failed is listed, what went well is folded away', async ({
+  test('CI-01 CI-02 the card says how the newest commit stands: what failed is listed first, what went well is one line', async ({
     app,
     project,
   }) => {
@@ -63,24 +65,31 @@ test.describe('The pipeline of a task’s branch', () => {
     await expect(card(app)).toBeInViewport();
     await expect(brief).toHaveCount(0);
     const ci = run(app, 'CI');
-    await expect(ci).toContainText('1 failed, 1 passed, 1 skipped');
+    await expect(bar(app, 'CI')).toHaveAccessibleName('1 failed, 1 passed, 1 skipped');
+    // The bar has a part for each state somebody is in, what failed first.
+    await expect(bar(app, 'CI').locator('.pipe-share')).toHaveClass([/failed/, /passed/, /skipped/]);
     await expect(ci.getByRole('link', { name: 'CI' })).toHaveAttribute(
       'href',
       `https://github.com/${shop.slug}/actions/runs/9002`,
     );
-    // Only the job that failed is on screen; the two that need nobody are behind a fold.
-    await expect(ci.getByRole('link', { name: 'unit' })).toBeVisible();
+    // Only the job that failed is on screen, under the word for how it stands; the two that need
+    // nobody are one line, and a press on the line lists them.
+    const failed = ci.getByRole('group', { name: 'Failed' });
+    await expect(failed).toContainText('Failed · 1');
+    await expect(failed.getByRole('link', { name: 'unit' })).toBeVisible();
     await expect(ci.getByRole('link', { name: 'lint' })).toHaveCount(0);
-    const fold = ci.getByRole('button', { name: '2 went well' });
+    const fold = ci.getByRole('button', { name: '1 went well, 1 skipped' });
     await expect(fold).toHaveAttribute('aria-expanded', 'false');
     await fold.click();
+    await expect(fold).toHaveAttribute('aria-expanded', 'true');
     await expect(ci.getByRole('link', { name: 'lint' })).toBeVisible();
-    await expect(ci.getByRole('link', { name: 'docs' })).toBeVisible();
-    await ci.getByRole('button', { name: 'Fold' }).click();
+    await expect(ci.getByRole('listitem').filter({ hasText: 'docs' })).toContainText('skipped');
+    await fold.click();
     await expect(ci.getByRole('link', { name: 'lint' })).toHaveCount(0);
 
     // The second workflow of the same commit is a run of its own; the older commit's run is not shown.
-    await expect(run(app, 'Deploy preview')).toContainText('1 passed');
+    await expect(bar(app, 'Deploy preview')).toHaveAccessibleName('1 passed');
+    await expect(run(app, 'Deploy preview').getByRole('button', { name: '1 went well' })).toBeVisible();
     await expect(card(app)).not.toContainText('old');
     // GitHub starts runs from what a workflow listens to: no new pipeline on request, no single job stopped.
     await expect(card(app).getByRole('button', { name: /Run a new pipeline/ })).toHaveCount(0);
@@ -108,7 +117,8 @@ test.describe('The pipeline of a task’s branch', () => {
     await ci.getByRole('button', { name: 'Run again: unit' }).click();
     await expect.poll(() => done(app, shop)).toEqual([`run rerun --job 7002 -R ${shop.slug}`]);
     // What the host says next is on the card without a reload: the job is going again.
-    await expect(ci).toContainText('1 running, 1 passed');
+    await expect(bar(app, 'CI')).toHaveAccessibleName('1 running, 1 passed');
+    await expect(ci.getByRole('group', { name: 'Running' })).toContainText('unit');
     await expect(card(app)).toContainText('running · commit 01234567');
     await expect(ci.getByRole('button', { name: 'Run again: unit' })).toHaveCount(0);
     await expect(app.page.getByText('The job “unit” was started again on GitHub.')).toBeAttached();
@@ -134,7 +144,7 @@ test.describe('The pipeline of a task’s branch', () => {
     await all.click();
     await armed.click();
     await expect.poll(() => done(app, shop)).toEqual([`run rerun 9002 -R ${shop.slug}`]);
-    await expect(ci).toContainText('1 running');
+    await expect(bar(app, 'CI')).toHaveAccessibleName('1 running');
 
     // A run that is going can be stopped, with two presses as well.
     await ci.getByRole('button', { name: 'Stop: CI', exact: true }).click();
@@ -142,7 +152,8 @@ test.describe('The pipeline of a task’s branch', () => {
     await expect
       .poll(() => done(app, shop))
       .toEqual([`run rerun 9002 -R ${shop.slug}`, `run cancel 9002 -R ${shop.slug}`]);
-    await expect(ci).toContainText('1 stopped');
+    await expect(bar(app, 'CI')).toHaveAccessibleName('1 stopped');
+    await expect(ci.getByRole('group', { name: 'Stopped' })).toContainText('unit');
     await expect(app.page.getByText('“CI” was stopped on GitHub.')).toBeAttached();
   });
 
@@ -162,10 +173,10 @@ test.describe('The pipeline of a task’s branch', () => {
     ]);
     await taskOn(app, shop);
     const ci = run(app, 'CI');
-    await expect(ci).toContainText('2 failed, 1 passed');
+    await expect(bar(app, 'CI')).toHaveAccessibleName('2 failed, 1 passed');
     await ci.getByRole('button', { name: 'Run failed again: CI' }).click();
     await expect.poll(() => done(app, shop)).toEqual([`run rerun 9002 --failed -R ${shop.slug}`]);
-    await expect(ci).toContainText('2 running, 1 passed');
+    await expect(bar(app, 'CI')).toHaveAccessibleName('2 running, 1 passed');
   });
 
   test('CI-08 CI-09 a branch nothing ran for says so, and a project that is on neither host has no card', async ({
@@ -198,7 +209,7 @@ test.describe('The pipeline of a task’s branch', () => {
     await app.showChanges('Not committed');
     await app.commit('Raise the limit');
     await app.showChanges('Pushed');
-    await expect(run(app, 'CI')).toContainText('1 running');
+    await expect(bar(app, 'CI')).toHaveAccessibleName('1 running');
     await expect(card(app)).toContainText('running · commit 01234567');
   });
 

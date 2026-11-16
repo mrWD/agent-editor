@@ -261,6 +261,7 @@ async fn an_agent_that_does_not_start_leaves_nothing_behind() {
         env: vec![],
         available: true,
         note: None,
+        about: None,
         spends_tokens: false,
         speaks: Default::default(),
     };

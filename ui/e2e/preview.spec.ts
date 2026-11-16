@@ -1110,6 +1110,33 @@ test.describe('The iOS simulator and the Android emulator', () => {
     expect(core.calls('adb')).not.toContain('-s emulator-5554 emu kill');
   });
 
+  test('PV-42 the page and the two devices are one tab, "App", which comes back to the one looked at last', async ({
+    app,
+    core,
+    project,
+  }) => {
+    setSimulators(core.toolsDir, [{ udid: PAD, name: 'iPad Air', running: true }]);
+    const preview = await openPreview(app, (await project()).dir, shop.address);
+    const tabs = preview.view.getByRole('group', { name: 'What to preview on' });
+    const screens = preview.view.getByRole('group', { name: 'Where the app is shown' });
+    await expect(tabs.getByRole('button')).toHaveText(['App', 'API', 'Database', 'Jobs', 'Infra']);
+    await expect(tabs.getByRole('button', { name: 'App' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(screens.getByRole('button')).toHaveText(['Web', 'iOS simulator', 'Android emulator']);
+    await expect(preview.kind('Web')).toHaveAttribute('aria-pressed', 'true');
+
+    await preview.kind('iOS simulator').click();
+    await expect(preview.devices('iOS simulators').getByRole('listitem')).toHaveCount(1);
+    await expect(tabs.getByRole('button', { name: 'App' })).toHaveAttribute('aria-pressed', 'true');
+
+    // Something else of the task is looked at: the three are not offered there.
+    await tabs.getByRole('button', { name: 'API' }).click();
+    await expect(screens).toHaveCount(0);
+    // "App" comes back to the simulator, not to the page.
+    await tabs.getByRole('button', { name: 'App' }).click();
+    await expect(preview.kind('iOS simulator')).toHaveAttribute('aria-pressed', 'true');
+    await expect(preview.devices('iOS simulators').getByRole('listitem')).toHaveCount(1);
+  });
+
   test('PV-32 on a Mac without idb the simulator tab says what tapping needs, and its picture takes no press', async ({
     app,
     core,

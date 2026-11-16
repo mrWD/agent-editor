@@ -54,6 +54,7 @@ impl Track {
             env: vec![("AE_MOCK_DELAY_MS".into(), "0".into())],
             available: true,
             note: None,
+            about: None,
             spends_tokens: false,
             speaks: Default::default(),
         };

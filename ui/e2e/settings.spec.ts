@@ -176,8 +176,12 @@ test.describe('Settings: the section', () => {
 
     // Every agent the editor knows, each with the command that starts it.
     const practice = agentRow(app, 'Practice agent');
-    await expect(practice).toContainText('Built in');
+    await expect(practice).toContainText('Preset');
     await expect(practice.locator('code')).toHaveText(AGENT_BINARY);
+    // "Claude" alone does not say what is started: the row does.
+    await expect(agentRow(app, 'Claude')).toContainText(
+      'Claude Code, behind an adapter that speaks the Agent Client Protocol.',
+    );
     await expect(agentRow(app, 'Claude').locator('code')).toContainText('-y @agentclientprotocol/claude-agent-acp');
     await expect(agentRow(app, 'Codex').locator('code')).toContainText('-y @agentclientprotocol/codex-acp');
     await expect(agentRow(app, 'Gemini').locator('code')).toContainText('-y @google/gemini-cli --acp');
@@ -277,7 +281,7 @@ test.describe('Settings: the section', () => {
       'The program "/nonexistent/ae-e2e/agent" was not found.',
     );
     await agentRow(app, 'Practice agent').getByRole('button', { name: 'Put back' }).click();
-    await expect(agentRow(app, 'Practice agent')).toContainText('Built in');
+    await expect(agentRow(app, 'Practice agent')).toContainText('Preset');
     await expect(agentRow(app, 'Practice agent').getByRole('status')).toHaveCount(0);
     await expect(agentRow(app, 'Practice agent').locator('code')).toHaveText(AGENT_BINARY);
     await expect(agentRow(app, 'Practice agent').getByRole('button', { name: 'Put back' })).toHaveCount(0);

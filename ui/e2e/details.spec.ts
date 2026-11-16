@@ -129,6 +129,36 @@ test.describe('An issue and a request in full', () => {
     await expect(side).toHaveCount(0);
   });
 
+  test('ID-09 with a panel open the page does not scroll as a whole, and a name of one long word does not widen the list', async ({
+    app,
+    project,
+  }) => {
+    // A name as an error tracker gives it: an address with nowhere to break.
+    const long = `Request failed at https://api.example.test/${'segment_'.repeat(30)}end`;
+    const shop = await project({ remote: 'github', issues: [ISSUES[0], { number: 14, title: long }] });
+    shop.setIssueWhole(12, whole(shop.slug!));
+    await app.addProject(shop.dir);
+    // A window so low that the list is longer than it: the fields at its end are far below.
+    await app.page.setViewportSize({ width: 1000, height: 420 });
+    await app.page.goto(`${app.core.url}/#/issues`);
+    const rows = sectionOf(app, shop).locator('.issue-row');
+    await expect(rows).toHaveCount(2);
+    await rows.filter({ hasText: '#12' }).getByRole('button', { name: 'Login allows unlimited attempts' }).click();
+    await expect(panel(app)).toHaveAccessibleName('Details of issue #12');
+
+    const beyond = await app.page.evaluate(() => {
+      const whole = document.scrollingElement!;
+      const list = document.querySelector('main.page')!;
+      return {
+        pageDown: whole.scrollHeight - whole.clientHeight,
+        pageAcross: whole.scrollWidth - whole.clientWidth,
+        listAcross: list.scrollWidth - list.clientWidth,
+        listScrollsByItself: list.scrollHeight > list.clientHeight,
+      };
+    });
+    expect(beyond).toEqual({ pageDown: 0, pageAcross: 0, listAcross: 0, listScrollsByItself: true });
+  });
+
   test('ID-04 a task is started from the panel, and the panel of an issue in work leads to its task', async ({
     app,
     project,

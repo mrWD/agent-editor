@@ -41,7 +41,7 @@ const NOTICE_WORDS: Record<NoticeKind, string> = {
 /** Where an agent comes from, as the small tag next to its name says it. */
 function originOf(agent: Pick<AgentSetting, 'own' | 'changed'>): string {
   if (agent.own) return 'Yours';
-  return agent.changed ? 'Command changed' : 'Built in';
+  return agent.changed ? 'Command changed' : 'Preset';
 }
 
 const THEMES: { value: ThemeChoice; name: string }[] = [
@@ -357,6 +357,9 @@ export function Settings(): JSX.Element {
                             <span class="fine text-bad">Not installed</span>
                           </Show>
                         </span>
+                        <Show when={agent.about}>
+                          <span class="fine">{agent.about}</span>
+                        </Show>
                         <code class="setting-command">{commandLine(agent)}</code>
                         <Show when={agent.env.length > 0}>
                           <span class="fine">With {agent.env.map(([variable]) => variable).join(', ')} set.</span>

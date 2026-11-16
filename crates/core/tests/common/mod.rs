@@ -61,6 +61,7 @@ pub fn registry() -> Registry {
             env,
             available: true,
             note: None,
+            about: None,
             spends_tokens: false,
             speaks: Default::default(),
         }
