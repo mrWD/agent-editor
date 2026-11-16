@@ -83,10 +83,12 @@ test.describe('Issues', () => {
     await app.allSteps();
     await expect(app.thoughts.first()).toContainText('Five a minute is enough.');
 
-    // The issue stands next to the task's name, as a link to it, and in the task's row on Home.
-    const chip = app.page.locator('.subbar').getByRole('link', { name: '#12' });
-    await expect(chip).toHaveAttribute('href', address);
-    await expect(chip).toHaveAttribute('title', 'Login allows unlimited attempts');
+    // The issue stands next to the task's name, as a button that reads it here at the side (ID-10),
+    // and in the task's row on Home.
+    const chip = app.page
+      .locator('.subbar')
+      .getByRole('button', { name: 'Read #12 here: Login allows unlimited attempts' });
+    await expect(chip).toHaveText('#12');
     await app.goHome();
     const row = app
       .stage('Your turn')

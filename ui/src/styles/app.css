@@ -2469,6 +2469,15 @@ button.search-link:hover {
 .issue-chip:hover {
   border-color: var(--line-strong);
 }
+/* In the head of a task the issue is a button: a press reads it here, at the side. */
+button.issue-chip {
+  background: transparent;
+  cursor: pointer;
+}
+button.issue-chip[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--pressed);
+}
 .issue-state {
   flex: none;
   font-size: 12px;
