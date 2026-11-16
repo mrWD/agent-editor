@@ -28,9 +28,9 @@
 
 use super::{Manager, TaskInfo, TaskState, manual_edit_note, now_ms, recap, title_from};
 use crate::agents::AgentDef;
-use crate::git;
 use crate::marks::Author;
 use crate::store::{Project, TaskIssue, TaskRow};
+use crate::tasks::OnBranch;
 use crate::terminals::{AGENT, TermEvent, Terminals};
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
@@ -314,13 +314,14 @@ impl Manager {
         agent: AgentDef,
         text: &str,
         issue: Option<TaskIssue>,
+        on: Option<OnBranch>,
     ) -> Result<TaskInfo> {
         let id = uuid::Uuid::new_v4().to_string();
         let title = match &issue {
             Some(issue) => title_from(&issue.title),
             None => title_from(text),
         };
-        let (cwd, branch, base_branch) = self.prepare_folder(&project, &id, &title).await?;
+        let (cwd, branch, base_branch) = self.prepare_folder(&project, &id, &title, on.as_ref()).await?;
         // A program that takes its first message as it starts gets it here, with the project's rules in front.
         let rules = self.rules_note(&project.id, &agent.id);
         let at_start = takes_message(&agent);
@@ -331,10 +332,7 @@ impl Manager {
         let (seat, events) = match self.start_seat(&id, &agent, &cwd, first.as_deref()) {
             Ok(started) => started,
             Err(error) => {
-                // Leave nothing behind for a task that never existed.
-                if let Some(branch) = &branch {
-                    git::remove_worktree(Path::new(&project.path), &cwd, branch).await;
-                }
+                self.drop_folder(&project, &cwd, branch.as_deref(), on.is_some()).await;
                 return Err(error);
             }
         };

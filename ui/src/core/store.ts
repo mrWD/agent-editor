@@ -1320,13 +1320,53 @@ export function linearAccount() {
  * Starts a task for an issue. Returns the new task's id. A Linear issue of the user's own (`source: 'linear'`)
  * may be started in any project, whatever tracker the project uses.
  */
-export async function startIssue(projectId: string, key: string, agentId: string, source?: 'linear'): Promise<string> {
-  const info = await core.request<TaskInfo>('issues.start', { projectId, key, agentId, ...(source ? { source } : {}) });
+export async function startIssue(
+  projectId: string,
+  key: string,
+  agentId: string,
+  source?: 'linear',
+  /** The number of an open request the issue points at: the task goes on with its branch instead of a new one. */
+  request?: number,
+): Promise<string> {
+  const info = await core.request<TaskInfo>('issues.start', {
+    projectId,
+    key,
+    agentId,
+    ...(source ? { source } : {}),
+    ...(request ? { request } : {}),
+  });
   if (!state.tasks[info.id]) {
     addTask(info);
     await loadHistory(info.id, info.state);
   }
   return info.id;
+}
+
+/** An open request an issue points at, with the branches it joins: work under way that a task can go on with. */
+export type IssueRequest = {
+  number: number;
+  /** How people call it: "PR #128", "MR !48". */
+  name: string;
+  title: string;
+  url: string;
+  draft: boolean;
+  /** The branch the work is on. */
+  branch: string;
+  /** The branch it is to be merged into. */
+  base: string;
+};
+
+/**
+ * The open requests of the project's repository that are attached to an issue in its tracker.
+ * Empty when there are none, which is the usual case.
+ */
+export async function issueRequests(projectId: string, key: string, source?: 'linear'): Promise<IssueRequest[]> {
+  const found = await core.request<{ requests: IssueRequest[] }>('issues.requests', {
+    projectId,
+    key,
+    ...(source ? { source } : {}),
+  });
+  return found.requests;
 }
 
 export type Checks = {

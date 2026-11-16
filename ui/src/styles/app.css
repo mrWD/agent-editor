@@ -1400,6 +1400,8 @@ button.what.cut:hover {
   color: var(--text);
   /* Its height is the user's to set, by the edge above the box: that edge moves the conversation too. */
   resize: none;
+  /* What is typed wraps, so there is nothing to scroll to sideways: the box never shows a bar for it. */
+  overflow-x: hidden;
 }
 /* An edge that can be dragged. It is wider than what it shows, so it is easy to catch. */
 .grip {
@@ -1793,6 +1795,46 @@ button.what.cut:hover {
   inset: 0;
   z-index: 40;
   background: var(--scrim);
+}
+/* A question that has to be answered before something starts: a card over the screen. */
+.ask {
+  position: fixed;
+  top: 120px;
+  left: 50%;
+  z-index: 41;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--panel);
+  font-size: 13px;
+}
+.ask-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 16px;
+}
+.ask-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+}
+.ask-what {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ask-what .fine {
+  display: block;
+  margin-top: 2px;
 }
 .palette {
   position: fixed;
@@ -2446,11 +2488,21 @@ button.search-link:hover {
   height: 26px;
   font-size: 12px;
 }
+/* The name of an issue is one line, cut short where the row ends: the whole of it is in its title
+   and in the panel a press opens. It takes the room the rest of the row leaves, and the rest keeps
+   its own width; in a narrow list what does not fit goes to a second line, and the name stays one. */
 .issue-row .name {
-  flex: 1 1 220px;
-  /* A name with one long word in it, an address say, breaks rather than widen the list. */
+  flex: 1 1 200px;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.issue-row .where-stopped,
+.issue-row > .tag,
+.issue-row > .btn,
+.issue-row > select {
+  flex: none;
 }
 .issue-key,
 .issue-chip {

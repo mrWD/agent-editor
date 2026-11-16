@@ -173,7 +173,7 @@ test.describe('An issue and a request in full', () => {
     await expect(chip).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('ID-09 with a panel open the page does not scroll as a whole, and a name of one long word does not widen the list', async ({
+  test('ID-09 with a panel open the page does not scroll as a whole, and a long name is one line that does not widen the list', async ({
     app,
     project,
   }) => {
@@ -201,6 +201,17 @@ test.describe('An issue and a request in full', () => {
       };
     });
     expect(beyond).toEqual({ pageDown: 0, pageAcross: 0, listAcross: 0, listScrollsByItself: true });
+
+    // The long name itself is one line, cut short where the row ends; the whole of it is in its title.
+    const name = rows.filter({ hasText: '#14' }).locator('.name');
+    const drawn = await name.evaluate((el) => ({
+      height: el.getBoundingClientRect().height,
+      cut: el.scrollWidth > el.clientWidth,
+      title: el.getAttribute('title') ?? '',
+    }));
+    expect(drawn.height).toBeLessThan(30);
+    expect(drawn.cut).toBe(true);
+    expect(drawn.title).toContain(long);
   });
 
   test('ID-04 a task is started from the panel, and the panel of an issue in work leads to its task', async ({

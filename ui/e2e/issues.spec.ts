@@ -1,4 +1,4 @@
-import { expect, test, type App, type Project } from './support/fixtures';
+import { expect, pullTemplate, readIn, test, type App, type Project } from './support/fixtures';
 
 const ISSUES = [
   { number: 12, title: 'Login allows unlimited attempts', body: 'Five a minute is enough.', labels: ['auth'] },
@@ -165,6 +165,68 @@ test.describe('Issues', () => {
     await expect(keys).toHaveText(['#7', '#12', '#13', '#20']);
     await sort.selectOption({ label: 'As the tracker lists them' });
     await expect(keys).toHaveText(['#12', '#13', '#7', '#20']);
+  });
+
+  test('N-20 N-21 an issue that has a request open already: the task goes on with it, on its branch, when asked to', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({ remote: 'github', issues: ISSUES });
+    const address = `https://github.com/${shop.slug}/pull/128`;
+    // Somebody pushed work for issue 12 and opened a request for it. This folder no longer has the branch.
+    const trunk = shop.git(['symbolic-ref', '--short', 'HEAD']);
+    shop.git(['checkout', '-q', '-b', 'feat/six-attempts']);
+    shop.write('notes.txt', 'six a minute\n');
+    shop.git(['add', 'notes.txt']);
+    shop.git(['commit', '-q', '-m', 'Allow six attempts']);
+    shop.git(['push', '-q', 'origin', 'feat/six-attempts']);
+    shop.git(['checkout', '-q', trunk]);
+    shop.git(['branch', '-q', '-D', 'feat/six-attempts']);
+    shop.setIssueWhole(12, { number: 12, closedByPullRequestsReferences: [{ number: 128, url: address }] });
+    shop.setPullWhole(128, {
+      number: 128,
+      title: 'Allow six attempts',
+      url: address,
+      state: 'OPEN',
+      isDraft: true,
+      headRefName: 'feat/six-attempts',
+      baseRefName: trunk,
+      isCrossRepository: false,
+    });
+    shop.setPullOf('feat/six-attempts', 128, pullTemplate({ checks: 'passed' }));
+    await app.addProject(shop.dir);
+    await openIssues(app);
+    const row = sectionOf(app, shop).locator('.issue-row').filter({ hasText: '#12' });
+
+    // Before the task starts, the request is found and the user is asked which way to go.
+    await row.getByRole('button', { name: 'Start in editor' }).click();
+    const ask = app.page.getByRole('dialog', { name: '#12 has work under way' });
+    await expect(ask).toContainText('A request for it is open in this repository.');
+    await expect(ask).toContainText('Allow six attempts');
+    await expect(ask).toContainText(`Draft · feat/six-attempts into ${trunk}`);
+    await expect(ask.getByRole('link', { name: 'PR #128' })).toHaveAttribute('href', address);
+    await expect(ask.getByRole('button', { name: 'Start on a new branch' })).toBeVisible();
+    // Escape leaves everything as it was: no task was made.
+    await app.page.keyboard.press('Escape');
+    await expect(ask).toHaveCount(0);
+    await expect(row).toContainText('No task yet');
+
+    // Asked to go on, the task works on the branch of the request, with what was pushed there.
+    await row.getByRole('button', { name: 'Start in editor' }).click();
+    await ask.getByRole('button', { name: 'Go on with PR #128' }).click();
+    await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);
+    await app.turnEnds();
+    const task = await app.core.task(app.taskId());
+    expect(task.branch).toBe('feat/six-attempts');
+    expect(readIn(task.cwd, 'notes.txt')).toBe('six a minute\n');
+    expect(shop.git(['branch', '--list', 'task/*'])).toBe('');
+    await expect(app.page.locator('.subbar')).toContainText('feat/six-attempts');
+    await expect(app.messages.first()).toContainText(
+      `The work on this goes on in PR #128 (${address}), on its branch \`feat/six-attempts\``,
+    );
+    // The request is the task's from its first moment: Changes names its third part after it.
+    await app.showView('Changes');
+    await expect(app.changesTab('PR #128')).toBeVisible();
   });
 
   test('N-06 N-07 a project without a known host has no tracker; a Linear team without a key says what is missing', async ({

@@ -152,6 +152,16 @@ export class Project {
     writeFileSync(path.join(ghState(this.core.toolsDir, this.slug), `whole-${number}.json`), JSON.stringify(whole));
   }
 
+  /**
+   * Says that a branch of this project has a pull request already, as `gh pr view <branch>` gives
+   * it: `template` is one of `pullTemplate`, with this number put in.
+   */
+  setPullOf(branch: string, number: number, template: string) {
+    if (!this.slug) throw new Error('Only a project with a GitHub address has pull requests');
+    const file = path.join(ghState(this.core.toolsDir, this.slug), `pull-${branch.replaceAll('/', '_')}.json`);
+    writeFileSync(file, template.replaceAll('__NUMBER__', String(number)).replaceAll('__SLUG__', this.slug));
+  }
+
   /** Says what the next pull request of this project looks like to `gh pr view`. */
   setPullTemplate(template: string) {
     if (!this.slug) throw new Error('Only a project with a GitHub address has pull requests');

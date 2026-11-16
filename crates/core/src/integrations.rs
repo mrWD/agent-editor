@@ -6,9 +6,9 @@
 //! `spawn_blocking`.
 
 use crate::gitops;
-use crate::hosts::{HostKind, Issue, Remote, Request, remote_of};
+use crate::hosts::{HostKind, Issue, Remote, Request, RequestBranch, remote_of};
 use crate::store::{Project, TaskIssue, TaskRow};
-use crate::tasks::{Manager, TaskInfo};
+use crate::tasks::{Manager, OnBranch, TaskInfo};
 use anyhow::{Result, anyhow, bail};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -277,8 +277,84 @@ impl Manager {
         Some((issue, source))
     }
 
-    /// Starts a task for an issue. The issue's text is the first message to the agent.
-    pub async fn start_issue(self: &Arc<Self>, project_id: &str, key: &str, agent_id: &str) -> Result<TaskInfo> {
+    /// The open requests of this project's repository that an issue points at: the work on it that
+    /// is under way already, which a task can go on with. For an issue of Linear they are what is
+    /// attached to it there; for an issue of the code host, the requests the host joins to it (the
+    /// pull requests that close it on GitHub, the related merge requests on GitLab). A request of
+    /// another repository or from a fork, one that is merged or closed, and one that could not be
+    /// read are left out. Empty for a project that is on neither host, and for an issue nothing
+    /// points from.
+    pub fn issue_requests(&self, project_id: &str, key: &str, source: Option<&str>) -> Result<Vec<RequestBranch>> {
+        let project = self.store().project(project_id)?;
+        let Some(remote) = crate::hosts::remote_of(Path::new(&project.path)) else { return Ok(vec![]) };
+        let linear = source == Some("linear") || self.linear_team(project_id).is_some();
+        let links: Vec<String> = match (linear, self.linear_key()) {
+            // The list has not what is attached: the issue is read by itself.
+            (true, Some(token)) => {
+                self.hosts.linear_issue(&token, key)?.links.into_iter().map(|link| link.url).collect()
+            }
+            (true, None) => vec![],
+            // Not being told is no reason to stop a task from starting: it is then taken that nothing is joined.
+            (false, _) => match key.trim_start_matches('#').parse::<u64>() {
+                Ok(number) => self.hosts.issue_request_links(&remote, number).unwrap_or_default(),
+                Err(_) => vec![],
+            },
+        };
+        let mut numbers: Vec<u64> =
+            links.iter().filter_map(|url| crate::hosts::request_number_in(&remote, url)).collect();
+        numbers.sort_unstable();
+        numbers.dedup();
+        let mut found = Vec::new();
+        for number in numbers {
+            match self.hosts.request_by_number(&remote, number) {
+                Ok(request) if request.state == "open" && request.own && !request.branch.is_empty() => {
+                    found.push(request)
+                }
+                Ok(_) => {}
+                Err(error) => tracing::debug!("Could not read request {number} of {}: {error:#}", remote.slug),
+            }
+        }
+        Ok(found)
+    }
+
+    /// The branch of an open request of a project's repository, for a task that goes on with it,
+    /// and the words that tell the agent so.
+    async fn on_request(self: &Arc<Self>, project_id: &str, number: u64) -> Result<(OnBranch, String)> {
+        let project = self.store().project(project_id)?;
+        let remote = crate::hosts::remote_of(Path::new(&project.path))
+            .ok_or_else(|| anyhow!("This project's remote is not on GitHub or GitLab"))?;
+        let hosts = self.hosts.clone();
+        let asked = remote.clone();
+        let request = tokio::task::spawn_blocking(move || hosts.request_by_number(&asked, number))
+            .await?
+            .map_err(|error| crate::hosts::said_plainly(&remote, error))?;
+        if request.state != "open" {
+            bail!(
+                "{} is {}: there is nothing to go on with. Start the task on a new branch.",
+                request.name,
+                request.state
+            );
+        }
+        if !request.own || request.branch.is_empty() {
+            bail!("{} comes from another repository: its branch is not in this one.", request.name);
+        }
+        let note = format!(
+            "\n\nThe work on this goes on in {} ({}), on its branch `{}`: you are on that branch, and what is \
+             committed there already is part of this task.",
+            request.name, request.url, request.branch
+        );
+        Ok((OnBranch { branch: request.branch, base: Some(request.base).filter(|base| !base.is_empty()) }, note))
+    }
+
+    /// Starts a task for an issue. The issue's text is the first message to the agent. With the
+    /// number of a request, the task goes on with that request's branch instead of a new one.
+    pub async fn start_issue(
+        self: &Arc<Self>,
+        project_id: &str,
+        key: &str,
+        agent_id: &str,
+        request: Option<u64>,
+    ) -> Result<TaskInfo> {
         let already = self
             .store()
             .tasks()?
@@ -318,7 +394,12 @@ impl Manager {
             title: issue.title.clone(),
             source: source.to_string(),
         };
-        let task = self.create_for(project_id, agent_id, &first_message(&issue), Some(attached)).await?;
+        let (on, note) = match request {
+            Some(number) => self.on_request(project_id, number).await.map(|(on, note)| (Some(on), note))?,
+            None => (None, String::new()),
+        };
+        let text = format!("{}{note}", first_message(&issue));
+        let task = self.create_on(project_id, agent_id, &text, Some(attached), &[], on).await?;
 
         self.linear_started(&task, project_id);
         Ok(task)
@@ -364,7 +445,13 @@ impl Manager {
     }
 
     /// Starts a task in a project for a Linear issue, whatever tracker the project itself uses.
-    pub async fn start_linear_issue(self: &Arc<Self>, project_id: &str, key: &str, agent_id: &str) -> Result<TaskInfo> {
+    pub async fn start_linear_issue(
+        self: &Arc<Self>,
+        project_id: &str,
+        key: &str,
+        agent_id: &str,
+        request: Option<u64>,
+    ) -> Result<TaskInfo> {
         self.store().project(project_id)?;
         let already = self
             .store()
@@ -384,7 +471,12 @@ impl Manager {
             title: issue.title.clone(),
             source: "linear".into(),
         };
-        let task = self.create_for(project_id, agent_id, &first_message(&issue), Some(attached)).await?;
+        let (on, note) = match request {
+            Some(number) => self.on_request(project_id, number).await.map(|(on, note)| (Some(on), note))?,
+            None => (None, String::new()),
+        };
+        let text = format!("{}{note}", first_message(&issue));
+        let task = self.create_on(project_id, agent_id, &text, Some(attached), &[], on).await?;
         self.linear_started(&task, project_id);
         Ok(task)
     }

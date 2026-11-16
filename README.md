@@ -418,7 +418,10 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   describes.
 - **M8, the sections.** Issues from GitHub, GitLab or a Linear team; "Start"
   turns one into a task, and in the task the key of its issue opens the
-  issue at the side of the editor. The lists are searched by name, key, state, label
+  issue at the side of the editor. An issue that has a request open in the
+  project's repository already (attached to it in Linear, or joined to it on
+  GitHub or GitLab) is asked about first: the task goes on with that request,
+  on its branch, or starts on a new branch. The lists are searched by name, key, state, label
   and who has the issue, and put in the tracker's order, by the last change,
   by name, by key or by state. Agents: who is doing what, cost by agent and by task,
   limits, a daily budget, handing a task to another agent. Automations: clean

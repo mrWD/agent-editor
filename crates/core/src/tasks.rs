@@ -191,6 +191,15 @@ fn is_mode(option: &Value) -> bool {
         || option.get("id").and_then(Value::as_str) == Some("mode")
 }
 
+/// A branch that is there already, for a task that goes on with the work of a request instead of
+/// starting on a branch of its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OnBranch {
+    pub branch: String,
+    /// The branch the request is to be merged into: what the task's changes are compared with.
+    pub base: Option<String>,
+}
+
 /// Owns every task and every running agent.
 pub struct Manager {
     /// The agents found at start, with the commands they come with.
@@ -789,15 +798,36 @@ impl Manager {
         project: &Project,
         task_id: &str,
         title: &str,
+        on: Option<&OnBranch>,
     ) -> Result<(PathBuf, Option<String>, Option<String>)> {
         let project_path = PathBuf::from(&project.path);
         if !project_path.is_dir() {
             bail!("The project's folder is gone: {}", project.path);
         }
         if !git::is_repo_with_commits(&project_path).await {
+            if let Some(on) = on {
+                bail!(
+                    "This project's folder is not a git repository with commits: there is no branch {} to go on with",
+                    on.branch
+                );
+            }
             return Ok((project_path, None, None));
         }
         let short = &task_id[..4];
+        if let Some(on) = on {
+            // The work goes on where it is: the working copy is on the branch of the request, as it stands.
+            let dir = self
+                .data_dir
+                .join("worktrees")
+                .join(format!("{}-{}", git::slug(&project.name), &project.id[..4]))
+                .join(format!("{}-{short}", git::slug(&on.branch)));
+            git::add_worktree_on(&project_path, &dir, &on.branch).await?;
+            let base = match &on.base {
+                Some(base) => Some(base.clone()),
+                None => git::current_branch(&project_path).await,
+            };
+            return Ok((dir, Some(on.branch.clone()), base));
+        }
         let slug = git::slug(title);
         let branch = format!("task/{slug}-{short}");
         let dir = self
@@ -809,6 +839,17 @@ impl Manager {
         let base = git::current_branch(&project_path).await;
         git::add_worktree(&project_path, &dir, &branch).await?;
         Ok((dir, Some(branch), base))
+    }
+
+    /// Leaves nothing behind for a task that never existed: its working copy goes, and its branch
+    /// with it, unless the branch was there before the task (`kept`): that one is somebody's work.
+    pub(crate) async fn drop_folder(&self, project: &Project, cwd: &Path, branch: Option<&str>, kept: bool) {
+        let Some(branch) = branch else { return };
+        if kept {
+            git::remove_worktree_only(Path::new(&project.path), cwd).await;
+        } else {
+            git::remove_worktree(Path::new(&project.path), cwd, branch).await;
+        }
     }
 
     /// Creates a task in a project, starts its agent and sends the first message.
@@ -837,13 +878,28 @@ impl Manager {
         issue: Option<TaskIssue>,
         choices: &[(String, String)],
     ) -> Result<TaskInfo> {
+        self.create_on(project_id, agent_id, text, issue, choices, None).await
+    }
+
+    /// Creates a task that goes on with a branch that is there already, when one is given: its
+    /// working copy is on that branch and nothing is branched off. Without one, the task gets a
+    /// branch of its own, as ever.
+    pub async fn create_on(
+        self: &Arc<Self>,
+        project_id: &str,
+        agent_id: &str,
+        text: &str,
+        issue: Option<TaskIssue>,
+        choices: &[(String, String)],
+        on: Option<OnBranch>,
+    ) -> Result<TaskInfo> {
         if text.trim().is_empty() {
             bail!("Describe the task first");
         }
         let project = self.store.project(project_id)?;
         let agent = self.agent(agent_id)?;
         if agent.speaks == Speaks::Terminal {
-            return self.create_seated(project, agent, text, issue).await;
+            return self.create_seated(project, agent, text, issue, on).await;
         }
         let id = uuid::Uuid::new_v4().to_string();
         let title = match &issue {
@@ -851,14 +907,11 @@ impl Manager {
             None => title_from(text),
         };
 
-        let (cwd, branch, base_branch) = self.prepare_folder(&project, &id, &title).await?;
+        let (cwd, branch, base_branch) = self.prepare_folder(&project, &id, &title, on.as_ref()).await?;
         let (live, incoming, init, _) = match self.start_agent(&agent, &cwd, None, &id).await {
             Ok(started) => started,
             Err(error) => {
-                // Leave nothing behind for a task that never existed.
-                if let Some(branch) = &branch {
-                    git::remove_worktree(Path::new(&project.path), &cwd, branch).await;
-                }
+                self.drop_folder(&project, &cwd, branch.as_deref(), on.is_some()).await;
                 return Err(error);
             }
         };

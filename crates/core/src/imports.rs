@@ -472,7 +472,7 @@ impl Manager {
             let base = if in_git { crate::git::current_branch(&project_path).await } else { None };
             (cwd, branch, base, true)
         } else {
-            let (cwd, branch, base) = self.prepare_folder(&project, &id, &read.title).await?;
+            let (cwd, branch, base) = self.prepare_folder(&project, &id, &read.title, None).await?;
             (cwd, branch, base, false)
         };
         // Claude takes it when this computer knows Claude at all; otherwise the agent new tasks get,
