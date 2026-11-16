@@ -86,7 +86,7 @@ test.describe('Changes: three parts along the path of a change', () => {
     await expect(app.git).toContainText('No commits yet since main.');
   });
 
-  test('CT-03 CT-04 a push with a request leads to the third part: the request under its name, its comments, the pipeline and what is pushed', async ({
+  test('CT-03 CT-04 a push with a request leads to the third part: the request under its name, the pipeline and what is pushed', async ({
     app,
     project,
   }) => {
@@ -137,9 +137,8 @@ test.describe('Changes: three parts along the path of a change', () => {
     expect(shop.remoteBranches()).toEqual([task.branch]);
     await expect(app.request).toContainText('Number 128 · open');
     await expect(app.request.getByRole('heading', { name: 'Before it can merge' })).toBeVisible();
-    // What was written under the request is read here, without opening its panel.
-    const talk = app.git.getByRole('region', { name: 'Comments', exact: true });
-    await expect(talk.locator('.detail-note')).toHaveText([/ann.*Ready for a look\./, /cy.*Six is fine by me\./]);
+    // What was written under the request is in its panel, and is not said here a second time.
+    await expect(app.git.getByRole('region', { name: 'Comments', exact: true })).toHaveCount(0);
     // What is pushed, commit by commit: it can only be reverted.
     const pushed = app.git.locator('.git-commit:visible');
     await expect(pushed).toHaveText([/^Allow six attempts/]);

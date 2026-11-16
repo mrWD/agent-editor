@@ -2731,14 +2731,6 @@ button.search-link:hover {
 .git-tab[hidden] {
   display: none;
 }
-.request-talk .detail-notes {
-  padding: 0;
-}
-/* A long comment, such as a report a bot posts, scrolls in its own box: the column stays short. */
-.request-talk .detail-note {
-  max-height: 220px;
-  overflow-y: auto;
-}
 .away-row {
   display: flex;
   align-items: baseline;
