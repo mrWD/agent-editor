@@ -2564,6 +2564,18 @@ button.issue-chip[aria-expanded='true'] {
   align-items: center;
   flex-wrap: wrap;
 }
+/* A request of the task's issue that the task is not on: said in a box of its own, with what can be done about it. */
+.request-other {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--ground);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
 .git-sub {
   margin-top: 6px;
   font-size: 12px;

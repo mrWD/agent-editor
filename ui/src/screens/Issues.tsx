@@ -1,9 +1,10 @@
 import { createDetails, DetailDock, IssuePanel, RequestPanel } from '../components/DetailPanel';
 import { SentryIssues } from '../components/SentryIssues';
 import { requestName, type Detail } from '../core/details';
-import { refreshRequests, requests } from '../core/requests';
-import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { createKept } from '../core/kept';
+import { refreshRequests, requests, requestsLoaded } from '../core/requests';
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createKept, remember } from '../core/kept';
+import { setWork } from '../core/work';
 import { go, taskHref } from '../app/router';
 import { ago, Chip, StageGlyph } from '../components/bits';
 import { core } from '../core/client';
@@ -22,12 +23,14 @@ import {
   setLinearTeam,
   startIssue,
   state,
+  taskIssueRequests,
   type Integrations,
   type Issue,
   type IssueRequest,
   type LinearAccount,
   type LinearMine,
   type ProjectIssues,
+  type Task,
 } from '../core/store';
 
 /** Where Linear makes personal API keys. It opens in the system's browser. */
@@ -115,6 +118,85 @@ export function Issues(): JSX.Element {
   /** The request of a task that works on an issue, whole, in a panel of its own beside the issue's. */
   const requestDetails = createDetails();
   const requestOf = (taskId: string | null) => (taskId ? requests[taskId]?.request : undefined);
+  /**
+   * For a task that has no request of its own: the open requests of its issue that are on another
+   * branch. Looked for once per task while the window lives, one task after another, and anew on
+   * "Sync now". Until one is known the row offers to create a request.
+   */
+  const [others, setOthers] = createKept<Record<string, IssueRequest[]>>('issues.others', {});
+  let lookingForOthers = false;
+  const lookForOthers = async () => {
+    if (lookingForOthers) return;
+    lookingForOthers = true;
+    try {
+      const rows = [...(mine()?.issues ?? []), ...(projects() ?? []).flatMap((project) => project.issues)];
+      const wanted = [...new Set(rows.map((issue) => issue.taskId).filter((id): id is string => id !== null))];
+      for (const taskId of wanted) {
+        if (taskId in others() || requests[taskId] || !state.tasks[taskId]?.info.branch) continue;
+        let found: IssueRequest[] = [];
+        try {
+          found = await taskIssueRequests(taskId);
+        } catch {
+          // Not knowing leaves the row with the way to create one.
+        }
+        setOthers({ ...others(), [taskId]: found });
+      }
+    } finally {
+      lookingForOthers = false;
+    }
+  };
+  /** A request no task is on, whole, in the panel of requests. */
+  const openOther = (projectId: string, other: IssueRequest) =>
+    requestDetails.open({
+      id: `request:${projectId}:${other.number}`,
+      title: other.title,
+      projectId,
+      ask: () => core.request<Detail>('mr.detailOf', { projectId, number: other.number }),
+    });
+  /** "PR" or "MR" for the repository of a project; "request" where that is not known. */
+  const requestShort = (projectId: string) =>
+    (projects() ?? []).find((project) => project.projectId === projectId)?.requestShort ?? 'request';
+  /**
+   * What stands in the row of a task that has no request: the request its issue has on another
+   * branch, to read; else the way to open one, in the task's Changes.
+   */
+  const NoRequestYet = (props: { task: Task }): JSX.Element => (
+    <Show when={props.task.info.branch && requestsLoaded()}>
+      <Show
+        when={(others()[props.task.info.id] ?? [])[0]}
+        fallback={
+          <a
+            class="btn small ghost"
+            href={taskHref(props.task.info.id, 'changes')}
+            title="Open the task's Changes where its branch is pushed and its request is opened"
+            onClick={() => {
+              remember(`task:${props.task.info.id}:request.create`, true);
+              setWork(props.task.info.id, { changes: 'request' });
+            }}
+          >
+            Create {requestShort(props.task.info.projectId)}
+          </a>
+        }
+      >
+        {(other) => (
+          <button
+            type="button"
+            class="btn small ghost"
+            title={`${other().title}. The issue's request, on another branch than the task: read it here. The task can go over to it from its Changes.`}
+            onClick={() => openOther(props.task.info.projectId, other())}
+          >
+            {other().name}
+          </button>
+        )}
+      </Show>
+    </Show>
+  );
+
+  // Once the lists and the tasks' own requests are known, the issues' other requests are looked for.
+  createEffect(() => {
+    if (projects() !== null && mine() !== undefined && requestsLoaded()) void lookForOthers();
+  });
+
   const openRequest = (taskId: string, projectId: string) =>
     requestDetails.open({
       id: `request:${taskId}`,
@@ -310,7 +392,16 @@ export function Issues(): JSX.Element {
               {projects() === null ? 'Reading the issues' : connected()}
               <Show when={syncedAt()}>{(at) => <> Synced {ago(at())}.</>}</Show>
             </span>
-            <button type="button" class="btn small" disabled={syncing()} onClick={() => void sync()}>
+            <button
+              type="button"
+              class="btn small"
+              disabled={syncing()}
+              onClick={() => {
+                // What was found of the issues' requests is looked for anew as well.
+                setOthers({});
+                void sync();
+              }}
+            >
               {syncing() ? 'Syncing' : 'Sync now'}
             </button>
           </div>
@@ -529,7 +620,7 @@ export function Issues(): JSX.Element {
                                 <StageGlyph stage={stageOfTask(held())} />
                                 {stageWord(stageOfTask(held()))} · {projectName(held().info.projectId)}
                               </span>
-                              <Show when={requestOf(held().info.id)}>
+                              <Show when={requestOf(held().info.id)} fallback={<NoRequestYet task={held()} />}>
                                 {(request) => (
                                   <button
                                     type="button"
@@ -687,7 +778,7 @@ export function Issues(): JSX.Element {
                                 <StageGlyph stage={stageOfTask(held())} />
                                 {stageWord(stageOfTask(held()))}
                               </span>
-                              <Show when={requestOf(held().info.id)}>
+                              <Show when={requestOf(held().info.id)} fallback={<NoRequestYet task={held()} />}>
                                 {(request) => (
                                   <button
                                     type="button"

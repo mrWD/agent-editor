@@ -1,7 +1,7 @@
 import { createDetails, DetailDock, RequestPanel } from './DetailPanel';
 import type { Detail } from '../core/details';
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { createKept } from '../core/kept';
+import { createKept, recall, remember } from '../core/kept';
 import { createStore, reconcile } from 'solid-js/store';
 import { go, taskHref } from '../app/router';
 import { checksOf } from '../core/checks';
@@ -11,11 +11,14 @@ import {
   agentOf,
   createRequest,
   getRequest,
+  joinRequest,
   mergeRequest,
   replyToComment,
   requestComments,
   sendPrompt,
   setAutoMerge,
+  taskIssueRequests,
+  type IssueRequest,
   type RequestInfo,
   type ReviewComment,
   type Task,
@@ -98,6 +101,22 @@ export function RequestCard(props: {
     }
   };
 
+  /**
+   * The open requests of the task's issue that are on another branch: work on the issue that was
+   * under way before the task, which the task is not on. Looked for while the task has no request.
+   */
+  const [others, setOthers] = createKept<IssueRequest[]>(`task:${taskId}:request.others`, []);
+  // eslint-disable-next-line solid/reactivity -- the card is made anew for each task, and a task's issue does not change
+  const hasIssue = Boolean(props.task.info.issue);
+  const loadOthers = async () => {
+    if (!hasIssue) return;
+    try {
+      setOthers(await taskIssueRequests(taskId));
+    } catch {
+      // Not knowing of them takes nothing away: the task can still open a request of its own.
+    }
+  };
+
   const load = async (fresh = false) => {
     try {
       const got = await getRequest(taskId, fresh);
@@ -105,13 +124,22 @@ export function RequestCard(props: {
       setProblem(null);
       if (got.request?.state === 'open') void loadComments();
       else setComments([]);
+      if (got.request) setOthers([]);
+      else if (got.host) void loadOthers();
     } catch (error) {
       setProblem(message(error));
     }
   };
 
+  // Asked for from the list of issues ("Create MR"): the form opens once what a request would say is read.
+  const createAsked = `task:${taskId}:request.create`;
+  const openIfAsked = () => {
+    if (!recall<boolean>(createAsked)) return;
+    remember(createAsked, false);
+    if (info()?.host && !info()?.request && props.commits > 0) void openForm();
+  };
   onMount(() => {
-    void load();
+    void load().then(openIfAsked);
     const stop = core.onEvent((event) => {
       if (event.event === 'mr.changed' && event.data.taskId === taskId) void load();
     });
@@ -155,6 +183,17 @@ export function RequestCard(props: {
       setTitle(info()?.defaults?.title ?? props.task.info.title);
       setBody(info()?.defaults?.body ?? '');
       setForm(true);
+    });
+
+  /** Takes the task over to the branch of a request its issue has already. The core says why when it cannot. */
+  const join = (other: IssueRequest) =>
+    // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
+    act('join', async () => {
+      await joinRequest(taskId, other.number);
+      setOthers([]);
+      await load(true);
+      props.onChanged();
+      void refreshRequests();
     });
 
   const create = () =>
@@ -259,6 +298,64 @@ export function RequestCard(props: {
       </Show>
       <Show when={info() && !info()!.host}>
         <p class="fine">This project's remote is not on GitHub or GitLab, so a request cannot be opened from here.</p>
+      </Show>
+
+      {/* Work on the task's issue that is under way on another branch: it can be read here, and the task can go over to it. */}
+      <Show when={info()?.host && !info()?.request && !form()}>
+        <For each={others()}>
+          {(other) => (
+            <div class="request-other" role="group" aria-label={`${other.name} of the issue`}>
+              <p>
+                {props.task.info.issue?.key ?? 'The issue'} has{' '}
+                <a href={other.url} target="_blank" rel="noreferrer">
+                  {other.name}
+                </a>{' '}
+                open already: {other.title}
+              </p>
+              <p class="fine">
+                {other.draft ? 'Draft · ' : ''}
+                <span class="mono">{other.branch}</span> into <span class="mono">{other.base}</span>. This task is on a
+                branch of its own, so that request is not its own yet.
+              </p>
+              <div class="actions">
+                <button
+                  type="button"
+                  class="btn small primary"
+                  disabled={Boolean(busy())}
+                  title={`The task's folder goes to ${other.branch} as it stands, and ${other.name} becomes the task's request. Refused while something here is not committed or not on that branch.`}
+                  onClick={() => void join(other)}
+                >
+                  {busy() === 'join' ? 'Going over' : `Go on with ${other.name}`}
+                </button>
+                <button
+                  type="button"
+                  class="btn small"
+                  title="Read it here: the description, who is on it and what was written under it"
+                  onClick={() =>
+                    details.open({
+                      id: `request:${props.task.info.projectId}:${other.number}`,
+                      title: other.title,
+                      projectId: props.task.info.projectId,
+                      ask: () =>
+                        core.request<Detail>('mr.detailOf', {
+                          projectId: props.task.info.projectId,
+                          number: other.number,
+                        }),
+                    })
+                  }
+                >
+                  Read {other.name}
+                </button>
+              </div>
+            </div>
+          )}
+        </For>
+        <Show when={props.commits === 0 && others().length === 0}>
+          <p class="fine">
+            Nothing is committed on this branch yet, so there is nothing to ask to merge: a {word()} can be opened once
+            there is a commit.
+          </p>
+        </Show>
       </Show>
 
       <Show when={form()}>
