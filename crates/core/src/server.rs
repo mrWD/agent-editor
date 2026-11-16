@@ -950,13 +950,23 @@ pub async fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<
         "issues.start" => {
             let (project, key, agent) =
                 (text_param(params, "projectId")?, text_param(params, "key")?, text_param(params, "agentId")?);
+            // The number of an open request the issue points at: the task goes on with its branch.
+            let request = params.get("request").and_then(Value::as_u64);
             // A Linear issue of the user's own may be started in any project, whatever tracker it uses.
             let task = if params.get("source").and_then(Value::as_str) == Some("linear") {
-                manager.start_linear_issue(project, key, agent).await?
+                manager.start_linear_issue(project, key, agent, request).await?
             } else {
-                manager.start_issue(project, key, agent).await?
+                manager.start_issue(project, key, agent, request).await?
             };
             Ok(json!(task))
+        }
+        "issues.requests" => {
+            let (project, key) = (text_param(params, "projectId")?.to_string(), text_param(params, "key")?.to_string());
+            let source = params.get("source").and_then(Value::as_str).map(str::to_string);
+            let blocking = manager.clone();
+            let found = tokio::task::spawn_blocking(move || blocking.issue_requests(&project, &key, source.as_deref()))
+                .await??;
+            Ok(json!({ "requests": found }))
         }
         "integrations.linearAccount" => {
             let manager = manager.clone();

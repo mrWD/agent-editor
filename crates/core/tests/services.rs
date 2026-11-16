@@ -152,7 +152,7 @@ async fn a_merge_request_is_opened_merged_and_the_task_cleaned_up() {
     dispatch(&state, "issues.list", &json!({})).await.unwrap();
     let mut events = manager.subscribe();
     let mut everything = manager.subscribe();
-    let task = manager.start_issue(&project.id, "#12", "mock").await.unwrap();
+    let task = manager.start_issue(&project.id, "#12", "mock", None).await.unwrap();
     let id = task.row.id.clone();
     until(&mut events, &id, |e| state_is(e, "idle")).await;
     manager.prompt(&id, "Change the limit".into()).await.unwrap();
@@ -284,6 +284,24 @@ fn fake_linear() -> FakeLinear {
                 (
                     "200 OK",
                     json!({ "errors": [{ "message": "Invalid scope: `write` or `issues:create` required" }], "data": null }),
+                )
+            } else if body.contains("issue(id") && body.contains("APP-215") {
+                // An issue somebody works on already: its requests are attached, one of them in another repository.
+                (
+                    "200 OK",
+                    json!({ "data": { "issue": {
+                    "id": "uuid-215", "identifier": "APP-215", "title": "Orders need pagination",
+                    "url": "https://linear.app/x/issue/APP-215", "description": "Fifty a page.",
+                    "updatedAt": "2026-11-12T19:05:30.000Z", "state": { "name": "In Progress", "type": "started" },
+                    "assignee": null, "labels": { "nodes": [] },
+                    "attachments": { "nodes": [
+                        { "title": "Deployment Link", "url": "https://128.preview.example.com" },
+                        { "title": "feat(orders): pages", "url": "https://github.com/x/shop/pull/128" },
+                        { "title": "the same, seen in its changes", "url": "https://github.com/X/Shop/pull/128/files" },
+                        { "title": "fix(web): pages", "url": "https://github.com/x/web/pull/7" },
+                        { "title": "an older try", "url": "https://github.com/x/shop/pull/129" }
+                    ] }
+                } } }),
                 )
             } else if body.contains("issue(id") && body.contains("APP-214") {
                 // The issue by itself comes with what is attached to it; the lists do not.
@@ -708,4 +726,147 @@ async fn a_linear_key_that_may_only_read_is_said_in_words_once_and_not_tried_aga
     // Another key is another story: what was learned about the old one is forgotten.
     dispatch(&state, "integrations.setLinearKey", &json!({ "key": "lin_test_key" })).await.unwrap();
     assert_eq!(dispatch(&state, "integrations.status", &json!({})).await.unwrap()["linear"]["readOnly"], false);
+}
+
+/// A stand-in for `gh` that knows two pull requests by their numbers: 128 is open on the branch
+/// `feat/order-pages`, 129 was merged long ago.
+fn gh_with_requests(dir: &Path) -> PathBuf {
+    std::fs::create_dir_all(dir).unwrap();
+    let pull = |number: u64, state: &str, branch: &str| {
+        json!({ "number": number, "title": "feat(orders): pages", "url": format!("https://github.com/x/shop/pull/{number}"),
+            "state": state, "isDraft": true, "headRefName": branch, "baseRefName": "main", "isCrossRepository": false })
+        .to_string()
+    };
+    std::fs::write(dir.join("pull-128.json"), pull(128, "OPEN", "feat/order-pages")).unwrap();
+    std::fs::write(dir.join("pull-129.json"), pull(129, "MERGED", "feat/old-pages")).unwrap();
+    fake_tool(
+        dir,
+        "gh",
+        r#"here="$(dirname "$0")"
+echo "$@" >> "$here/calls.log"
+case "$1 $2" in
+  "auth status") exit 0 ;;
+  "issue list") echo "[]" ;;
+  "pr view")
+    if [ -f "$here/pull-$3.json" ]; then cat "$here/pull-$3.json"; else echo "no pull requests found for branch \"$3\"" >&2; exit 1; fi ;;
+  *) echo "unexpected call: $*" >&2; exit 2 ;;
+esac
+"#,
+    )
+}
+
+#[tokio::test]
+async fn a_task_goes_on_with_the_open_request_of_its_issue_on_that_request_s_branch() {
+    let sandbox = Sandbox::new("on-request");
+    let tools = sandbox.0.join("tools");
+    let linear = fake_linear();
+    let missing = PathBuf::from("/nonexistent/ae-test/tool");
+    let hosts = Hosts::with(gh_with_requests(&tools), missing.clone(), missing, linear.url.clone());
+    let state = AppState::new(sandbox.manager_with(hosts));
+    let manager = &state.manager;
+    let (repo, _) = github_project(&sandbox);
+    // Somebody pushed work for the issue: a branch with a commit, which this folder no longer has.
+    let trunk = git(&repo, &["symbolic-ref", "--short", "HEAD"]).trim().to_string();
+    git(&repo, &["checkout", "-q", "-b", "feat/order-pages"]);
+    std::fs::write(repo.join("pages.txt"), "fifty a page\n").unwrap();
+    git(&repo, &["add", "pages.txt"]);
+    git(&repo, &["commit", "-q", "-m", "Pages of fifty"]);
+    git(&repo, &["push", "-q", "origin", "feat/order-pages"]);
+    git(&repo, &["checkout", "-q", &trunk]);
+    git(&repo, &["branch", "-q", "-D", "feat/order-pages"]);
+    git(&repo, &["update-ref", "-d", "refs/remotes/origin/feat/order-pages"]);
+    let project = manager.add_project(&repo.to_string_lossy(), None).unwrap();
+    dispatch(&state, "integrations.setLinearKey", &json!({ "key": "lin_test_key" })).await.unwrap();
+
+    // What is attached to the issue is looked through for requests of this very repository. The
+    // one that is open is offered once; the merged one, the one of another repository and what
+    // is no request at all are not.
+    let asked = json!({ "projectId": project.id, "key": "APP-215", "source": "linear" });
+    let found = dispatch(&state, "issues.requests", &asked).await.unwrap();
+    assert_eq!(
+        found["requests"],
+        json!([{ "number": 128, "name": "PR #128", "title": "feat(orders): pages",
+            "url": "https://github.com/x/shop/pull/128", "state": "open", "draft": true,
+            "branch": "feat/order-pages", "base": "main", "own": true }])
+    );
+    let viewed: Vec<String> =
+        calls(&tools).lines().filter(|line| line.starts_with("pr view")).map(|line| line[..11].to_string()).collect();
+    assert_eq!(viewed, ["pr view 128", "pr view 129"]);
+
+    // A request that is not open is nothing to go on with, and no task is made for it.
+    let merged = dispatch(
+        &state,
+        "issues.start",
+        &json!({ "projectId": project.id, "key": "APP-215", "agentId": "mock", "source": "linear", "request": 129 }),
+    )
+    .await;
+    assert!(merged.unwrap_err().to_string().contains("PR #129 is merged"));
+    assert!(manager.list().unwrap().is_empty());
+
+    // Started on the open one, the task is on its branch, with what was pushed there, and is told so.
+    let mut events = manager.subscribe();
+    let task = dispatch(
+        &state,
+        "issues.start",
+        &json!({ "projectId": project.id, "key": "APP-215", "agentId": "mock", "source": "linear", "request": 128 }),
+    )
+    .await
+    .unwrap();
+    let id = task["id"].as_str().unwrap().to_string();
+    assert_eq!((task["branch"].as_str(), task["baseBranch"].as_str()), (Some("feat/order-pages"), Some("main")));
+    let cwd = PathBuf::from(task["cwd"].as_str().unwrap());
+    assert_eq!(git(&cwd, &["symbolic-ref", "--short", "HEAD"]).trim(), "feat/order-pages");
+    assert_eq!(git(&cwd, &["rev-parse", "--abbrev-ref", "@{upstream}"]).trim(), "origin/feat/order-pages");
+    assert_eq!(std::fs::read_to_string(cwd.join("pages.txt")).unwrap(), "fifty a page\n");
+    let seen = until(&mut events, &id, |e| state_is(e, "idle")).await;
+    let said = seen.iter().find(|e| is(e, "user_message")).unwrap()["text"].as_str().unwrap().to_string();
+    assert!(said.contains("Orders need pagination") && said.contains("This is issue APP-215"), "{said}");
+    assert!(
+        said.contains(
+            "The work on this goes on in PR #128 (https://github.com/x/shop/pull/128), on its branch `feat/order-pages`"
+        ),
+        "{said}"
+    );
+    // No branch of the task's own was made beside it.
+    assert!(!git(&repo, &["branch", "--list", "task/*"]).contains("task/"));
+}
+
+#[tokio::test]
+async fn a_working_copy_on_a_branch_that_is_there_takes_what_was_pushed_and_never_a_branch_that_is_open_elsewhere() {
+    let sandbox = Sandbox::new("on-branch");
+    let (repo, _) = github_project(&sandbox);
+    let trunk = git(&repo, &["symbolic-ref", "--short", "HEAD"]).trim().to_string();
+    git(&repo, &["checkout", "-q", "-b", "feat/pages"]);
+    std::fs::write(repo.join("pages.txt"), "one\n").unwrap();
+    git(&repo, &["add", "pages.txt"]);
+    git(&repo, &["commit", "-q", "-m", "One"]);
+    git(&repo, &["push", "-q", "origin", "feat/pages"]);
+    // The remote goes one commit further than this folder knows: pushed from a second copy.
+    let second = sandbox.0.join("second");
+    git(&repo, &["worktree", "add", "-q", "--detach", &second.to_string_lossy(), "feat/pages"]);
+    std::fs::write(second.join("pages.txt"), "one\ntwo\n").unwrap();
+    git(&second, &["commit", "-q", "-am", "Two"]);
+    git(&second, &["push", "-q", "origin", "HEAD:feat/pages"]);
+    git(&repo, &["worktree", "remove", "--force", &second.to_string_lossy()]);
+
+    // While the project's own folder has the branch open, it cannot be opened a second time: said in words.
+    let dir = sandbox.0.join("copy");
+    let refused = ae_core::git::add_worktree_on(&repo, &dir, "feat/pages").await.unwrap_err().to_string();
+    assert!(refused.contains("The branch feat/pages is open in another folder of this project"), "{refused}");
+    assert!(!dir.exists());
+
+    // Once the folder is on another branch, the copy is on the branch as it was here, brought up to what was pushed.
+    git(&repo, &["checkout", "-q", &trunk]);
+    ae_core::git::add_worktree_on(&repo, &dir, "feat/pages").await.unwrap();
+    assert_eq!(git(&dir, &["symbolic-ref", "--short", "HEAD"]).trim(), "feat/pages");
+    assert_eq!(std::fs::read_to_string(dir.join("pages.txt")).unwrap(), "one\ntwo\n");
+
+    // A branch nobody has is said to be nowhere.
+    let nowhere = ae_core::git::add_worktree_on(&repo, &sandbox.0.join("none"), "feat/none").await.unwrap_err();
+    assert!(nowhere.to_string().contains("is neither in this project's folder nor on its remote"), "{nowhere}");
+
+    // Taken down again, the copy leaves its branch where it was.
+    ae_core::git::remove_worktree_only(&repo, &dir).await;
+    assert!(!dir.exists());
+    assert!(git(&repo, &["branch", "--list", "feat/pages"]).contains("feat/pages"));
 }

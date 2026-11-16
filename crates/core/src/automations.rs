@@ -375,7 +375,7 @@ impl Manager {
                             if !labeled || !seen.insert(mark) || first_look || row.task_id.is_some() {
                                 continue;
                             }
-                            match self.start_issue(&project.id, &issue.key, agent_id).await {
+                            match self.start_issue(&project.id, &issue.key, agent_id, None).await {
                                 Ok(task) => {
                                     // What the automation is for goes after what the issue says.
                                     let _ = self.prompt_when_idle(&task.row.id, text.clone());

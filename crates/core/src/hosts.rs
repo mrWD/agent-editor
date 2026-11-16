@@ -393,6 +393,91 @@ pub fn parse_github_request(json: &str) -> Result<Request> {
     })
 }
 
+/// A request with the branches it joins: what a task needs to go on with it instead of starting anew.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestBranch {
+    pub number: u64,
+    /// How people call it: "PR #128", "MR !48".
+    pub name: String,
+    pub title: String,
+    pub url: String,
+    /// "open", "merged" or "closed".
+    pub state: &'static str,
+    pub draft: bool,
+    /// The branch the work is on.
+    pub branch: String,
+    /// The branch it is to be merged into.
+    pub base: String,
+    /// False for a request from a fork: its branch is in another repository, and cannot be gone on with here.
+    pub own: bool,
+}
+
+/// The number of a request, read from its address, when the address is of a request in this very
+/// repository: `https://github.com/owner/repo/pull/128`, `https://gitlab.com/group/repo/-/merge_requests/48`.
+/// Whatever follows the number (`/diffs`, `#note_3`) is left out. `None` for any other address.
+pub fn request_number_in(remote: &Remote, url: &str) -> Option<u64> {
+    let rest = url.trim().strip_prefix("https://").or_else(|| url.trim().strip_prefix("http://"))?;
+    let (host, path) = rest.split_once('/')?;
+    if host.to_lowercase() != remote.host {
+        return None;
+    }
+    let mark = match remote.kind {
+        HostKind::GitHub => "/pull/",
+        HostKind::GitLab => "/-/merge_requests/",
+    };
+    let (slug, after) = path.split_once(mark)?;
+    if !slug.eq_ignore_ascii_case(&remote.slug) {
+        return None;
+    }
+    let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
+
+/// A pull request as `gh pr view --json number,title,url,state,isDraft,headRefName,baseRefName,isCrossRepository` prints it.
+pub fn parse_github_request_branch(json: &str) -> Result<RequestBranch> {
+    let item: Value = serde_json::from_str(json).context("GitHub's answer could not be read")?;
+    let number = item.get("number").and_then(Value::as_u64).unwrap_or(0);
+    Ok(RequestBranch {
+        number,
+        name: format!("PR #{number}"),
+        title: text_of(&item, "title"),
+        url: text_of(&item, "url"),
+        state: match text_of(&item, "state").as_str() {
+            "MERGED" => "merged",
+            "CLOSED" => "closed",
+            _ => "open",
+        },
+        draft: item.get("isDraft").and_then(Value::as_bool).unwrap_or(false),
+        branch: text_of(&item, "headRefName"),
+        base: text_of(&item, "baseRefName"),
+        own: !item.get("isCrossRepository").and_then(Value::as_bool).unwrap_or(false),
+    })
+}
+
+/// A merge request as GitLab's API gives it.
+pub fn parse_gitlab_request_branch(json: &str) -> Result<RequestBranch> {
+    let item: Value = serde_json::from_str(json).context("GitLab's answer could not be read")?;
+    let number = item.get("iid").and_then(Value::as_u64).unwrap_or(0);
+    let project = |key: &str| item.get(key).and_then(Value::as_u64);
+    Ok(RequestBranch {
+        number,
+        name: format!("MR !{number}"),
+        title: text_of(&item, "title"),
+        url: text_of(&item, "web_url"),
+        state: match text_of(&item, "state").as_str() {
+            "merged" => "merged",
+            "closed" | "locked" => "closed",
+            _ => "open",
+        },
+        draft: item.get("draft").and_then(Value::as_bool).unwrap_or(false),
+        branch: text_of(&item, "source_branch"),
+        base: text_of(&item, "target_branch"),
+        // Where the two are not said, the request is taken to be the repository's own.
+        own: project("source_project_id") == project("target_project_id"),
+    })
+}
+
 /// A merge request as `glab mr view --output json` prints it.
 pub fn parse_gitlab_request(json: &str) -> Result<Request> {
     let item: Value = serde_json::from_str(json).context("GitLab's answer could not be read")?;
@@ -845,6 +930,50 @@ impl Hosts {
         }
     }
 
+    /// The addresses of the requests a host's own issue is joined to: on GitHub the pull requests
+    /// that close it, on GitLab its related merge requests. They may be of other repositories.
+    pub fn issue_request_links(&self, remote: &Remote, number: u64) -> Result<Vec<String>> {
+        let number = number.to_string();
+        let (answer, key) = match remote.kind {
+            HostKind::GitHub => {
+                let args = ["issue", "view", &number, "-R", &remote.slug, "--json", "closedByPullRequestsReferences"];
+                let answer: Value = serde_json::from_str(&self.run_at(HostKind::GitHub, Some(&remote.host), &args)?)
+                    .context("GitHub's answer could not be read")?;
+                (answer.get("closedByPullRequestsReferences").cloned().unwrap_or(Value::Null), "url")
+            }
+            HostKind::GitLab => {
+                let path = format!("projects/{}/issues/{number}/related_merge_requests", gitlab_project(&remote.slug));
+                let args = ["api", "--hostname", &remote.host, &path];
+                let answer: Value = serde_json::from_str(&self.run_at(HostKind::GitLab, Some(&remote.host), &args)?)
+                    .context("GitLab's answer could not be read")?;
+                (answer, "web_url")
+            }
+        };
+        Ok(answer
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|one| one.get(key)?.as_str().map(str::to_string))
+            .collect())
+    }
+
+    /// One request of a repository by its number, with the branches it joins.
+    pub fn request_by_number(&self, remote: &Remote, number: u64) -> Result<RequestBranch> {
+        let number = number.to_string();
+        match remote.kind {
+            HostKind::GitHub => {
+                let fields = "number,title,url,state,isDraft,headRefName,baseRefName,isCrossRepository";
+                let args = ["pr", "view", &number, "-R", &remote.slug, "--json", fields];
+                parse_github_request_branch(&self.run_at(HostKind::GitHub, Some(&remote.host), &args)?)
+            }
+            HostKind::GitLab => {
+                let path = format!("projects/{}/merge_requests/{number}", gitlab_project(&remote.slug));
+                let args = ["api", "--hostname", &remote.host, &path];
+                parse_gitlab_request_branch(&self.run_at(HostKind::GitLab, Some(&remote.host), &args)?)
+            }
+        }
+    }
+
     /// Opens a request to merge `branch` into `base`. The branch must be pushed already.
     pub fn create_request(
         &self,
@@ -1136,6 +1265,45 @@ mod tests {
         let request = parse_github_request(merged).unwrap();
         assert_eq!(request.state, "merged");
         assert!(!request.ready());
+    }
+
+    #[test]
+    fn the_number_of_a_request_is_read_from_its_address_only_for_this_very_repository() {
+        let github = parse_remote("git@github.com:x/shop.git").unwrap();
+        assert_eq!(request_number_in(&github, "https://github.com/x/shop/pull/128"), Some(128));
+        assert_eq!(request_number_in(&github, " https://GitHub.com/X/Shop/pull/128/files#diff-1 "), Some(128));
+        assert_eq!(request_number_in(&github, "https://github.com/x/web/pull/128"), None);
+        assert_eq!(request_number_in(&github, "https://github.com/x/shop/issues/128"), None);
+        assert_eq!(request_number_in(&github, "https://example.com/x/shop/pull/128"), None);
+        assert_eq!(request_number_in(&github, "https://github.com/x/shop/pull/new"), None);
+
+        let gitlab = parse_remote("git@gitlab.example.com:group/sub/shop.git").unwrap();
+        let address = "https://gitlab.example.com/group/sub/shop/-/merge_requests/2811";
+        assert_eq!(request_number_in(&gitlab, address), Some(2811));
+        assert_eq!(request_number_in(&gitlab, &format!("{address}/diffs")), Some(2811));
+        assert_eq!(request_number_in(&gitlab, "https://gitlab.example.com/group/sub/web/-/merge_requests/3248"), None);
+        assert_eq!(request_number_in(&gitlab, "https://2811.preview.example.com"), None);
+    }
+
+    #[test]
+    fn a_request_is_read_with_the_branches_it_joins() {
+        let pull = r#"{"number":128,"title":"Pages","url":"https://github.com/x/shop/pull/128","state":"OPEN","isDraft":true,
+            "headRefName":"feat/pages","baseRefName":"main","isCrossRepository":false}"#;
+        let read = parse_github_request_branch(pull).unwrap();
+        assert_eq!((read.name.as_str(), read.state, read.draft, read.own), ("PR #128", "open", true, true));
+        assert_eq!((read.branch.as_str(), read.base.as_str()), ("feat/pages", "main"));
+        let fork = pull.replace(r#""isCrossRepository":false"#, r#""isCrossRepository":true"#);
+        assert!(!parse_github_request_branch(&fork).unwrap().own);
+
+        let merge = r#"{"iid":2811,"title":"Skills","web_url":"https://gitlab.example.com/g/p/-/merge_requests/2811",
+            "state":"opened","draft":false,"source_branch":"feat/skills","target_branch":"develop",
+            "source_project_id":7,"target_project_id":7}"#;
+        let read = parse_gitlab_request_branch(merge).unwrap();
+        assert_eq!((read.name.as_str(), read.state, read.own), ("MR !2811", "open", true));
+        assert_eq!((read.branch.as_str(), read.base.as_str()), ("feat/skills", "develop"));
+        let fork = merge.replace(r#""source_project_id":7"#, r#""source_project_id":9"#);
+        assert!(!parse_gitlab_request_branch(&fork).unwrap().own);
+        assert_eq!(parse_gitlab_request_branch(r#"{"iid":1,"state":"merged"}"#).unwrap().state, "merged");
     }
 
     #[test]
