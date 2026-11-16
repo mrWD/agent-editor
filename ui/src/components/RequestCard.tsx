@@ -131,15 +131,26 @@ export function RequestCard(props: {
     }
   };
 
-  // Asked for from the list of issues ("Create MR"): the form opens once what a request would say is read.
+  // Asked for from the list of issues ("Create MR"): the form opens once it is known that there is
+  // something to ask a merge for. The commits of the branch are read by the view around this card
+  // and may come a moment after the card itself, so the asking waits for them rather than give up.
   const createAsked = `task:${taskId}:request.create`;
-  const openIfAsked = () => {
-    if (!recall<boolean>(createAsked)) return;
-    remember(createAsked, false);
-    if (info()?.host && !info()?.request && props.commits > 0) void openForm();
-  };
+  const [asked, setAsked] = createSignal(recall<boolean>(createAsked) === true);
+  remember(createAsked, false);
+  createEffect(() => {
+    const known = info();
+    if (!asked() || !known) return;
+    if (!known.host || known.request) setAsked(false);
+    else if (props.commits > 0 && !form() && !busy()) {
+      setAsked(false);
+      void openForm();
+    }
+  });
   onMount(() => {
-    void load().then(openIfAsked);
+    void load();
+    // An asking that found nothing to merge is forgotten: a commit made later must not open the form by itself.
+    const forget = setTimeout(() => setAsked(false), 5000);
+    onCleanup(() => clearTimeout(forget));
     const stop = core.onEvent((event) => {
       if (event.event === 'mr.changed' && event.data.taskId === taskId) void load();
     });

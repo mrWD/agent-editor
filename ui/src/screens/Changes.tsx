@@ -159,8 +159,13 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
     const picked = workOf(taskId).changes;
     return picked && picked !== 'visit' ? picked : firstTab(git());
   });
+  /** True once the view is left. What was begun here may end after that, and must not move the view that comes next. */
+  let left = false;
+  onCleanup(() => (left = true));
   /** After something was done the view follows the change: a part left empty gives way to the next that is not. */
-  const settle = () => setWork(taskId, { changes: tabAfter(tab(), git()) });
+  const settle = () => {
+    if (!left) setWork(taskId, { changes: tabAfter(tab(), git()) });
+  };
   /** What the middle compares in the second and the third part. Nothing while nothing is pushed. */
   const spanOf = (): Span | null =>
     tab() === 'ahead' ? 'ahead' : tab() === 'request' && tabCount('request', git()) > 0 ? 'pushed' : null;
@@ -187,7 +192,7 @@ export function ChangesView(props: { task: Task; git: GitWatch }): JSX.Element {
       void saveAll(taskId)
         .then(() => props.git.reload())
         .then(() => {
-          if (workOf(taskId).changes === null) setWork(taskId, { changes: firstTab(git()) });
+          if (!left && workOf(taskId).changes === null) setWork(taskId, { changes: firstTab(git()) });
         }),
   );
   // Left, the view forgets the part: the next time it opens where there is something to look at.
