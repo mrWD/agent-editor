@@ -129,6 +129,49 @@ async fn settings_are_offered_changed_and_remembered() {
 }
 
 #[tokio::test]
+async fn a_new_task_is_given_its_model_ahead_of_its_agent_from_what_the_agent_offered_last() {
+    let sandbox = Sandbox::new("ahead");
+    let project_dir = git_project(&sandbox);
+    let manager = sandbox.manager();
+    let project = manager.add_project(&project_dir.to_string_lossy(), None).unwrap();
+    let mut events = manager.subscribe();
+
+    // An agent that has not run yet has offered nothing: there is nothing to choose ahead of it.
+    assert_eq!(manager.offers("mock"), serde_json::json!([]));
+
+    let first = manager.create(&project.id, "mock", "What does the limiter do?").await.unwrap();
+    until(&mut events, &first.row.id, |e| state_is(e, "idle")).await;
+    // What its session offered is kept, without the mode: that is decided in the task, never ahead of it.
+    let offers = manager.offers("mock");
+    let ids: Vec<&str> = offers.as_array().unwrap().iter().map(|option| option["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["model"]);
+    assert_eq!(offers[0]["currentValue"], "practice");
+    assert_eq!(offers[0]["options"][1]["value"], "practice-fast");
+
+    // A task made with a choice has it from its first message on, and the choice is the agent's next default.
+    let chosen = [("model".to_string(), "practice-fast".to_string())];
+    let second = manager.create_with(&project.id, "mock", "What does the limiter do?", None, &chosen).await.unwrap();
+    assert_eq!(current(&second, "model").as_deref(), Some("practice-fast"));
+    assert_eq!(current(&second, "mode").as_deref(), Some("ask"));
+    until(&mut events, &second.row.id, |e| state_is(e, "idle")).await;
+    assert_eq!(manager.offers("mock")[0]["currentValue"], "practice-fast");
+    let third = manager.create(&project.id, "mock", "What does the limiter do?").await.unwrap();
+    assert_eq!(current(&third, "model").as_deref(), Some("practice-fast"));
+    until(&mut events, &third.row.id, |e| state_is(e, "idle")).await;
+
+    // A mode chosen ahead, a value the agent does not list and a setting it does not have are dropped.
+    let odd = [
+        ("mode".to_string(), "auto".to_string()),
+        ("model".to_string(), "no-such-model".to_string()),
+        ("temper".to_string(), "mild".to_string()),
+    ];
+    let fourth = manager.create_with(&project.id, "mock", "What does the limiter do?", None, &odd).await.unwrap();
+    assert_eq!(current(&fourth, "mode").as_deref(), Some("ask"), "a new task asks first, whatever was sent");
+    assert_eq!(current(&fourth, "model").as_deref(), Some("practice-fast"));
+    until(&mut events, &fourth.row.id, |e| state_is(e, "idle")).await;
+}
+
+#[tokio::test]
 async fn a_setting_that_cannot_be_made_is_refused_with_a_reason() {
     let sandbox = Sandbox::new("refused");
     let manager = sandbox.manager();

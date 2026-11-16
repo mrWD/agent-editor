@@ -1,6 +1,7 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { go, taskHref } from '../app/router';
 import { core } from '../core/client';
+import { countWords, looked, wordsOf, type IssueSort } from '../core/issueList';
 import { createKept } from '../core/kept';
 import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
@@ -49,6 +50,10 @@ export function SentryIssues(props: {
   agentId: string;
   /** Only the errors nobody works on yet. */
   onlyFree: boolean;
+  /** What is typed into the search of the screen: only the errors that hold it are listed. */
+  query: string;
+  /** The order picked for the lists of the screen. Sentry's own is the most frequent first. */
+  sort: IssueSort;
 }): JSX.Element {
   const [status, setStatus] = createKept<Status | null>('sentry.status', null);
   const [listed, setListed] = createKept<Record<string, Listed>>('sentry.issues', {});
@@ -164,7 +169,14 @@ export function SentryIssues(props: {
 
   const shown = (projectId: string) => {
     const all = listed()[projectId]?.issues ?? [];
-    return props.onlyFree ? all.filter((issue) => !issue.taskId) : all;
+    // An error is found by its key, its name, its level and where it happens; it changed when it was last seen.
+    return looked(props.onlyFree ? all.filter((issue) => !issue.taskId) : all, props.query, props.sort, (issue) => ({
+      key: issue.key,
+      title: issue.title,
+      state: issue.level,
+      changedAt: issue.lastSeen,
+      more: [issue.culprit],
+    }));
   };
 
   return (
@@ -267,7 +279,7 @@ export function SentryIssues(props: {
                       <h2 class="stage-title">{projectName(project.id)}</h2>
                       <span class="stage-note">
                         {slug()
-                          ? `Errors in Sentry · ${slug()} · ${(listed()[project.id]?.issues ?? []).length} unresolved`
+                          ? `Errors in Sentry · ${slug()} · ${countWords(shown(project.id).length, (listed()[project.id]?.issues ?? []).length, props.query, 'unresolved')}`
                           : 'Errors in Sentry: not joined to a project of Sentry yet'}
                       </span>
                       <span class="grow" />
@@ -312,9 +324,13 @@ export function SentryIssues(props: {
                     </Show>
                     <Show when={slug() && !problems()[project.id] && shown(project.id).length === 0}>
                       <p class="stage-row plain">
-                        {props.onlyFree && (listed()[project.id]?.issues ?? []).length > 0
-                          ? 'Every unresolved error has a task.'
-                          : 'No unresolved errors.'}
+                        {(listed()[project.id]?.issues ?? []).length === 0
+                          ? 'No unresolved errors.'
+                          : wordsOf(props.query).length > 0
+                            ? `Nothing here matches “${props.query.trim()}”.`
+                            : props.onlyFree
+                              ? 'Every unresolved error has a task.'
+                              : 'No unresolved errors.'}
                       </p>
                     </Show>
                     <For each={shown(project.id)}>

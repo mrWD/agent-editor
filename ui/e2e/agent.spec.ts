@@ -195,3 +195,42 @@ test.describe('Pictures in a message', () => {
     await expect(sent.first().getByRole('img', { name: 'login errors.png' })).toBeVisible();
   });
 });
+
+test.describe('What a new task is given ahead of its agent', () => {
+  // What an agent offered is kept by the core: with a core of its own, the agent has not run yet.
+  test.use({ freshCore: true });
+
+  test('AG-13 the model of a new task is picked on Home, from what the agent offered in its last task', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project();
+    await app.openHome();
+    const form = app.page.locator('form.new-task');
+    // An agent that has not run a task has offered nothing yet, and the form says so.
+    await expect(form).toContainText(
+      'What Practice agent offers to set, such as its model, can be picked here once it has run a task.',
+    );
+    await expect(form.getByLabel('Model', { exact: true })).toHaveCount(0);
+    await app.createTask({ text: unique('Describe the limiter'), folder: shop.dir });
+    await expect(app.conversation.getByLabel('Model of Practice agent')).toHaveValue('practice');
+
+    // Back on Home the model stands beside the agent, on what the agent has now. The mode is not offered:
+    // how much an agent may do without asking is decided in the task.
+    await app.goHome();
+    const model = form.getByLabel('Model', { exact: true });
+    await expect(model.getByRole('option')).toHaveText(['Practice', 'Practice fast']);
+    await expect(model).toHaveValue('practice');
+    await expect(form.getByLabel('Mode', { exact: true })).toHaveCount(0);
+    await expect(form).not.toContainText('can be picked here once it has run a task');
+
+    // The task starts with what was picked, from its first message on.
+    await model.selectOption({ label: 'Practice fast' });
+    await app.createTask({ text: unique('Describe the limiter again'), project: shop.name });
+    await expect(app.conversation.getByLabel('Model of Practice agent')).toHaveValue('practice-fast');
+
+    // What was picked is the agent's choice from now on: Home shows it for the next task.
+    await app.goHome();
+    await expect(form.getByLabel('Model', { exact: true })).toHaveValue('practice-fast');
+  });
+});

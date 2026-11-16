@@ -779,7 +779,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     const preview = await openPreview(app, (await project()).dir, shop.address, '/login?next=1&tab=2');
     const asked = (start: string) => core.calls('xcrun').filter((call) => call.startsWith(start)).length;
 
-    await preview.kind('iOS simulator').click();
+    await preview.only('iOS simulator');
     await expect(preview.view.locator('iframe')).toHaveCount(0);
     // What runs already comes first. Looking at the tab starts nothing.
     const rows = preview.devices('iOS simulators').getByRole('listitem');
@@ -856,7 +856,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     expect(asked('simctl bootstatus')).toBe(1);
 
     // Leaving the tab shuts down the simulator the core started, and no more pictures are taken.
-    await preview.kind('Web').click();
+    await preview.only('Web');
     await expect(preview.pageIn('Phone 320').getByRole('heading', { name: 'Sign in' })).toBeVisible();
     await expect.poll(() => simulatorRuns(core.toolsDir, PHONE)).toBe(false);
     const taken = asked('simctl io');
@@ -880,7 +880,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     const shutDown = () => core.calls('xcrun').filter((call) => call.startsWith('simctl shutdown')).length;
 
     // One that ran already: shown without being started, said to stay on, and left on.
-    await preview.kind('iOS simulator').click();
+    await preview.only('iOS simulator');
     await preview.devices('iOS simulators').getByRole('button', { name: 'Show iPad Air' }).click();
     const pad = preview.device('iPad Air', 'simulator');
     await expect(pad.getByRole('img', { name: 'The screen of iPad Air' })).toBeVisible();
@@ -911,7 +911,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
   }) => {
     setSimulators(core.toolsDir, [{ udid: PAD, name: 'iPad Air', running: true }]);
     const preview = await openPreview(app, (await project()).dir, shop.address);
-    await preview.kind('iOS simulator').click();
+    await preview.only('iOS simulator');
     await preview.devices('iOS simulators').getByRole('button', { name: 'Show iPad Air' }).click();
     const screen = preview.view.getByRole('img', { name: 'The screen of iPad Air' });
     await expect(screen).toBeVisible();
@@ -941,7 +941,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     const preview = await openPreview(app, (await project()).dir, shop.address, '/login?next=1&tab=2');
     const port = shop.address.split(':')[1]!;
 
-    await preview.kind('Android emulator').click();
+    await preview.only('Android emulator');
     // The emulator under the name it was given. The phone on a cable is not an emulator and is not offered.
     const rows = preview.devices('Android emulators').getByRole('listitem');
     await expect(rows).toHaveText([/^Pixel 9 API 35Android 15 · runningShow$/]);
@@ -1012,7 +1012,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
       .toBeGreaterThan(1);
 
     // Leaving the tab takes the way to the port back.
-    await preview.kind('iOS simulator').click();
+    await preview.only('iOS simulator');
     await expect.poll(() => standInNote(core.toolsDir, 'adb', 'emulator-5554.reverse')).toBe('');
     expect(core.calls('adb')).toContain(`-s emulator-5554 reverse --remove tcp:${port}`);
   });
@@ -1026,7 +1026,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     const again = preview.view.getByRole('button', { name: 'Look again' });
 
     // Xcode is there and has no simulator.
-    await preview.kind('iOS simulator').click();
+    await preview.only('iOS simulator');
     await expect(preview.view.getByRole('heading', { name: 'No simulator to show' })).toBeVisible();
     await expect(preview.view).toContainText(
       'Xcode has no iOS simulator yet: add one in Xcode under Window, Devices and Simulators.',
@@ -1054,7 +1054,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     await expect(forIos).toContainText('sudo xcode-select -s /Applications/Xcode.app/Contents/Developer');
 
     // No emulator runs and the Device Manager has none to start; then adb itself is not there.
-    await preview.kind('Android emulator').click();
+    await preview.only('Android emulator');
     await expect(preview.view.getByRole('heading', { name: 'No emulator to show' })).toBeVisible();
     await expect(preview.view).toContainText(
       'Android has no emulator yet: make one in the Device Manager of Android Studio.',
@@ -1083,7 +1083,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     const preview = await openPreview(app, (await project()).dir, shop.address);
     const started = (call: string) => core.calls('emulator').filter((one) => one.startsWith(call)).length;
 
-    await preview.kind('Android emulator').click();
+    await preview.only('Android emulator');
     // The one that runs, then the one the Device Manager knows and nobody started. Looking starts nothing.
     const rows = preview.devices('Android emulators').getByRole('listitem');
     await expect(rows).toHaveText([
@@ -1105,12 +1105,12 @@ test.describe('The iOS simulator and the Android emulator', () => {
     expect(started('-avd')).toBe(1);
 
     // Leaving the tab shuts down what the core started, and only that.
-    await preview.kind('Web').click();
+    await preview.only('Web');
     await expect.poll(() => core.calls('adb')).toContain('-s emulator-5556 emu kill');
     expect(core.calls('adb')).not.toContain('-s emulator-5554 emu kill');
   });
 
-  test('PV-42 the page and the two devices are one tab, "App", which comes back to the one looked at last', async ({
+  test('PV-42 the page and the two devices are one tab, "App": each is turned on by itself and they stand side by side', async ({
     app,
     core,
     project,
@@ -1119,22 +1119,49 @@ test.describe('The iOS simulator and the Android emulator', () => {
     const preview = await openPreview(app, (await project()).dir, shop.address);
     const tabs = preview.view.getByRole('group', { name: 'What to preview on' });
     const screens = preview.view.getByRole('group', { name: 'Where the app is shown' });
+    const on = screens.locator('[aria-pressed="true"]');
     await expect(tabs.getByRole('button')).toHaveText(['App', 'API', 'Database', 'Jobs', 'Infra']);
     await expect(tabs.getByRole('button', { name: 'App' })).toHaveAttribute('aria-pressed', 'true');
     await expect(screens.getByRole('button')).toHaveText(['Web', 'iOS simulator', 'Android emulator']);
-    await expect(preview.kind('Web')).toHaveAttribute('aria-pressed', 'true');
+    await expect(on).toHaveText(['Web']);
+    await expect(preview.view.locator('iframe')).toHaveCount(2);
 
+    // The simulator is turned on beside the page: both are on show, each in a column of its own.
     await preview.kind('iOS simulator').click();
-    await expect(preview.devices('iOS simulators').getByRole('listitem')).toHaveCount(1);
-    await expect(tabs.getByRole('button', { name: 'App' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(on).toHaveText(['Web', 'iOS simulator']);
+    await expect(preview.view.locator('iframe')).toHaveCount(2);
+    const simulator = preview.view.getByRole('group', { name: 'iOS simulator', exact: true });
+    await expect(simulator.getByRole('listitem')).toHaveCount(1);
+    // Then the emulator: three side by side, in the order of the buttons, none under another.
+    await preview.kind('Android emulator').click();
+    await expect(on).toHaveText(['Web', 'iOS simulator', 'Android emulator']);
+    const panes = preview.view.locator('.preview-pane');
+    await expect(panes).toHaveCount(3);
+    const boxes = await panes.evaluateAll((all) => all.map((one) => one.getBoundingClientRect()));
+    expect(boxes[0].right).toBeLessThanOrEqual(boxes[1].left);
+    expect(boxes[1].right).toBeLessThanOrEqual(boxes[2].left);
+    expect(new Set(boxes.map((box) => Math.round(box.top))).size).toBe(1);
+    // The page still fits its column: its frames are scaled to the room the devices leave.
+    const frames = await preview.view
+      .locator('.preview-frame')
+      .evaluateAll((all) => all.map((one) => one.getBoundingClientRect().right));
+    expect(Math.max(...frames)).toBeLessThanOrEqual(boxes[0].right + 1);
 
-    // Something else of the task is looked at: the three are not offered there.
+    // Something else of the task is looked at: the three are not offered there. "App" comes back to the same three.
     await tabs.getByRole('button', { name: 'API' }).click();
     await expect(screens).toHaveCount(0);
-    // "App" comes back to the simulator, not to the page.
     await tabs.getByRole('button', { name: 'App' }).click();
-    await expect(preview.kind('iOS simulator')).toHaveAttribute('aria-pressed', 'true');
-    await expect(preview.devices('iOS simulators').getByRole('listitem')).toHaveCount(1);
+    await expect(on).toHaveText(['Web', 'iOS simulator', 'Android emulator']);
+
+    // Each is taken away by itself; the last one stays, so there is always something to look at.
+    await preview.kind('Web').click();
+    await expect(on).toHaveText(['iOS simulator', 'Android emulator']);
+    await expect(preview.view.locator('iframe')).toHaveCount(0);
+    await preview.kind('Android emulator').click();
+    await expect(on).toHaveText(['iOS simulator']);
+    await preview.kind('iOS simulator').click();
+    await expect(on).toHaveText(['iOS simulator']);
+    await expect(simulator.getByRole('listitem')).toHaveCount(1);
   });
 
   test('PV-32 on a Mac without idb the simulator tab says what tapping needs, and its picture takes no press', async ({
@@ -1145,7 +1172,7 @@ test.describe('The iOS simulator and the Android emulator', () => {
     rmSync(path.join(core.toolsDir, 'idb'));
     setSimulators(core.toolsDir, [{ udid: PAD, name: 'iPad Air', running: true }]);
     const preview = await openPreview(app, (await project()).dir, shop.address);
-    await preview.kind('iOS simulator').click();
+    await preview.only('iOS simulator');
     await preview.devices('iOS simulators').getByRole('button', { name: 'Show iPad Air' }).click();
     const device = preview.device('iPad Air', 'simulator');
     const screen = device.getByRole('img', { name: 'The screen of iPad Air' });

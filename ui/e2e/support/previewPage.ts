@@ -174,9 +174,25 @@ export class Preview {
     return this.app.conversation.getByRole('list', { name: 'Pictures that go with your message' });
   }
 
-  /** One of "Web", "iOS simulator" and "Android emulator": where the app is shown, under "App". */
+  /**
+   * One of "Web", "iOS simulator" and "Android emulator": where the app is shown, under "App".
+   * Each is turned on and off by itself, and what is on stands side by side.
+   */
   kind(name: 'Web' | 'iOS simulator' | 'Android emulator'): Locator {
     return this.view.getByRole('group', { name: 'Where the app is shown' }).getByRole('button', { name });
+  }
+
+  /** Shows the app in one place only: turns that one on and the others off. */
+  async only(name: 'Web' | 'iOS simulator' | 'Android emulator') {
+    if ((await this.kind(name).getAttribute('aria-pressed')) !== 'true') await this.kind(name).click();
+    for (const other of ['Web', 'iOS simulator', 'Android emulator'] as const) {
+      if (other !== name && (await this.kind(other).getAttribute('aria-pressed')) === 'true') {
+        await this.kind(other).click();
+      }
+    }
+    await expect(
+      this.view.getByRole('group', { name: 'Where the app is shown' }).locator('[aria-pressed="true"]'),
+    ).toHaveText([name]);
   }
 
   /** The list of simulators or emulators a device tab offers. */

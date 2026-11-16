@@ -316,6 +316,10 @@ kbd {
   background: transparent;
   color: var(--text);
 }
+/* The model of a new task and the like: beside the agent, and no wider than a name needs. */
+.select-button.task-option {
+  max-width: 200px;
+}
 select.select-button {
   appearance: none;
   padding-right: 26px;
@@ -2407,6 +2411,13 @@ button.search-link:hover {
   font-size: 13px;
   color: var(--text-2);
 }
+/* The search is as tall as what stands beside it, and gives way first when the row is narrow. */
+.issues-search {
+  flex: 0 1 260px;
+  min-width: 140px;
+  height: 30px;
+  font-size: 13px;
+}
 .issues-agent select {
   height: 30px;
   padding: 0 8px;
@@ -2457,6 +2468,15 @@ button.search-link:hover {
 .issue-key:hover,
 .issue-chip:hover {
   border-color: var(--line-strong);
+}
+/* In the head of a task the issue is a button: a press reads it here, at the side. */
+button.issue-chip {
+  background: transparent;
+  cursor: pointer;
+}
+button.issue-chip[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--pressed);
 }
 .issue-state {
   flex: none;
@@ -4020,11 +4040,35 @@ a.deploy-name:hover {
   display: flex;
   flex-direction: column;
   padding: 16px;
-  /* The frames are scaled to fit, so the view never scrolls sideways. */
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
   background: var(--ground-deep);
+}
+/* What of the app is on show, side by side: the page, and each device in a column of its own.
+   Each scrolls by itself; only when the columns cannot be made narrower does the row scroll. */
+.preview-panes {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+}
+.preview-pane {
+  flex: 1 1 0;
+  min-width: 280px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+/* The page has the most to show. Its frames are scaled to fit, so it never scrolls sideways. */
+.preview-pane.web {
+  flex-grow: 2;
+  min-width: 0;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+.preview-pane + .preview-pane {
+  padding-left: 16px;
+  border-left: 1px solid var(--line-soft);
 }
 .preview-stage .center-note {
   padding: 12px 8px;

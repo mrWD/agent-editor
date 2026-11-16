@@ -28,6 +28,8 @@ import { Chip, Icon, modKey } from '../components/bits';
 import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
 import { core } from '../core/client';
+import { createDetails, DetailDock, IssuePanel } from '../components/DetailPanel';
+import type { Detail } from '../core/details';
 import { checksOf, watchChecks } from '../core/checks';
 import { commitShown } from '../core/commits';
 import { planOf, watchPlan } from '../core/plan';
@@ -48,6 +50,7 @@ import {
   type FileEntry,
   type FileReview,
   type Task,
+  type TaskIssue,
   createFile,
   deleteFile,
   renameFile,
@@ -1348,6 +1351,28 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
     onCleanup(() => clearTimeout(timer));
   });
 
+  // The issue the task works on, whole, at the side of the editor: its description, what was written
+  // under it and its pictures are read here, without leaving for the tracker in a browser.
+  const issueDetails = createDetails();
+  const readIssue = (issue: TaskIssue, projectId: string) => {
+    const source = issue.source === 'linear' ? 'linear' : undefined;
+    if (issueDetails.opened()) {
+      issueDetails.close();
+      return;
+    }
+    issueDetails.open({
+      // The name the Issues screen keeps it under: what was read there is here at once.
+      id: `issue:${source ?? projectId}:${issue.key}`,
+      title: issue.title,
+      projectId,
+      ask: () => core.request<Detail>('issues.detail', { projectId, key: issue.key, source }),
+    });
+  };
+  // Another task has another issue, or none: the panel of the one before is closed. Another view of
+  // the same task leaves it open: the id is asked for again then, and is the same.
+  const shownId = createMemo(() => props.id);
+  createEffect(on(shownId, () => issueDetails.close(), { defer: true }));
+
   return (
     <Show
       when={task()}
@@ -1406,9 +1431,16 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
           </Show>
           <Show when={current().info.issue}>
             {(issue) => (
-              <a class="issue-chip" href={issue().url} target="_blank" rel="noreferrer" title={issue().title}>
+              <button
+                type="button"
+                class="issue-chip"
+                aria-expanded={issueDetails.opened() !== null}
+                aria-label={`Read ${issue().key} here: ${issue().title}`}
+                title={`${issue().title}. Read it here: the description, the comments and the pictures`}
+                onClick={() => readIssue(issue(), current().info.projectId)}
+              >
                 {issue().key}
-              </a>
+              </button>
             )}
           </Show>
           <Show when={current().info.branch}>
@@ -1443,6 +1475,9 @@ export function TaskScreen(props: { id: string; view: View }): JSX.Element {
           <SideGrip side="agent" label="Drag to make the conversation wider or narrower" />
           <AgentPane task={current()} />
         </div>
+        <DetailDock>
+          <IssuePanel details={issueDetails} />
+        </DetailDock>
       </>
     </Show>
   );

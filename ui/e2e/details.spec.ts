@@ -129,6 +129,50 @@ test.describe('An issue and a request in full', () => {
     await expect(side).toHaveCount(0);
   });
 
+  test('ID-10 in the editor of a task its issue is read at the side: the key in the head opens it, on any view', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({ remote: 'github', issues: ISSUES });
+    shop.setIssueWhole(12, whole(shop.slug!));
+    await app.addProject(shop.dir);
+    await app.page.goto(`${app.core.url}/#/issues`);
+    const rows = sectionOf(app, shop).locator('.issue-row');
+    await rows.filter({ hasText: '#12' }).getByRole('button', { name: 'Start in editor' }).click();
+    await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);
+    await app.turnEnds();
+
+    // The key of the issue in the head of the task is a button, and nothing is open until it is pressed.
+    const chip = app.page
+      .locator('.subbar')
+      .getByRole('button', { name: 'Read #12 here: Login allows unlimited attempts' });
+    await expect(chip).toHaveAttribute('aria-expanded', 'false');
+    await expect(panel(app)).toHaveCount(0);
+    await chip.click();
+    const side = panel(app);
+    await expect(side).toHaveAccessibleName('Details of issue #12');
+    await expect(chip).toHaveAttribute('aria-expanded', 'true');
+    // The same as on Issues: the description, the people, what was written under it. The way to the tracker is here.
+    await expect(side.getByRole('heading', { level: 2 })).toHaveText('Login allows unlimited attempts');
+    await expect(side.getByRole('region', { name: 'Description' })).toContainText('Five a minute is enough.');
+    await expect(side.getByRole('region', { name: 'Comments' }).getByRole('article')).toHaveCount(2);
+    await expect(side.getByRole('link', { name: 'Open in GitHub' })).toHaveAttribute(
+      'href',
+      `https://github.com/${shop.slug}/issues/12`,
+    );
+
+    // It stays while the views of the task change; Escape closes it, and so does the key.
+    await app.showView('Changes');
+    await expect(side).toBeVisible();
+    await app.page.keyboard.press('Escape');
+    await expect(side).toHaveCount(0);
+    await chip.click();
+    await expect(side).toBeVisible();
+    await chip.click();
+    await expect(side).toHaveCount(0);
+    await expect(chip).toHaveAttribute('aria-expanded', 'false');
+  });
+
   test('ID-09 with a panel open the page does not scroll as a whole, and a name of one long word does not widen the list', async ({
     app,
     project,

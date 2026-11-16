@@ -316,7 +316,10 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   into folders, and the ones that do not fit fold into one item, never one
   that needs you.
 - **M2, agents.** The model, the mode and the agent's other settings are in the
-  head of the conversation and are remembered. An agent that can load a session
+  head of the conversation and are remembered. What an agent offered to set
+  in its last task, its model and how hard it thinks, also stands on the
+  "New task" row of Home beside the agent, so a task starts with it from its
+  first message; the mode is never picked ahead of a task. An agent that can load a session
   picks its own up after sleep or a restart; one that cannot is told what was
   said. The head shows how full the context is and what the task has cost.
   Every pane at a side or at the bottom has an edge to drag: the files, the
@@ -399,8 +402,10 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   once, in light and dark, lets you pick an element or draw on the page, and
   sends that to the agent in words. A screenshot of each width goes into the
   message (it needs Chrome, Chromium or Edge on this computer). The page,
-  the iOS simulator and the Android emulator are one tab, "App", with a
-  switch between the three; each of the two devices lists the devices,
+  the iOS simulator and the Android emulator are one tab, "App": each is
+  turned on by itself and what is on stands side by side, the page at its
+  widths and each device in a column of its own, to compare them. Each of
+  the two devices lists the devices,
   starts one that is off, opens the app there and shows its screen as a
   picture taken again every second. A press on the picture is a tap and a
   drag is a swipe; under it are the device's buttons, a field that types on
@@ -412,7 +417,10 @@ in detail is in the same file under "Состояние на 13.11.2026". Built 
   they define, who needs them and what they call, and draws a flow the agent
   describes.
 - **M8, the sections.** Issues from GitHub, GitLab or a Linear team; "Start"
-  turns one into a task. Agents: who is doing what, cost by agent and by task,
+  turns one into a task, and in the task the key of its issue opens the
+  issue at the side of the editor. The lists are searched by name, key, state, label
+  and who has the issue, and put in the tracker's order, by the last change,
+  by name, by key or by state. Agents: who is doing what, cost by agent and by task,
   limits, a daily budget, handing a task to another agent. Automations: clean
   up after a merge, run checks, start a task every day at a time. Health: what
   each project is missing, read from its files. Settings: the agents and their

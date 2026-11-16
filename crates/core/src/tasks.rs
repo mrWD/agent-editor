@@ -169,6 +169,22 @@ fn task_setting(task_id: &str, option_id: &str) -> String {
     format!("task.{task_id}.{option_id}")
 }
 
+/// Where the settings an agent offered last are kept: what a new task can be given before its agent has started.
+fn offers_setting(agent_id: &str) -> String {
+    format!("offers.{agent_id}")
+}
+
+/// The values a setting can take, as the agent listed them.
+fn values_of(option: &Value) -> Vec<String> {
+    option
+        .get("options")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|one| one.get("value")?.as_str().map(str::to_string))
+        .collect()
+}
+
 /// True for the setting that says how much the agent may do without asking.
 fn is_mode(option: &Value) -> bool {
     option.get("category").and_then(Value::as_str) == Some("mode")
@@ -620,28 +636,18 @@ impl Manager {
     /// without asking must not make every later task do the same. A choice the
     /// agent no longer offers is left alone.
     async fn apply_remembered(&self, live: &Live, agent_id: &str, task_id: &str) {
-        let offered: Vec<(String, bool, String, Vec<String>)> = live
+        let ids: Vec<String> = live
             .options
             .lock()
             .unwrap()
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|option| {
-                let values = option
-                    .get("options")?
-                    .as_array()?
-                    .iter()
-                    .filter_map(|o| o.get("value")?.as_str().map(str::to_string));
-                Some((
-                    option.get("id")?.as_str()?.to_string(),
-                    is_mode(option),
-                    option.get("currentValue")?.as_str()?.to_string(),
-                    values.collect(),
-                ))
-            })
+            .filter_map(|option| option.get("id")?.as_str().map(str::to_string))
             .collect();
-        for (option_id, mode, current, values) in offered {
+        for option_id in ids {
+            // Read anew each time: setting one thing, the model say, may change what another offers.
+            let Some((mode, current, values)) = self.offered(live, &option_id) else { continue };
             let own = self.store.setting(&task_setting(task_id, &option_id)).ok().flatten();
             let shared = || self.store.setting(&option_setting(agent_id, &option_id)).ok().flatten();
             let Some(wanted) = own.or_else(|| if mode { None } else { shared() }) else { continue };
@@ -652,6 +658,64 @@ impl Manager {
                 tracing::debug!("Could not set {option_id} for {agent_id}: {}", error.message);
             }
         }
+        self.remember_offers(agent_id, live);
+    }
+
+    /// One setting as a session offers it now: whether it is the mode, what it is set to, and what it can be set to.
+    fn offered(&self, live: &Live, option_id: &str) -> Option<(bool, String, Vec<String>)> {
+        let options = live.options.lock().unwrap();
+        let option =
+            options.as_array()?.iter().find(|option| option.get("id").and_then(Value::as_str) == Some(option_id))?;
+        Some((is_mode(option), option.get("currentValue")?.as_str()?.to_string(), values_of(option)))
+    }
+
+    /// Keeps what a session offers to set, so the next new task of this agent can be given its
+    /// model before the agent has started. Kept as the agent said it; nothing is kept for an
+    /// agent that offers nothing.
+    fn remember_offers(&self, agent_id: &str, live: &Live) {
+        let options = live.options.lock().unwrap().clone();
+        if options.as_array().is_some_and(|all| !all.is_empty())
+            && let Err(error) = self.store.set_setting(&offers_setting(agent_id), Some(&options.to_string()))
+        {
+            tracing::debug!("Could not keep what {agent_id} offers: {error}");
+        }
+    }
+
+    /// What a new task of an agent can be given before the agent starts: the settings its last
+    /// session offered, each on the choice made for this agent last. The mode is left out: how
+    /// much an agent may do without asking is decided in the task, never ahead of it. Empty for an
+    /// agent that has not run yet.
+    pub fn offers(&self, agent_id: &str) -> Value {
+        let kept = self.store.setting(&offers_setting(agent_id)).ok().flatten();
+        let mut options: Vec<Value> = kept
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .and_then(|all| all.as_array().cloned())
+            .unwrap_or_default();
+        options.retain(|option| !is_mode(option) && !values_of(option).is_empty());
+        for option in &mut options {
+            let Some(id) = option.get("id").and_then(Value::as_str) else { continue };
+            let chosen = self.store.setting(&option_setting(agent_id, id)).ok().flatten();
+            if let Some(chosen) = chosen.filter(|chosen| values_of(option).contains(chosen)) {
+                option["currentValue"] = json!(chosen);
+            }
+        }
+        json!(options)
+    }
+
+    /// Keeps what was chosen for a task before its agent started, so that `apply_remembered`
+    /// sets it on the session: for this task, and as the choice of the next tasks of the agent,
+    /// the same as a choice made in a running task. A choice of mode, of a setting the session
+    /// does not offer, or of a value it does not list, is dropped.
+    fn keep_choices(&self, live: &Live, agent_id: &str, task_id: &str, choices: &[(String, String)]) -> Result<()> {
+        for (option_id, value) in choices {
+            let Some((mode, _, values)) = self.offered(live, option_id) else { continue };
+            if mode || !values.contains(value) {
+                continue;
+            }
+            self.store.set_setting(&task_setting(task_id, option_id), Some(value))?;
+            self.store.set_setting(&option_setting(agent_id, option_id), Some(value))?;
+        }
+        Ok(())
     }
 
     /// Tells the agent to change one setting of its session and keeps what it answers.
@@ -701,6 +765,7 @@ impl Manager {
         if !mode {
             self.store.set_setting(&option_setting(&row.agent_id, option_id), Some(value))?;
         }
+        self.remember_offers(&row.agent_id, &live);
         let config = live.config();
         self.broadcast("task.config", json!({ "taskId": task_id, "config": config }));
         Ok(config)
@@ -759,6 +824,19 @@ impl Manager {
         text: &str,
         issue: Option<TaskIssue>,
     ) -> Result<TaskInfo> {
+        self.create_with(project_id, agent_id, text, issue, &[]).await
+    }
+
+    /// Creates a task with what was chosen for it ahead of its agent: its model, how hard it
+    /// thinks, whatever the agent offered last time. Each is a setting's id and the value picked.
+    pub async fn create_with(
+        self: &Arc<Self>,
+        project_id: &str,
+        agent_id: &str,
+        text: &str,
+        issue: Option<TaskIssue>,
+        choices: &[(String, String)],
+    ) -> Result<TaskInfo> {
         if text.trim().is_empty() {
             bail!("Describe the task first");
         }
@@ -799,6 +877,7 @@ impl Manager {
             seen_seq: -1,
         };
         self.store.insert_task(&row)?;
+        self.keep_choices(&live, &agent.id, &row.id, choices)?;
         self.apply_remembered(&live, &agent.id, &row.id).await;
         self.broadcast(
             "task.created",

@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, on, Show, type JSX } from 'solid-js';
+import { createKept } from '../core/kept';
 import { go, RACE_VIEW, taskHref } from '../app/router';
 import { ago, Chip, money } from '../components/bits';
 import { failedNote, setRaceNotice } from '../core/race';
@@ -7,6 +8,7 @@ import { chooseFolder, shellMark } from '../core/shell';
 import {
   addProject,
   agentOf,
+  agentOffers,
   answerPermission,
   archiveTask,
   cancelTurn,
@@ -19,6 +21,7 @@ import {
   startRace,
   state,
   tasksNewestFirst,
+  type ConfigOption,
   type FeedItem,
   type Task,
   usageSummary,
@@ -85,6 +88,33 @@ function NewTask(): JSX.Element {
   });
 
   const chosen = () => state.agents.find((agent) => agent.id === agentId());
+
+  // What each agent offered to set in its last session: its model, how hard it thinks. A task can
+  // be given these before its agent starts. What was read last is shown at once and read again.
+  const [offers, setOffers] = createKept<Record<string, ConfigOption[]>>('home.offers', {});
+  /** What was picked here for the next task, by agent and setting. What is not picked stays as the agent has it. */
+  const [picked, setPicked] = createSignal<Record<string, Record<string, string>>>({});
+  createEffect(
+    on(agentId, (id) => {
+      if (!id) return;
+      agentOffers(id)
+        .then((found) => setOffers({ ...offers(), [id]: found }))
+        .catch(() => {
+          // Without them the task starts as the agent has it: nothing is lost but the choice.
+        });
+    }),
+  );
+  const offered = () => (racing() ? [] : (offers()[agentId()] ?? []));
+  const valueOf = (option: ConfigOption) => picked()[agentId()]?.[option.id] ?? option.currentValue;
+  /** Every setting on show with the value it shows: the task gets what is seen. */
+  const choices = () => Object.fromEntries(offered().map((option) => [option.id, valueOf(option)]));
+  /** True for an agent that speaks the protocol, is here, and has offered nothing yet: it has not run a task. */
+  const nothingOffered = () =>
+    !racing() &&
+    chosen()?.available === true &&
+    chosen()?.speaks !== 'terminal' &&
+    offers()[agentId()] !== undefined &&
+    offers()[agentId()]!.length === 0;
   // A race: the same task goes to several agents at once. Offered only when there is more than one to send it to.
   const available = () => state.agents.filter((agent) => agent.available);
   const [racing, setRacing] = createSignal(false);
@@ -180,7 +210,7 @@ function NewTask(): JSX.Element {
         }
         return;
       }
-      const id = await createTask(target, agentId(), what().trim());
+      const id = await createTask(target, agentId(), what().trim(), choices());
       setWhat('');
       go(taskHref(id));
     } catch (error) {
@@ -244,6 +274,30 @@ function NewTask(): JSX.Element {
           )}
         </For>
       </select>
+      <For each={offered()}>
+        {(option) => (
+          <select
+            class="select-button task-option"
+            aria-label={option.name}
+            title={option.description ?? `${option.name} of the new task`}
+            value={valueOf(option)}
+            onChange={(event) =>
+              setPicked({
+                ...picked(),
+                [agentId()]: { ...picked()[agentId()], [option.id]: event.currentTarget.value },
+              })
+            }
+          >
+            <For each={option.options}>
+              {(one) => (
+                <option value={one.value} title={one.description ?? undefined}>
+                  {one.name}
+                </option>
+              )}
+            </For>
+          </select>
+        )}
+      </For>
       <Show when={available().length > 1}>
         <button
           type="button"
@@ -301,6 +355,11 @@ function NewTask(): JSX.Element {
       <Show when={!problem() && !racing() && chosen()?.spendsTokens}>
         <p class="form-note">
           {chosen()!.name} spends tokens on your account. {chosen()!.note}
+        </p>
+      </Show>
+      <Show when={!problem() && nothingOffered()}>
+        <p class="form-note">
+          What {chosen()!.name} offers to set, such as its model, can be picked here once it has run a task.
         </p>
       </Show>
     </form>
