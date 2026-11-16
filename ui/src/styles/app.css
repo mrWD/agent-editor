@@ -141,6 +141,10 @@ p {
 /* ---------- App frame ---------- */
 
 .app {
+  /* The frame never scrolls as a whole; only what is in it does. A label that is there only to be
+     read aloud keeps its place in a long list, and without this it made the page that long. */
+  position: relative;
+  overflow: clip;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -2433,6 +2437,9 @@ button.search-link:hover {
 }
 .issue-row .name {
   flex: 1 1 220px;
+  /* A name with one long word in it, an address say, breaks rather than widen the list. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .issue-key,
 .issue-chip {
