@@ -9,6 +9,7 @@ import { ago, Chip, StageGlyph } from '../components/bits';
 import { core } from '../core/client';
 import { stageOfTask } from '../core/requests';
 import { stageWord } from '../core/stages';
+import { countWords, ISSUE_SORTS, issueSort, looked, setIssueSort, wordsOf, type IssueSort } from '../core/issueList';
 import {
   agentOf,
   defaultAgentId,
@@ -89,6 +90,9 @@ export function Issues(): JSX.Element {
   const [syncing, setSyncing] = createSignal(false);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [filter, setFilter] = createSignal<Filter>('open');
+  // What is typed into the search stays while the window does: coming back from a task, the list is as it was left.
+  const [query, setQuery] = createKept('issues.search', '');
+  const searching = () => wordsOf(query()).length > 0;
   const [agentId, setAgentId] = createSignal('');
   const [starting, setStarting] = createSignal<string | null>(null);
   const [key, setKey] = createSignal('');
@@ -244,7 +248,21 @@ export function Issues(): JSX.Element {
     return `${parts.join(', ')} ${parts.length === 1 ? 'is' : 'are'} connected.`;
   });
 
-  const shown = (list: Issue[]) => (filter() === 'free' ? list.filter((issue) => !issue.taskId) : list);
+  /** The issues of a list that are on show: the ones the filter leaves and the search finds, in the order picked. */
+  const shown = (list: Issue[]) =>
+    looked(filter() === 'free' ? list.filter((issue) => !issue.taskId) : list, query(), issueSort(), (issue) => ({
+      key: issue.key,
+      title: issue.title,
+      state: issue.state,
+      changedAt: issue.updatedAt,
+      more: [...issue.labels, issue.assignee],
+    }));
+  /** Why a list that has issues shows none: the search found nothing, or every one has a task. */
+  const noneWords = (list: Issue[], allTaken: string, none: string) => {
+    if (list.length === 0) return none;
+    if (searching()) return `Nothing here matches “${query().trim()}”.`;
+    return filter() === 'free' ? allTaken : none;
+  };
   const used = (kind: 'github' | 'gitlab' | 'linear') => (projects() ?? []).some((project) => project.source === kind);
 
   return (
@@ -271,6 +289,28 @@ export function Issues(): JSX.Element {
                 Without a task
               </button>
             </div>
+            <input
+              class="field issues-search"
+              type="search"
+              aria-label="Search the issues"
+              title="Finds by name, key, state, label and who has it; every word has to be there"
+              placeholder="Search by name, key or label"
+              spellcheck={false}
+              value={query()}
+              onInput={(event) => setQuery(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape' || query() === '') return;
+                // Escape empties the search first; the panels at the side are closed by the next one.
+                event.preventDefault();
+                setQuery('');
+              }}
+            />
+            <label class="issues-agent">
+              Sort
+              <select value={issueSort()} onChange={(event) => setIssueSort(event.currentTarget.value as IssueSort)}>
+                <For each={ISSUE_SORTS}>{([sort, words]) => <option value={sort}>{words}</option>}</For>
+              </select>
+            </label>
             <span class="grow" />
             <Show when={agents().length > 0}>
               <label class="issues-agent">
@@ -376,7 +416,7 @@ export function Issues(): JSX.Element {
                 <div class="stage-head">
                   <h2 class="stage-title">Assigned to you in Linear</h2>
                   <span class="stage-note">
-                    {linear().issues.length === 1 ? '1 open' : `${linear().issues.length} open`} · every team
+                    {countWords(shown(linear().issues).length, linear().issues.length, query())} · every team
                   </span>
                 </div>
                 <Show when={linear().problem}>
@@ -384,9 +424,11 @@ export function Issues(): JSX.Element {
                 </Show>
                 <Show when={!linear().problem && shown(linear().issues).length === 0}>
                   <p class="stage-row plain">
-                    {filter() === 'free' && linear().issues.length > 0
-                      ? 'Every issue assigned to you has a task.'
-                      : 'Nothing is assigned to you.'}
+                    {noneWords(
+                      linear().issues,
+                      'Every issue assigned to you has a task.',
+                      'Nothing is assigned to you.',
+                    )}
                   </p>
                 </Show>
                 <For each={shown(linear().issues)}>
@@ -493,7 +535,7 @@ export function Issues(): JSX.Element {
                   <span class="stage-note">
                     {project.source === 'none'
                       ? 'No tracker: its remote is not on GitHub or GitLab, and no Linear team is set'
-                      : `${project.label} · ${project.issues.length} open`}
+                      : `${project.label} · ${countWords(shown(project.issues).length, project.issues.length, query())}`}
                   </span>
                   <span class="grow" />
                   <Show
@@ -556,9 +598,7 @@ export function Issues(): JSX.Element {
                   <p class="stage-row plain">
                     {project.source === 'none'
                       ? 'Nothing to list.'
-                      : filter() === 'free' && project.issues.length > 0
-                        ? 'Every open issue has a task.'
-                        : 'No open issues.'}
+                      : noneWords(project.issues, 'Every open issue has a task.', 'No open issues.')}
                   </p>
                 </Show>
                 <For each={shown(project.issues)}>
@@ -641,7 +681,7 @@ export function Issues(): JSX.Element {
             )}
           </For>
 
-          <SentryIssues agentId={chosenAgent()} onlyFree={filter() === 'free'} />
+          <SentryIssues agentId={chosenAgent()} onlyFree={filter() === 'free'} query={query()} sort={issueSort()} />
         </div>
       </main>
       {/* Two panels, each of its own thing: the issue, and the request of the task that works on it. */}

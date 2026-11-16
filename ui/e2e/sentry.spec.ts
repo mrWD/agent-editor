@@ -119,6 +119,17 @@ test.describe('Errors from Sentry', () => {
     await expect(row).toContainText('1,204 times, 87 users');
     await expect(row.getByRole('link', { name: 'SHOP-1A' })).toHaveAttribute('href', ISSUE.permalink);
 
+    // The search of the screen looks through the errors too: by name, and by where the error happens.
+    const search = app.page.getByRole('searchbox', { name: 'Search the issues' });
+    await search.fill('nothing like it');
+    await expect(row).toHaveCount(0);
+    await expect(errors).toContainText('0 of 1 unresolved');
+    await expect(errors).toContainText('Nothing here matches “nothing like it”.');
+    await search.fill('typeerror cart');
+    await expect(row).toBeVisible();
+    await search.fill('');
+    await expect(errors).toContainText('· 1 unresolved');
+
     // Started, it is a task whose first message is the error as a person would look it up.
     await row.getByRole('button', { name: 'Start a task for SHOP-1A' }).click();
     await expect(app.page).toHaveURL(/#\/task\/[^/]+\/code$/);

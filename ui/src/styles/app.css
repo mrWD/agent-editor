@@ -2407,6 +2407,13 @@ button.search-link:hover {
   font-size: 13px;
   color: var(--text-2);
 }
+/* The search is as tall as what stands beside it, and gives way first when the row is narrow. */
+.issues-search {
+  flex: 0 1 260px;
+  min-width: 140px;
+  height: 30px;
+  font-size: 13px;
+}
 .issues-agent select {
   height: 30px;
   padding: 0 8px;

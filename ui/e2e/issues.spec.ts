@@ -99,6 +99,72 @@ test.describe('Issues', () => {
     );
   });
 
+  test('N-18 N-19 the lists are searched by name, key and label, and put in the order picked; the order is kept', async ({
+    app,
+    project,
+  }) => {
+    const shop = await project({
+      remote: 'github',
+      issues: [
+        ...ISSUES,
+        { number: 7, title: 'billing page is slow', labels: ['perf'] },
+        { number: 20, title: 'Add a limit of requests' },
+      ],
+    });
+    await app.addProject(shop.dir);
+    await openIssues(app);
+    const section = sectionOf(app, shop);
+    const rows = section.locator('.issue-row');
+    const keys = rows.locator('.issue-key');
+    await expect(keys).toHaveText(['#12', '#13', '#7', '#20']);
+    await expect(section).toContainText('· 4 open');
+
+    // A word of the name, whatever its case; then a label; then a key.
+    const search = app.page.getByRole('searchbox', { name: 'Search the issues' });
+    await search.fill('PAGINATION');
+    await expect(keys).toHaveText(['#13']);
+    await expect(section).toContainText('· 1 of 4 open');
+    await search.fill('perf');
+    await expect(keys).toHaveText(['#7']);
+    await search.fill('#12');
+    await expect(keys).toHaveText(['#12']);
+    // Every word has to be there, anywhere in the issue.
+    await search.fill('login auth');
+    await expect(keys).toHaveText(['#12']);
+    await search.fill('login perf');
+    await expect(rows).toHaveCount(0);
+    await expect(section).toContainText('· 0 of 4 open');
+    await expect(section).toContainText('Nothing here matches “login perf”.');
+    // Escape empties the search.
+    await search.press('Escape');
+    await expect(search).toHaveValue('');
+    await expect(keys).toHaveText(['#12', '#13', '#7', '#20']);
+    await expect(section).toContainText('· 4 open');
+
+    // The order: by name without minding capitals, by key with its number read as a number.
+    const sort = app.page.getByRole('combobox', { name: 'Sort' });
+    await expect(sort).toHaveValue('tracker');
+    await sort.selectOption({ label: 'By name' });
+    await expect(keys).toHaveText(['#20', '#7', '#12', '#13']);
+    await sort.selectOption({ label: 'By key' });
+    await expect(keys).toHaveText(['#7', '#12', '#13', '#20']);
+    // What a search leaves is in the same order.
+    await search.fill('limit');
+    await expect(keys).toHaveText(['#12', '#20']);
+
+    // Another screen and back: the search is as it was left. A reload: the order is kept, the search is not.
+    await app.page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Home' }).click();
+    await app.page.getByRole('link', { name: 'Issues', exact: true }).click();
+    await expect(search).toHaveValue('limit');
+    await expect(keys).toHaveText(['#12', '#20']);
+    await app.page.reload();
+    await expect(sort).toHaveValue('key');
+    await expect(search).toHaveValue('');
+    await expect(keys).toHaveText(['#7', '#12', '#13', '#20']);
+    await sort.selectOption({ label: 'As the tracker lists them' });
+    await expect(keys).toHaveText(['#12', '#13', '#7', '#20']);
+  });
+
   test('N-06 N-07 a project without a known host has no tracker; a Linear team without a key says what is missing', async ({
     app,
     project,
