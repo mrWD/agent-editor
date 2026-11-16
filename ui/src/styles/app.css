@@ -1400,6 +1400,8 @@ button.what.cut:hover {
   color: var(--text);
   /* Its height is the user's to set, by the edge above the box: that edge moves the conversation too. */
   resize: none;
+  /* What is typed wraps, so there is nothing to scroll to sideways: the box never shows a bar for it. */
+  overflow-x: hidden;
 }
 /* An edge that can be dragged. It is wider than what it shows, so it is easy to catch. */
 .grip {
