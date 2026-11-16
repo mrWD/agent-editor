@@ -387,6 +387,7 @@ async fn claude_takes_the_task_with_its_session_and_a_conversation_is_not_brough
         env: vec![("AE_MOCK_DELAY_MS".into(), "0".into()), ("AE_MOCK_LOAD".into(), "1".into())],
         available: true,
         note: None,
+        about: None,
         spends_tokens: false,
         speaks: Default::default(),
     };
