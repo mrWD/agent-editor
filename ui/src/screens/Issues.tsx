@@ -14,6 +14,7 @@ import {
   agentOf,
   defaultAgentId,
   integrationsStatus,
+  issueRequests,
   linearAccount,
   listIssues,
   projectName,
@@ -23,6 +24,7 @@ import {
   state,
   type Integrations,
   type Issue,
+  type IssueRequest,
   type LinearAccount,
   type LinearMine,
   type ProjectIssues,
@@ -199,16 +201,50 @@ export function Issues(): JSX.Element {
     }
   };
 
-  const start = (projectId: string, issue: Issue, source?: 'linear') =>
+  /**
+   * An issue somebody works on already: the open requests attached to it, found when a task was
+   * about to start. The user says whether the task goes on with one of them or starts anew.
+   */
+  const [underWay, setUnderWay] = createSignal<{
+    projectId: string;
+    issue: Issue;
+    source?: 'linear';
+    requests: IssueRequest[];
+  } | null>(null);
+
+  /** Starts the task, on the branch of a request when one is given, and opens it. */
+  const startNow = (projectId: string, issue: Issue, source?: 'linear', request?: number) =>
     // eslint-disable-next-line solid/reactivity -- called later, as an event handler: it reads what is current then
     act(async () => {
+      setUnderWay(null);
       setStarting(`${projectId}:${issue.key}`);
       try {
-        go(taskHref(await startIssue(projectId, issue.key, chosenAgent(), source)));
+        go(taskHref(await startIssue(projectId, issue.key, chosenAgent(), source, request)));
       } finally {
         setStarting(null);
       }
     });
+
+  /**
+   * What "Start in editor" does: looks first whether the issue has a request open in this
+   * repository. With none, which is the usual case, the task starts at once on a branch of its own.
+   */
+  const start = async (projectId: string, issue: Issue, source?: 'linear') => {
+    setProblem(null);
+    setStarting(`${projectId}:${issue.key}`);
+    let requests: IssueRequest[] = [];
+    try {
+      requests = await issueRequests(projectId, issue.key, source);
+    } catch {
+      // Not knowing is no reason not to start: the task gets a branch of its own, as ever.
+    }
+    if (requests.length > 0) {
+      setStarting(null);
+      setUnderWay({ projectId, issue, source, requests });
+      return;
+    }
+    await startNow(projectId, issue, source);
+  };
 
   /**
    * The project a Linear issue of the user's would start in: the one picked here, else the project that takes
@@ -684,6 +720,67 @@ export function Issues(): JSX.Element {
           <SentryIssues agentId={chosenAgent()} onlyFree={filter() === 'free'} query={query()} sort={issueSort()} />
         </div>
       </main>
+      <Show when={underWay()}>
+        {(found) => (
+          <>
+            <div class="scrim" onClick={() => setUnderWay(null)} />
+            <section
+              class="ask"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${found().issue.key} has work under way`}
+              onKeyDown={(event) => event.key === 'Escape' && (event.stopPropagation(), setUnderWay(null))}
+            >
+              <h2 class="ask-title">{found().issue.key} has work under way</h2>
+              <p class="soft">
+                {found().requests.length === 1
+                  ? 'A request for it is open in this repository.'
+                  : 'Requests for it are open in this repository.'}{' '}
+                The task can go on with that work, on its branch, or start on a new branch of its own.
+              </p>
+              <For each={found().requests}>
+                {(request, index) => (
+                  <div class="ask-row">
+                    <div class="ask-what">
+                      <a href={request.url} target="_blank" rel="noreferrer">
+                        {request.name}
+                      </a>{' '}
+                      {request.title}
+                      <span class="fine">
+                        {request.draft ? 'Draft · ' : ''}
+                        <span class="mono">{request.branch}</span> into <span class="mono">{request.base}</span>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn small"
+                      classList={{ primary: index() === 0 }}
+                      ref={(el) => index() === 0 && queueMicrotask(() => el.focus())}
+                      title={`The task works on ${request.branch}: what is committed there is where it begins, and what it pushes goes to ${request.name}`}
+                      onClick={() => void startNow(found().projectId, found().issue, found().source, request.number)}
+                    >
+                      Go on with {request.name}
+                    </button>
+                  </div>
+                )}
+              </For>
+              <div class="actions">
+                <button
+                  type="button"
+                  class="btn small"
+                  title="A branch of the task's own, from what the project's folder has checked out now"
+                  onClick={() => void startNow(found().projectId, found().issue, found().source)}
+                >
+                  Start on a new branch
+                </button>
+                <button type="button" class="btn small ghost" onClick={() => setUnderWay(null)}>
+                  Cancel
+                </button>
+              </div>
+            </section>
+          </>
+        )}
+      </Show>
       {/* Two panels, each of its own thing: the issue, and the request of the task that works on it. */}
       <DetailDock beside>
         <IssuePanel details={details} />
